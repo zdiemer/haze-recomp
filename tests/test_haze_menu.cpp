@@ -32,7 +32,7 @@ static bool fail_apply;
 static bool timed_display,fail_restore;
 static HazeGraphicsState before_preview;
 static haze_video::Values staged_preview;
-static unsigned next_preview,keeps,reverts;
+static unsigned next_preview,keeps,reverts,confirmations;
 HazeGraphicsState haze_graphics_state() { return graphics; }
 bool haze_graphics_apply(const haze_video::Values& values,bool persist,std::string& message) {
     assert(persist); ++applies;
@@ -47,6 +47,7 @@ bool haze_graphics_preview(void* window,const haze_video::Values& values,bool pe
     graphics.notice="Previewing display"; return true;
 }
 bool haze_graphics_confirm(unsigned revision,bool keep,std::string& message) {
+    ++confirmations;
     if (!revision || revision!=graphics.display_preview) { message="Stale confirmation"; return false; }
     if (!keep && fail_restore) { graphics.display_restore_failed=true; graphics.notice=message="Could not restore display"; return false; }
     graphics=before_preview;
@@ -237,6 +238,25 @@ int main(int argc,char** argv) {
     foreground=owner; key(VK_RETURN); key(VK_ESCAPE);
     assert(!capture_dialog.revision && haze_menu_active());
     key(VK_ESCAPE);
-    haze_menu_shutdown(); DestroyWindow(owner);
+    // Reusable menu teardown reverts; final process teardown must not enter
+    // the display backend again, even after a failed restoration.
+    timed_display=true; foreground=owner;
+    preview_page(); const auto previous_reverts=reverts;
+    haze_menu_shutdown(); assert(!graphics.display_preview && reverts==previous_reverts+1);
+    for (bool failed:{false,true}) {
+        foreground=owner;
+        preview_page();
+        fail_restore=failed;
+        if (failed) { key(VK_ESCAPE); assert(graphics.display_restore_failed); }
+        const auto pending=graphics.display_preview, calls=confirmations, saved=applies;
+        const auto configured=graphics.configured;
+        const auto closing_panel=panel;
+        haze_menu_shutdown(true);
+        assert(!haze_menu_active() && !IsWindow(closing_panel));
+        assert(graphics.display_preview==pending && confirmations==calls && applies==saved);
+        assert(graphics.configured==configured);
+        graphics=before_preview; fail_restore=false; // Simulate a fresh process.
+    }
+    DestroyWindow(owner);
     std::puts("Native page navigation, staging, failure recovery, rendering and input tests passed.");
 }

@@ -385,8 +385,6 @@ static DWORD WINAPI frame_clock(LPVOID)
                 // guest workers, rather than leaving an invisible game running.
                 exit(0);
             }
-            haze_input_update();
-            haze_graphics_update();
 #ifdef _WIN32
             if (haze_quit_take_shutdown(haze_quit_guest_parked())) {
                 /* The guest producer is parked and save admission is closed.
@@ -405,6 +403,8 @@ static DWORD WINAPI frame_clock(LPVOID)
                 exit(0);
             }
 #endif
+            haze_input_update();
+            haze_graphics_update();
             /* Present on a guest flip. A present on a fixed clock can catch the
              * drain mid-frame and flash a partial one. Before the first flip
              * present freely, so the window is not blank during boot. */

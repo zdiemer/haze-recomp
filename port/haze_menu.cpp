@@ -406,8 +406,11 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
     if (presses&CELL_PAD_CTRL_LEFT) change(-1); if (presses&CELL_PAD_CTRL_RIGHT) change(1);
     if (presses&CELL_PAD_CTRL_CROSS) activate();
 }
-void haze_menu_shutdown() {
-    if (current!=HazeMenuPage::None && provider().update) provider().update(false);
+void haze_menu_shutdown(bool exiting_process) {
+    if (!exiting_process && current!=HazeMenuPage::None && provider().update) provider().update(false);
+    // DestroyWindow dispatches messages synchronously. Retire the provider
+    // first so teardown messages cannot act on an outstanding confirmation.
+    current=HazeMenuPage::None;
     if (panel) DestroyWindow(panel); panel=nullptr;
     if (font) DeleteObject(font); if (heading) DeleteObject(heading); font=heading=nullptr;
     active=false; requested=0; current=HazeMenuPage::None; applying=false; width=height=0;
@@ -420,6 +423,6 @@ bool haze_menu_active() { return false; }
 bool haze_menu_has_focus() { return false; }
 void* haze_menu_owner() { return nullptr; }
 void haze_menu_update(void*,const HazeGamepadState&) {}
-void haze_menu_shutdown() {}
+void haze_menu_shutdown(bool) {}
 void haze_menu_retail() {}
 #endif
