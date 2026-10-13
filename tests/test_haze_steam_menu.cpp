@@ -28,7 +28,6 @@ unsigned haze_input_menu_button(int vk) { return vk==VK_TAB ? CELL_PAD_CTRL_SELE
 bool haze_prompts_draw_icon(void*,int,int,int,int) { return true; }
 bool haze_prompts_draw_binding(void*,HazeInputFamily,const char*,int,int,int) { return true; }
 HazeInputFamily haze_input_family() { return HazeInputFamily::Keyboard; }
-const char* haze_input_config_path() { return ""; }
 HazeQuitOffer haze_quit_offer() { return offer; }
 bool haze_quit_guest_ready() { return true; }
 void haze_quit_resume_guest() {}

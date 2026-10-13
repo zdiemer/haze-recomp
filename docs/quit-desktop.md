@@ -6,9 +6,10 @@ Desktop / Add to Steam** and opens Desktop Options; its first row opens the
 normal Quit confirmation. The pause menu still has a direct **Quit to Desktop**
 action at the lower right. Click the footer, press the current Select binding (Tab by
 default), or press Tab as a keyboard fallback. The controller uses its mapped
-Select button, with the current Kenney glyph and a readable binding name beside
-the action (for example, **Tab** or Xbox **View**). Rebinding updates that label;
-an unbound Select retains the explicit Tab fallback.
+Select button, with the current Kenney glyph beside the action. The footer
+renders that glyph at twice the text unit for readability; it adds no separate
+binding label. Xbox Select and Start use the View and Menu symbols rather than
+the older small BACK/START wordmarks. Rebinding updates the shared glyph atlas.
 
 The footer declines mouse activation and recognizes its own window as part of
 the game's focus group. If it nevertheless receives foreground ownership, a
