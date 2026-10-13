@@ -2,6 +2,7 @@
 #include "haze_camera.h"
 #include "haze_input.h"
 #include "haze_mouse.h"
+#include "haze_menu.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -27,7 +28,8 @@ void update_look(ppu_context* ctx) {
     const uint32_t controls=actor ? vm_read32(actor+0x1a0) : 0;
     if (controls && vm_read32(controls)==0x00dd9f78) {
         double x=0,y=0,speed=0; bool invert=false;
-        if (haze_input_take_mouse(x,y,speed,invert) && vm_read8(motor+0xa0)) {
+        if (haze_input_take_mouse(x,y,speed,invert) &&
+            haze_menu_gameplay_allowed() && vm_read8(motor+0xa0)) {
             const float yaw=read_float(motor+0xb0),pitch=read_float(motor+0xac);
             const float upper=read_float(motor+0x80),lower=read_float(motor+0x84);
             if (std::isfinite(yaw) && std::isfinite(pitch) &&
@@ -47,9 +49,9 @@ void update_look(ppu_context* ctx) {
     }
     func_0024D3A0(ctx);
     if (trace && moved)
-        std::fprintf(stderr,"[mouse] counts=%.0f,%.0f yaw=%.8f->%.8f pitch=%.8f->%.8f\n",
+        std::fprintf(stderr,"[mouse] counts=%.0f,%.0f yaw=%.8f->%.8f pitch=%.8f->%.8f motor=%08X\n",
             mouse_x,mouse_y,before_yaw,read_float(motor+0xb0)+read_float(motor+0xb4),
-            before_pitch,read_float(motor+0xac));
+            before_pitch,read_float(motor+0xac),motor);
 }
 }
 void haze_camera_initialize() {
