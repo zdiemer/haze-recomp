@@ -32,7 +32,7 @@ foreach ($test in @('test_haze_input','test_haze_camera','test_haze_graphics','t
     & "$root/local/$test.exe"
     if ($LASTEXITCODE -ne 0) { throw "$test failed" }
 }
-& "$assets/.venv/Scripts/python.exe" "$root/tests/test_menu_page_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp"
+& "$assets/.venv/Scripts/python.exe" "$root/tests/test_menu_page_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp" "$clang"
 if ($LASTEXITCODE -ne 0) { throw 'Menu page patch guard failed.' }
 & "$assets/.venv/Scripts/python.exe" "$root/tests/test_save_status_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Save status patch guard failed.' }
