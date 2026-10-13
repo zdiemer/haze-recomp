@@ -20,10 +20,9 @@ while ($object.type -eq 'tag') {
     $object = $annotated.object
 }
 if ($object.type -ne 'commit' -or $object.sha -ne $Commit) { throw 'Remote tag does not match the binaries.' }
-$releases = & gh api "repos/$Repository/releases?per_page=100" --paginate | ConvertFrom-Json
+$releases = @(& gh api "repos/$Repository/releases?per_page=100" --paginate --jq '.[].tag_name')
 if ($LASTEXITCODE -ne 0) { throw 'Cannot check existing releases.' }
-$existing = @($releases | Where-Object tag_name -EQ $Tag)
-if ($existing.Count) { throw 'Release already exists. Inspect it before retrying; published files are never overwritten.' }
+if ($releases -contains $Tag) { throw 'Release already exists. Inspect it before retrying; published files are never overwritten.' }
 $files = @(Get-ChildItem -LiteralPath $Directory -File | ForEach-Object FullName)
 # Keep partial uploads private. Only reveal the release after every asset exists.
 & gh release create $Tag @files --repo $Repository --verify-tag --draft --title "Haze Recomp $Tag" --notes-file $Notes

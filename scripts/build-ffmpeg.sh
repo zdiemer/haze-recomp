@@ -11,7 +11,12 @@ cd "$build_dir"
   --disable-programs --disable-doc --disable-debug --disable-x86asm --disable-pthreads --enable-w32threads \
   --disable-avdevice --disable-avformat --disable-avfilter \
   --enable-avcodec --enable-avutil --enable-swscale --enable-swresample \
-  --enable-decoder=mpeg2video,atrac3plus --enable-parser=mpegvideo \
+  --enable-decoder=mpeg2video,atrac3p --enable-parser=mpegvideo \
   --enable-shared --disable-static
+grep -q '^#define CONFIG_ATRAC3P_DECODER 1$' config_components.h
+grep -q '^#define CONFIG_MPEG2VIDEO_DECODER 1$' config_components.h
+grep -q '^#define CONFIG_MPEGVIDEO_PARSER 1$' config_components.h
+grep -q '^#define CONFIG_GPL 0$' config.h
+grep -q '^#define CONFIG_NONFREE 0$' config.h
 make -j4
 make install
