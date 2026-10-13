@@ -158,14 +158,23 @@ bool haze_audio_guest_open(ppu_context* ctx) {
     for (int i=0;i<3;++i) widgets[i]=(uint32_t)call(ctx,func_00311248,manager,names[i]);
     subtitle_widget=(uint32_t)call(ctx,func_00311248,manager,subtitle_name);
     HazeAudioValues values{},defaults{},restored{};
-    if (!read_values(values)) return unavailable("audio slider values");
+    // Pause widgets can retain template values (100) instead of the saved
+    // profile. Initialize through the audited retail loader before snapshotting
+    // native edits; never use those placeholders as the rollback baseline.
+    const auto expected=profile_values();
+    for (unsigned i=0;i<expected.size();++i)
+        if (expected[i]<0 || expected[i]>(i==3 ? 1 : 100)) return unavailable("profile audio values");
+    call(ctx,func_00100828,0,0,player,0);
+    if (!read_values(values) || values!=expected || profile_values()!=expected)
+        return unavailable("profile audio initialization");
     // Let the original default-profile loader choose defaults, then restore
     // the current profile before exposing the native page. No profile writes.
     call(ctx,func_00100828,0,0,player,1);
     const bool defaults_ok=read_values(defaults);
     call(ctx,func_00100828,0,0,player,0);
     call(ctx,func_00314380,manager,0);
-    if (!defaults_ok || !read_values(restored) || restored!=values) return unavailable("default profile restoration");
+    if (!defaults_ok || !read_values(restored) || restored!=values || profile_values()!=expected)
+        return unavailable("default profile restoration");
     {
         std::lock_guard lock(state_mutex);
         ++state.generation; state.ready=true; state.values=values; state.defaults=defaults;
@@ -182,6 +191,10 @@ bool haze_audio_guest_open(ppu_context* ctx) {
 void haze_audio_guest_tick(ppu_context* ctx) {
 #ifdef _WIN32
     if (inside || !ctx || ctx->thread_id!=owner_thread.load()) return;
+    // The pause GUI clears this temporary slot between dispatches. Process
+    // queued edits at the post-GUI hook while its context is installed.
+    const auto current_manager=vm_read32(0xf48dd4);
+    if (!pointer(current_manager) || !pointer(vm_read32(current_manager+0x48))) return;
     HazeAudioState snapshot;
     HazeAudioValues values;
     { std::lock_guard lock(state_mutex); snapshot=state; values=requested_values; }

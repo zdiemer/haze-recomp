@@ -18,6 +18,8 @@ static constexpr uint32_t test_widgets[]={0x40024000,0x40025000,0x40026000};
 static constexpr uint32_t test_subtitles=0x40028000,test_options=0x40029000;
 static unsigned applies,restores;
 static bool launch_failure;
+static unsigned profile_loads;
+static bool bad_initialization,bad_restoration;
 static std::array<int,3> mixed;
 void func_00311248(ppu_context* ctx) {
     auto name=ctx->gpr[4]; ctx->gpr[3]=0;
@@ -28,8 +30,10 @@ void func_00311248(ppu_context* ctx) {
 void func_004D11F0(ppu_context* ctx) { ctx->gpr[3]=0x27000; }
 void func_004E6F20(ppu_context* ctx) { ctx->gpr[3]=test_profile; }
 void func_00100828(ppu_context* ctx) {
+    ++profile_loads;
     for (int i=0;i<3;++i) vm_write32(test_widgets[i]+0x154,ctx->gpr[6] ? 70 : vm_read32(test_profile+fields[i]));
     vm_write32(test_subtitles+0x170,ctx->gpr[6] ? 1 : ((vm_read32(test_profile+0xd0)&0x20)!=0));
+    if (bad_initialization || (bad_restoration && profile_loads==3)) vm_write32(test_widgets[0]+0x154,99);
 }
 void func_00100230(ppu_context* ctx) {
     assert(ctx->gpr[3]==subtitle_name && ctx->gpr[4]<=1);
@@ -72,7 +76,10 @@ int main() {
     for (int i=0;i<3;++i) { vm_write32(test_widgets[i]+0x154,80); vm_write32(test_profile+fields[i],80); }
     ppu_context ctx{}; ctx.thread_id=7; ctx.gpr[1]=0xf00000; ctx.lr=123; ctx.fpr[1]=1.25; ctx.gpr[4]=0xabcdef;
     const auto original=ctx;
+    for (auto widget:test_widgets) vm_write32(widget+0x154,100);
     assert(haze_audio_guest_open(&ctx)); assert(!std::memcmp(&ctx,&original,sizeof ctx));
+    assert((profile_loads==3 && applies==0 && mixed==std::array<int,3>{}));
+    assert(vm_read32(test_widgets[0]+0x154)==80 && vm_read32(test_profile+fields[0])==80);
     auto initial=haze_audio_state(); assert(initial.ready && initial.values[0]==80 && initial.defaults[0]==70);
     haze_audio_menu_register(); registered.begin(); registered.change("music","55");
     registered.change("subtitles","1"); registered.change("subtitles","3");
@@ -81,6 +88,9 @@ int main() {
     assert(registered.rows()[0].value=="55" && registered.rows()[1].value=="80" && registered.rows()[2].value=="80");
     std::string message;
     assert(registered.apply(message)==HazeMenuApply::Pending);
+    vm_write32(test_manager+0x48,0); haze_audio_guest_tick(&ctx);
+    assert(applies==0 && registered.poll(message)==HazeMenuApply::Pending);
+    vm_write32(test_manager+0x48,test_context);
     ctx.thread_id=8; haze_audio_guest_tick(&ctx); assert(applies==0); ctx.thread_id=7;
     vm_write32(0x137a390,1); haze_audio_guest_tick(&ctx); assert(applies==0); vm_write32(0x137a390,0);
     haze_audio_guest_tick(&ctx); assert(applies==1 && mixed[0]==55 && !std::memcmp(&ctx,&original,sizeof ctx));
@@ -113,6 +123,11 @@ int main() {
     assert(registered.poll(message)==HazeMenuApply::Failed && vm_read32(test_profile+0xe8)==45);
     assert(!haze_audio_state().ready);
     vm_write32(test_widgets[0]+0x154,45);
+    assert(haze_audio_guest_open(&ctx));
+    profile_loads=0; bad_initialization=true;
+    assert(!haze_audio_guest_open(&ctx)); bad_initialization=false;
+    profile_loads=0; bad_restoration=true;
+    assert(!haze_audio_guest_open(&ctx)); bad_restoration=false;
     assert(haze_audio_guest_open(&ctx));
     vm_write32(0x100300,0); assert(!haze_audio_guest_open(&ctx));
     assert(!haze_audio_apply({5,5,5},haze_audio_state().generation,message));
