@@ -25,9 +25,14 @@ the selected controller cancels an active controller capture.
 
 Duplicate sources offer **Keep both**, **Replace others** or **Cancel**.
 Replace others unbinds the conflicting actions. Keyboard comparisons ignore
-case; controller comparisons recognize equivalent named face-button aliases.
-A named SDL source and a manually configured raw source for the same physical
-input are not yet resolved as equivalent by the conflict check.
+case; controller comparisons resolve named and raw sources through the active
+controller's SDL mapping. Buttons, hat directions, inverted axes and split
+axis ranges are compared by their physical source. A movement/look axis overlaps
+either direction of that axis. Warnings reflect the current controller; another
+device can have a different mapping. Unmapped devices use their raw sources.
+If Select, Back or Defaults share a physical input, menu recovery uses the
+standard navigation bindings. If a custom SDL mapping aliases those standard
+buttons too, recovery uses separate raw buttons and labels them accordingly.
 
 **Apply** validates and saves to the same input.ini selected at startup, then
 reloads the actual input mapper immediately. **Back** discards unapplied edits;
@@ -104,8 +109,16 @@ visible native-window interaction, gameplay input isolation or immediate
 gameplay effects. Harness focus is injected. Remaining checks include physical
 keyboard/mouse/controller binding and hotplug, main and pause navigation,
 gameplay use after Apply, full-process restart persistence of new bindings,
-Alt-Tab/cancel behavior, controller-only recovery and DPI readability. Conflict
-detection between raw and named physical aliases also remains incomplete.
+Alt-Tab/cancel behavior, controller-only recovery and DPI readability.
+
+The physical alias checks passed with actual SDL virtual devices, including
+named/raw face buttons, hats, full/directional/inverted axes, axis-to-button and
+button-to-axis mappings, mapping reloads, and unmapped hardware. The Win32 UI
+fixture captured a named binding conflicting with a stored raw source, replaced
+the old action, applied it, and verified the mapper output. The full input suite
+and native build passed in `local/controls-physical-alias-tests3.log` and
+`local/controls-physical-alias-build2.log`. A custom mapping with duplicate
+standard face buttons also verified the distinct raw-button recovery path.
 
 Local evidence: `local/controls-release-tests.log`,
 `local/controls-release-build.log`, `local/controls-page.bmp`,

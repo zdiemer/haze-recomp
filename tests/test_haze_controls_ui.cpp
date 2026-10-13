@@ -71,7 +71,7 @@ int main(int argc,char** argv) {
     _CrtSetReportMode(_CRT_ERROR,_CRTDBG_MODE_FILE); _CrtSetReportFile(_CRT_ERROR,_CRTDBG_FILE_STDERR);
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");
     input_path=(repo/"local"/("controls-ui-"+std::to_string(GetCurrentProcessId())+".ini")).string();
-    { std::ofstream file(input_path); file<<"[Prompts]\nDirectory="<<(repo/"assets/input-prompts").string()<<"\n"; }
+    { std::ofstream file(input_path); file<<"[Prompts]\nDirectory="<<(repo/"assets/input-prompts").string()<<"\n[ControllerBindings]\nTriangle=raw:b3\n"; }
     assert(haze_gamepad_initialize(input_path.c_str())); haze_prompts_initialize(input_path.c_str());
     SDL_VirtualJoystickDesc desc{}; SDL_INIT_INTERFACE(&desc); desc.type=SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.naxes=SDL_GAMEPAD_AXIS_COUNT; desc.nbuttons=SDL_GAMEPAD_BUTTON_COUNT;
@@ -88,7 +88,7 @@ int main(int argc,char** argv) {
     select("ControllerBindings.Cross"); key(VK_RETURN); frame(owner);
     SDL_SetJoystickVirtualButton(joystick,SDL_GAMEPAD_BUTTON_NORTH,true); frame(owner); assert(stage==Stage::Preview);
     SDL_SetJoystickVirtualButton(joystick,SDL_GAMEPAD_BUTTON_NORTH,false); frame(owner);
-    key(VK_RETURN); assert(stage==Stage::Conflict); screenshot(repo/"local/controls-conflict.bmp");
+    key(VK_RETURN); assert(stage==Stage::Conflict && edited.at("ControllerBindings.Triangle")=="raw:b3"); screenshot(repo/"local/controls-conflict.bmp");
     key(VK_RIGHT); key(VK_RETURN); assert(stage==Stage::None && edited.at("ControllerBindings.Triangle")=="None"); apply();
     SDL_SetJoystickVirtualButton(joystick,SDL_GAMEPAD_BUTTON_NORTH,true);
     const auto mapped=haze_gamepad_update(); assert((mapped.input.buttons&CELL_PAD_CTRL_CROSS) && !(mapped.input.buttons&CELL_PAD_CTRL_TRIANGLE));
