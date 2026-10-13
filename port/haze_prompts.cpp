@@ -103,7 +103,7 @@ std::string pad_icon(HazeInputFamily family,std::string name) {
     const char* positions[]={"south","east","west","north","leftshoulder","rightshoulder",
         "lefttrigger","righttrigger","leftstick","rightstick","start","back","dpup","dpdown","dpleft","dpright"};
     const char* xbox[]={"button_a","button_b","button_x","button_y","lb","rb","lt","rt",
-        "stick_l_press","stick_r_press","button_start","button_back","dpad_up","dpad_down","dpad_left","dpad_right"};
+        "stick_l_press","stick_r_press","button_menu","button_view","dpad_up","dpad_down","dpad_left","dpad_right"};
     const char* ps[]={"button_cross","button_circle","button_square","button_triangle","trigger_l1","trigger_r1","trigger_l2","trigger_r2",
         "stick_l_press","stick_r_press","3_button_start","3_button_select","dpad_up","dpad_down","dpad_left","dpad_right"};
     const char* sw[]={"button_b","button_a","button_y","button_x","button_l","button_r","button_zl","button_zr",

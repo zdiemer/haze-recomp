@@ -61,6 +61,8 @@ int main(int argc,char** argv) {
         for (int i=0;i<24;i++) assert(!empty_slot(*published,i));
     }
     assert(pad_icon(HazeInputFamily::Switch,"south")=="switch_button_b");
+    assert(pad_icon(HazeInputFamily::Xbox,"start")=="xbox_button_menu");
+    assert(pad_icon(HazeInputFamily::Xbox,"back")=="xbox_button_view");
     assert(pad_icon(HazeInputFamily::PlayStation,"start")=="playstation3_button_start");
     write_setting("Bindings","Cross","None"); refresh(HazeInputFamily::Keyboard);
     assert(published && empty_slot(*published,12));
