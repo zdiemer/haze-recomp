@@ -226,13 +226,19 @@ power loss. Broader save recovery belongs to #48.
   device recovery remains coordinated with #49.
 - Validate the separate Controls provider from #23 in the combined main/pause
   flow; its implementation and automated tests are integrated in the candidate.
-- Verify timed keep/revert and save-on-Keep in the native game, including
-  exclusive fullscreen, focus loss, monitor changes and restart persistence.
+- Finish native display checks for exclusive fullscreen, focus loss, monitor
+  changes and restart persistence. Window-size timeout and save-on-Keep passed
+  in the combined candidate's `video-native-1` run (see video-live-settings.md).
   The automated UI/DXGI seams do not establish that the owned popup remains
   visible or that exclusive entry succeeds while the settings window has focus.
 - Verify physical keyboard/mouse/controller interaction in both main and pause
   menus, focus/Alt-Tab behavior, gameplay input isolation, DPI/readability,
   failed persistence and restart persistence in the full game.
+- Correct and retest Back navigation: in `video-native-1`, Escape closed the
+  native Controls panel but left the retail Control Setup page underneath.
+  An explicit guest Circle pulse then returned normally. The current synthetic
+  Back lasts only two backend polls; the SDK polls at 4 ms intervals from both
+  data and information calls, so those polls do not prove guest consumption.
 - Verify repeated graphics apply/reset under sustained gameplay and finish the
   GPU acceptance checks in #10. Shared retail page IDs prove the intended pause
   route, but do not replace running that route.
