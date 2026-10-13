@@ -8,6 +8,9 @@
 static bool focused=true;
 static bool keys[256];
 static ULONGLONG ticks=100;
+static unsigned graphics_reloads;
+void haze_graphics_request_reload() { ++graphics_reloads; }
+std::string haze_graphics_notice() { return {}; }
 static SHORT test_key(int vk) { return keys[vk] ? (SHORT)0x8000 : 0; }
 static HWND test_foreground() { return focused ? (HWND)1 : nullptr; }
 static DWORD test_owner(HWND hwnd,DWORD* pid) { *pid=hwnd ? GetCurrentProcessId() : 0; return 1; }
@@ -82,6 +85,9 @@ static CellPadHostInput sample() {
     return input;
 }
 int main() {
+    window_proc((HWND)1,WM_KEYDOWN,VK_F6,0);
+    window_proc((HWND)1,WM_KEYDOWN,VK_F6,1ll<<30);
+    assert(graphics_reloads==1 && message_keys[VK_F6]==0);
     _set_error_mode(_OUT_TO_STDERR);
     _set_abort_behavior(0,_CALL_REPORTFAULT);
     window=(HWND)1;
