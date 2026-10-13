@@ -113,6 +113,26 @@ endif()
 # ---------------------------------------------------------------------------
 # The HLE NID table
 # ---------------------------------------------------------------------------
+if(WIN32)
+    # The extension accesses private descriptor/resource state. Require an
+    # explicit audit when the pinned renderer changes, including on LF checkouts.
+    set(HAZE_RSX_SOURCE "${PS3RECOMP_DIR}/libs/video/rsx_live_draw.c")
+    file(READ "${HAZE_RSX_SOURCE}" HAZE_RSX_TEXT)
+    string(REPLACE "\r\n" "\n" HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(SHA256 HAZE_RSX_HASH "${HAZE_RSX_TEXT}")
+    if(NOT HAZE_RSX_HASH STREQUAL "eb6cdf19002fb94ef8d99a593202604d8c3fb3cdbc1084bd195983bb0ab1b5df")
+        message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
+    endif()
+    get_target_property(HAZE_SDK_SOURCES ps3recomp_runtime SOURCES)
+    list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_RSX_SOURCE}")
+    list(APPEND HAZE_SDK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c")
+    set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${HAZE_SDK_SOURCES}")
+    if(HAZE_RSX_PROFILE)
+        set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c"
+            TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY COMPILE_DEFINITIONS YZ_PERF_PROFILE)
+    endif()
+endif()
+
 # Maps each firmware import NID onto the handler in the runtime that answers
 # it. A port may keep a hand-curated one beside its lift; otherwise generate
 # the canonical every-module table, which is what the toolkit's own boot
@@ -230,6 +250,7 @@ add_executable(${PROJECT_NAME}
     haze_guest_pacer.cpp
     haze_spu_triplet_copy.cpp
     haze_graphics.cpp
+    haze_graphics_live.cpp
     haze_display.cpp
     haze_spu_idle.c
     ${PS3RECOMP_SCAFFOLD}

@@ -1,4 +1,5 @@
 #include "haze_input.h"
+#include "haze_graphics_reload.h"
 #include "haze_mouse.h"
 #ifdef _WIN32
 #include "haze_prompts.h"
@@ -127,14 +128,16 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SETTEXT:
         if (lp && std::strstr((const char*)lp," | FPS:")) {
             char caption[512];
-            snprintf(caption,sizeof(caption),"%s | %s",(const char*)lp,
+            snprintf(caption,sizeof(caption),"%s | %s | F6: Reload video | %s",(const char*)lp,
                 captured ? "Esc: Pause | F1: Release mouse"
-                         : enabled ? "Click/F1: Capture mouse | Esc: Pause" : "Controller");
+                         : enabled ? "Click/F1: Capture mouse | Esc: Pause" : "Controller",
+                haze_graphics_notice().c_str());
             return CallWindowProc(original_proc,hwnd,msg,wp,(LPARAM)caption);
         }
         break;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
+        if (wp == VK_F6) { if (!(lp & (1ll<<30))) haze_graphics_request_reload(); return 0; }
         record_key((int)wp,true,GetTickCount64());
         if (!enabled) break;
         if (wp == VK_F1) { if (!(lp & (1ll<<30))) capture(!captured); return 0; }

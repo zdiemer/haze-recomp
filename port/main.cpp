@@ -381,6 +381,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                 exit(0);
             }
             haze_input_update();
+            haze_graphics_update();
             /* Present on a guest flip. A present on a fixed clock can catch the
              * drain mid-frame and flash a partial one. Before the first flip
              * present freely, so the window is not blank during boot. */

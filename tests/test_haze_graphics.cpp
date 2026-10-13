@@ -5,6 +5,17 @@
 #include "../port/haze_frame_pacer_settings.h"
 #include "../port/haze_display.cpp"
 #include "../port/haze_graphics.cpp"
+#include "../port/haze_graphics_live.cpp"
+static bool backend_fail;
+static unsigned commits,cancels;
+static haze_video_live active_video,pending_video;
+extern "C" int haze_video_prepare(const haze_video_live* s,char* error,unsigned size) {
+    if (backend_fail) { snprintf(error,size,"Injected allocation failure"); return 0; }
+    pending_video=*s; return 1;
+}
+extern "C" void haze_video_finish(int commit) {
+    if (commit) { active_video=pending_video; ++commits; } else ++cancels;
+}
 static void clear_options() {
     for (const auto& o:rsx_graphics_options) _putenv_s(o.environment,"");
 }
@@ -79,6 +90,55 @@ int main() {
     assert(SetCurrentDirectoryA(cwd));
     clear_options(); _putenv_s("HAZE_GRAPHICS_CONFIG","local/nonexistent-graphics.ini");
     assert(!haze_graphics_initialize());
+    clear_options(); _putenv_s("HAZE_GRAPHICS_CONFIG","local/test-graphics.ini");
+    config("[graphics]\nframe_limit=30\n");
+    _putenv_s("RSX_EXPOSURE","0.25"); assert(haze_graphics_initialize());
+    auto before=haze_graphics_state();
+    assert(before.overrides.size()==1 && before.overrides.at("exposure")=="0.25");
+    std::string error;
+    for (int iteration=0;iteration<3;++iteration) for (const auto* quality:{"Low","Medium","High"}) {
+        auto requested=before.configured; assert(haze_video::preset(requested,quality));
+        requested["frame_limit"]="60"; requested["exposure"]="1";
+        assert(haze_graphics_apply(requested,true,error));
+        auto current=haze_graphics_state();
+        assert(current.configured==requested && current.effective.at("exposure")=="0.25");
+        assert(current.effective.at("frame_limit")=="60" && haze_live_frame_limit==60);
+        assert(active_video.exposure==.25f && active_video.frame_limit==60);
+        assert(haze_video::preset_name(current.configured)==quality);
+        std::ifstream saved("local/test-graphics.ini"); haze_video::Values loaded;
+        assert(haze_video::parse(saved,loaded,error) && loaded==requested);
+        saved.close();
+        assert(haze_video::preset_name(loaded)==quality);
+        assert(haze_graphics_apply(before.configured,true,error));
+        assert(haze_graphics_state().restart.empty()); // Restore auto/native startup values.
+    }
+    auto unchanged=haze_graphics_state(); unsigned count=commits;
+    std::string old_file; assert(read_text(unchanged.path,old_file));
+    auto rejected=unchanged.configured; rejected["exposure"]="nan";
+    assert(!haze_graphics_apply(rejected,true,error) && commits==count);
+    rejected=unchanged.configured; rejected.erase("vsync");
+    assert(!haze_graphics_apply(rejected,true,error) && commits==count);
+    backend_fail=true; rejected=unchanged.configured; haze_video::preset(rejected,"High");
+    assert(!haze_graphics_apply(rejected,true,error) && commits==count);
+    std::string after_file; assert(read_text(unchanged.path,after_file) && after_file==old_file);
+    backend_fail=false;
+    // An external editor's later change must survive a stale menu's Apply.
+    config("[graphics]\nframe_limit=24\n");
+    assert(!haze_graphics_apply(rejected,true,error) && commits==count && cancels==1);
+    assert(haze_graphics_state().configured==unchanged.configured);
+    haze_graphics_request_reload(); haze_graphics_update();
+    assert(haze_graphics_state().effective.at("frame_limit")=="24");
+    assert(haze_graphics_state().overrides.size()==1); // Own startup env writes are not overrides.
+    const auto now=haze_graphics_state();
+    // A locked destination exercises failure after renderer preparation.
+    HANDLE locked=CreateFileA(now.path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    assert(locked!=INVALID_HANDLE_VALUE);
+    assert(!haze_graphics_apply(rejected,true,error) && cancels==2);
+    CloseHandle(locked);
+    assert(haze_graphics_state().configured==now.configured);
+    auto custom=now.configured; haze_video::preset(custom,"High"); custom["sharpening"]="0.150";
+    assert(haze_video::preset_name(custom)=="High"); custom["sharpening"]="0.2";
+    assert(haze_video::preset_name(custom)=="Custom");
     std::remove("local/test-graphics.ini");
     std::puts("Graphics configuration: INI, automatic monitor defaults, missing optional file, overrides, BOM/CRLF and atomic rejection passed.");
 }

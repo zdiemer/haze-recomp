@@ -44,7 +44,9 @@ A quality-oriented starting point is 1920x1080, FXAA, 16x filtering, native or
 brightness adjustment. GPU memory limits still apply; the largest allowed
 sizes are not a performance recommendation.
 
-All options are read at startup. Unknown sections/keys, duplicates, invalid
+All options are read at startup. F6 explicitly reloads live-capable settings;
+see [live application, presets and restart requirements](video-live-settings.md).
+Unknown sections/keys, duplicates, invalid
 values, nonfinite floats, and invalid environment overrides fail startup with
 a file/line or variable diagnostic. The complete file is validated before
 settings are applied. Environment overrides take precedence over the file;
@@ -116,7 +118,8 @@ viewports, scissor clears and fragment window coordinates follow the same
 mapping. Guest addresses, pitches, texture descriptors and game memory are not
 enlarged. Other titles must opt in with their own atlas reference.
 
-Sampler quality settings are immutable for a renderer session; cached sampler
+Sampler quality changes wait for the GPU and invalidate cached samplers and
+descriptor tables before subsequent draws. Cached sampler
 identities include whether the texture receives an override, preventing color
 settings from leaking into excluded depth/UI textures. Their API meanings follow Microsoft's
 [D3D12 sampler descriptor](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_sampler_desc).

@@ -22,6 +22,10 @@ int haze_guest_pacer_bypass()
     }();
     static ULONGLONG next_check=0;
     static int reported=-1;
+    static const char* explicit_mode=std::getenv("HAZE_NATIVE_FRAME_PACER");
+    const int live_limit=haze_live_frame_limit.load();
+    if (!control && live_limit>=0 && (!explicit_mode || !*explicit_mode))
+        enabled=live_limit==0 || live_limit>30;
     if (control && GetTickCount64()>=next_check) {
         next_check=GetTickCount64()+100;
         FILE* file=std::fopen(control,"r"); unsigned value;

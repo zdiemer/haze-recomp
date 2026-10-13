@@ -1,5 +1,8 @@
 #pragma once
 #include <cstring>
+#include <atomic>
+// -1 retains the startup selection before graphics configuration is loaded.
+inline std::atomic<int> haze_live_frame_limit{-1};
 
 // An explicit PC cap above 30 (or unlimited) must also remove the guest wait.
 // Keep the established <=30 path and permit a diagnostic override either way.

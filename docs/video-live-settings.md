@@ -1,0 +1,88 @@
+# Live video settings
+
+Press **F6** to explicitly reload the current `graphics.ini`. The window title
+shows the result; the log lists every effective value and any launch overrides.
+Editing the file alone does not apply it. Reload never writes the file.
+
+This backend is intended for the Video page in #58. That page will submit a
+staged configuration through the same transaction, with `persist=true` for its
+Apply action. Menu navigation and display keep/revert UI are still separate work;
+F6 is the current explicit reload mechanism.
+
+| Settings | Application |
+| --- | --- |
+| VSync, frame limit | Next presentation; the guest pacing selection follows the cap |
+| Anisotropic filtering, mip bias | GPU fence, then invalidate the sampler cache and descriptor tables |
+| FXAA, sharpening, exposure | Allocate a private presentation pass if needed, then commit after a GPU fence |
+| Display mode, monitor, window size, render resolution, shadow resolution | Saved/requested value reported separately; restart required |
+
+Display and render-target dimensions stay fixed during live application. There
+is no live display transition to confirm in this backend. Unknown keys, invalid
+values, unavailable monitors, allocation failures and failed writes reject the
+transaction. Original launch overrides remain in effect; values the program
+wrote to its environment during startup do not become new overrides.
+
+## Presets and defaults
+
+The shared model supplies Low, Medium, High, and detected Custom states to the
+Video page. Presets change only these five quality settings, preserving display,
+frame cap, VSync, and brightness preferences. Shadow changes require restart.
+
+| Setting | Low | Medium | High |
+| --- | --- | --- | --- |
+| Anti-aliasing | off | FXAA | FXAA |
+| Anisotropic filtering | 1 | 4 | 16 |
+| Shadow resolution | 1024 | native (2048) | 4096 |
+| Mip bias | 0 | 0 | 0 |
+| Sharpening | 0 | 0 | 0.15 |
+
+Custom is derived from actual quality values, including manual INI edits; no
+potentially stale preset label is saved. Numerically equivalent float spellings
+remain in the same preset. Reset uses the shipped defaults: automatic desktop
+resolution, borderless primary display, native shadows, effects off, filtering
+1, bias/exposure 0, automatic VSync and a 30 FPS cap.
+
+## Transaction and integration
+
+`haze_graphics_state()` returns configured/effective/overridden values and keys
+that still require restart. Build a staged copy of `configured`; use
+`haze_video::preset` or `haze_video::defaults` for preset/reset actions. Cancel
+discards that copy. Call `haze_graphics_apply` on the window/render thread,
+outside renderer calls. Error text is suitable for the settings page.
+
+Preparation allocates into a temporary resource and finishes outstanding GPU
+commands before changing descriptor identities. Effective state is untouched
+until commit. If saving is requested, a same-directory temporary file is fully
+written and flushed, checked against the loaded source for intervening edits,
+then atomically replaces the destination. Failure cancels preparation and frees
+only temporary resources. The old file and effective settings survive. Explicit
+saves serialize the graphics section canonically; comments are not preserved.
+The external-edit check detects changes before replacement; it cannot lock an
+uncooperative editor out of the final check/replace interval.
+
+The title compiles the pinned SDK renderer once through a small owning-translation-
+unit extension. CMake checks its normalized source hash so changed internals
+require an audit. The SDK checkout is not modified. Renderer-specific calls run
+on its owning thread; the menu never owns descriptors or GPU resources. Frame-cap
+changes reach guest pacing through an atomic value; diagnostic pacing overrides
+retain precedence.
+
+## Validation and remaining checks
+
+`scripts/test-input.ps1` includes startup parsing and transactional graphics
+tests. It exercises repeated preset/reset/save/read cycles, Custom detection,
+partial-file defaults, invalid requests, launch overrides, external edits,
+locked files, simulated resource-allocation/fence/device failures, cancellation,
+sampler invalidation, resource lifetime, and F6 repeat/input isolation.
+
+Native validation uses the full pinned-SDK build and a 1440p title session with
+D3D diagnostics: enable FXAA/16x filtering/sharpening/exposure and a 60 FPS cap,
+reject an invalid sharpening value, then restore effects off and 30 FPS.
+Observed presentation changed from about 29 to 56 FPS and back. No D3D error or
+corruption messages occurred. The session also emitted clear-value and unused
+render-target warnings already present before application.
+
+Gameplay sampling/shadow behavior, sustained repeated real-GPU applications,
+and the #58 menu/controller/persistence acceptance pass remain outstanding.
+Failure injection proves the transaction's resource/state ordering; it is not
+a real GPU out-of-memory test. Browser rendering is not covered by this backend.

@@ -16,7 +16,7 @@ def check(build, enabled):
         'ppu_hle.cpp': 'HazeRecomp',
         'spu_workload.c': 'ps3recomp_runtime',
         'cellSpursQueue.c': 'ps3recomp_runtime',
-        'rsx_live_draw.c': 'ps3recomp_runtime',
+        ('haze_video_backend.c' if 'haze_video_backend.c.obj:' in ninja else 'rsx_live_draw.c'): 'ps3recomp_runtime',
         'cellGcmSys.c': 'ps3recomp_runtime',
     }
     for source, target in sources.items():
