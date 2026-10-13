@@ -13,6 +13,13 @@ struct HazeMenuRow {
     bool slider=false;
     double minimum=0,maximum=1,step=.05;
 };
+struct HazeMenuModal {
+    unsigned revision=0;
+    std::string title,message;
+    std::vector<std::string> choices;
+    bool capturing=false;
+    int cancel_choice=-1;
+};
 struct HazeMenuProvider {
     std::string title;
     std::function<void()> begin,defaults;
@@ -22,6 +29,9 @@ struct HazeMenuProvider {
     // Called on the window thread while Apply is pending. Providers publish
     // completion from their owning thread; polling must never block rendering.
     std::function<HazeMenuApply(std::string&)> poll;
+    std::function<void(bool)> update;
+    std::function<HazeMenuModal()> modal;
+    std::function<void(int)> modal_key,modal_choose;
 };
 // Register on the window thread before dispatching guest menu events.
 void haze_menu_register(HazeMenuPage page,HazeMenuProvider provider);
@@ -29,6 +39,7 @@ void haze_menu_register(HazeMenuPage page,HazeMenuProvider provider);
 bool haze_menu_request(HazeMenuPage page);
 bool haze_menu_active();
 bool haze_menu_has_focus();
+void* haze_menu_owner();
 void haze_menu_update(void* owner,const HazeGamepadState& pad);
 void haze_menu_shutdown();
 void haze_video_menu_register();

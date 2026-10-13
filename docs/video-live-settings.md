@@ -93,9 +93,10 @@ remaining seconds and restoration failure. Graphics status reads remain safe
 from synchronous window-message callbacks; an operation guard rejects reentrant
 writes without holding the status mutex through Win32 or DXGI calls.
 
-The Keep/Revert menu still needs integration in #58. Existing Apply and F6 use
-the original API and retain restart indicators until that integration lands.
-F6 is refused during a pending preview and never writes the file.
+The Video page in this settings branch calls the preview API and supplies a
+Revert-first Keep/Revert dialog. F6 continues to use the original reload API,
+with display changes reported as requiring restart. F6 is refused during a
+pending preview and never writes the file.
 
 The title compiles the pinned SDK renderer once through a small owning-translation-
 unit extension. CMake checks its normalized source hash so changed internals
