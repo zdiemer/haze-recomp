@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" HAZE_RELEASE_VERSION LIMIT_COUNT 1)
 project(HazeRecomp
-    VERSION 0.1.0
+    VERSION ${HAZE_RELEASE_VERSION}
     LANGUAGES C CXX
     DESCRIPTION "Experimental native Haze port (ps3recomp)"
 )

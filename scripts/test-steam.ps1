@@ -10,6 +10,7 @@ foreach ($line in $environment) {
     if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1],$matches[2],'Process') }
 }
 $clang=Join-Path $vs 'VC/Tools/Llvm/x64/bin/clang-cl.exe'
+if ($env:HAZE_LLVM_ROOT) { $clang = Join-Path $env:HAZE_LLVM_ROOT 'bin/clang-cl.exe' }
 New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
 $ErrorActionPreference='Continue'
 Push-Location $root

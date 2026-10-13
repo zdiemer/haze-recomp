@@ -4,6 +4,12 @@ Experimental Windows port of **Haze** for PS3, built with
 [ps3recomp](https://github.com/sp00nznet/ps3recomp). Targets the USA disc
 **BLUS30094**, disc version **01.02**, application version **01.00**.
 
+Release tooling supports a per-user Windows MSI and portable ZIP, first-run ISO
+preparation, and a verified firmware download from Sony. See
+[installation and upgrades](docs/installing.md) and the
+[release process and gates](docs/releasing.md). Public release approval and
+clean-Windows acceptance remain separate from building these packages.
+
 Menus, opening-scene gameplay, audio output, and checkpoint saves have been
 tested. Keyboard/mouse and SDL controller support are implemented. Performance,
 rendering, and campaign compatibility are still in development. Full campaign

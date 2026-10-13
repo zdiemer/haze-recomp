@@ -1,0 +1,12 @@
+{
+  "rpcs3": {
+    "url": "https://github.com/RPCS3/rpcs3-binaries-win/releases/download/build-d7f4c3507be3aaef631067aca9f0d0c8c89e9eea/rpcs3-v0.0.43-20289-d7f4c350_win64_msvc.7z",
+    "sha256": "cffcd62570e8658391c895ccb1fa4cf145eec0797a507c0faaf10949be1b1738",
+    "source": "https://github.com/RPCS3/rpcs3/tree/d7f4c3507be3aaef631067aca9f0d0c8c89e9eea"
+  },
+  "7zip": {
+    "url": "https://github.com/ip7z/7zip/releases/download/26.04/7z2604-x64.exe",
+    "sha256": "d54bf805f9f3704d1e8db2fa3498ae7ef2df0312b40b558e7c71c734430a665d",
+    "source": "https://github.com/ip7z/7zip/tree/26.04"
+  }
+}

@@ -78,9 +78,13 @@ static fake_swap swap_chain={&swap_vtable};
 enum { LD_SWAP_BUFFERS=2,DXGI_FORMAT_R8G8B8A8_UNORM=28 };
 static const unsigned IID_ID3D12Resource=1;
 static unsigned rtv_handle(unsigned index) { return index; }
+struct fake_list;
+static void fake_barrier(fake_list*,unsigned,const void*) {}
+struct fake_list_methods { void (*ResourceBarrier)(fake_list*,unsigned,const void*); };
+struct fake_list { fake_list_methods* lpVtbl; };
 static struct { int ready; fake_device* dev; unsigned n_samplers,smp_ring_used;
     unsigned long long smp_keys[4]; unsigned smp_ring_slots[4][4];
-    fake_queue* queue; fake_fence* fence; fake_swap* swap; u64 fence_value; HANDLE fence_event; fake_resource* backbuf[2]; } g;
+    fake_queue* queue; fake_fence* fence; fake_swap* swap; u64 fence_value; HANDLE fence_event; fake_resource* backbuf[2]; fake_list* list; } g;
 static HWND g_ld_display_hwnd;
 static int g_ld_fullscreen_requested,g_ld_fullscreen_state,g_ld_display_focused;
 static unsigned g_ld_aa,g_ld_anisotropy;

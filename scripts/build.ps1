@@ -3,6 +3,7 @@ param(
     [string]$SdkRoot,
     [string]$SDL3Root,
     [string]$FFmpegRoot,
+    [string]$Python,
     [switch]$RuntimeOnly,
     [switch]$Test,
     [switch]$ProfileRenderer,
@@ -35,7 +36,8 @@ foreach ($line in $environment) {
 $cmake = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
 $ninja = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe'
 $clang = Join-Path $vs 'VC\Tools\Llvm\x64\bin\clang-cl.exe'
-$python = Join-Path $assets '.venv\Scripts\python.exe'
+if ($env:HAZE_LLVM_ROOT) { $clang = Join-Path $env:HAZE_LLVM_ROOT 'bin/clang-cl.exe' }
+if (-not $Python) { $Python = Join-Path $assets '.venv\Scripts\python.exe' }
 $sdk = if ($SdkRoot) { (Resolve-Path -LiteralPath $SdkRoot).Path } elseif (Test-Path -LiteralPath "$root/external/ps3recomp/CMakeLists.txt") { Join-Path $root 'external\ps3recomp' } else { Join-Path $assets 'external\ps3recomp' }
 if ($RuntimeOnly) {
     $source = $sdk
@@ -198,8 +200,10 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Firmware ELF relocation tests failed.' }
     & $python "$root/tests/test_present_modes.py"
     if ($LASTEXITCODE -ne 0) { throw 'Present-window benchmark validation failed.' }
-    & $python "$root/tests/test_guest_pacer_patch.py"
-    if ($LASTEXITCODE -ne 0) { throw 'Guest pacing patch guard validation failed.' }
+    if (-not $RuntimeOnly) {
+        & $python "$root/tests/test_guest_pacer_patch.py"
+        if ($LASTEXITCODE -ne 0) { throw 'Guest pacing patch guard validation failed.' }
+    }
     $audioOutTest = Join-Path $root 'local/test_audio_out_abi.exe'
     & $clang /nologo /W0 /O1 "/I$sdk/include" "/Fe$audioOutTest" "/Fo$root/local/test_audio_out_abi.obj" "$sdk/libs/misc/tests/test_audio_out_abi.c"
     if ($LASTEXITCODE -ne 0) { throw 'Audio-output ABI test compilation failed.' }
@@ -233,7 +237,11 @@ if ($Test) {
         }
     } finally { $env:CC = $oldCC }
     $condTest = Join-Path $root 'local/test_sysprx_lwcond.exe'
-    & $clang /nologo /W0 /O1 /Gy /Gw "/I$assets/generated/ppu" "/I$sdk/include" "/Fe$condTest" "/Fo$root/local/test_sysprx_lwcond.obj" "$sdk/runtime/ppu/tests/test_sysprx_lwcond.cpp" /link /OPT:REF
+    # Generate only the SDK ABI declarations, without reading a game binary.
+    $abi = Join-Path $root 'build/test-abi'
+    & $python "$root/scripts/test-abi.py" $sdk $abi
+    if ($LASTEXITCODE -ne 0) { throw 'Test ABI header generation failed.' }
+    & $clang /nologo /W0 /O1 /Gy /Gw "/I$abi" "/I$sdk/include" "/Fe$condTest" "/Fo$root/local/test_sysprx_lwcond.obj" "$sdk/runtime/ppu/tests/test_sysprx_lwcond.cpp" /link /OPT:REF
     if ($LASTEXITCODE -ne 0) { throw 'Lightweight condition-variable test compilation failed.' }
     & $condTest
     if ($LASTEXITCODE -ne 0) { throw 'Lightweight condition-variable boundary and wait test failed.' }
@@ -368,6 +376,16 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'SAIL lifecycle test compilation failed.' }
     & $sailTest
     if ($LASTEXITCODE -ne 0) { throw 'SAIL lifecycle ABI test failed.' }
+    $movieSailTest = Join-Path $root 'local/test_movie_sail.exe'
+    & $clang /nologo /W0 /O1 "/I$sdk/include" "/I$sdk/libs/codec" "/Fe$movieSailTest" "/Fo$root/local/test_movie_sail.obj" "$root/tests/test_movie_sail.c"
+    if ($LASTEXITCODE -ne 0) { throw 'Haze movie lifecycle test compilation failed.' }
+    & $movieSailTest
+    if ($LASTEXITCODE -ne 0) { throw 'Haze movie lifecycle regression failed.' }
+    $moviePamfTest = Join-Path $root 'local/test_movie_pamf.exe'
+    & $clang /nologo /W0 /O1 /std:c++20 "/I$root/port" "/Fe$moviePamfTest" "/Fo$root/local/test_movie_pamf.obj" "$root/tests/test_movie_pamf.cpp"
+    if ($LASTEXITCODE -ne 0) { throw 'PAMF parser test compilation failed.' }
+    & $moviePamfTest
+    if ($LASTEXITCODE -ne 0) { throw 'PAMF parser regression failed.' }
     $dialogTest = Join-Path $root 'local/test_dialog_callbacks.exe'
     & $clang /nologo /W0 /O1 "/I$sdk/include" "/Fe$dialogTest" "/Fo$root/local/test_dialog_callbacks.obj" "$sdk/libs/system/tests/test_dialog_callbacks.c"
     if ($LASTEXITCODE -ne 0) { throw 'Dialog callback test compilation failed.' }

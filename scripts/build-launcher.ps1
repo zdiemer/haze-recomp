@@ -1,4 +1,4 @@
-param([string]$SharedRoot,[switch]$Test)
+param([string]$SharedRoot,[switch]$Test,[ValidateSet('Debug','Release','RelWithDebInfo')][string]$Configuration='Debug')
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $assets=if ($SharedRoot) { (Resolve-Path -LiteralPath $SharedRoot).Path } else { $root }
@@ -13,7 +13,8 @@ foreach ($line in $environment) {
 $cmake=Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 $ninja=Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe'
 $clang=Join-Path $vs 'VC/Tools/Llvm/x64/bin/clang-cl.exe'
-& $cmake -S "$root/port/launcher" -B "$root/build/launcher" -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_CXX_COMPILER=$clang" '-DCMAKE_BUILD_TYPE=Debug' "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$root/build/launcher/bin" "-DHAZE_SHARED_ROOT=$assets" "-DHAZE_LAUNCHER_TESTS=$([int][bool]$Test)"
+if ($env:HAZE_LLVM_ROOT) { $clang = Join-Path $env:HAZE_LLVM_ROOT 'bin/clang-cl.exe' }
+& $cmake -S "$root/port/launcher" -B "$root/build/launcher" -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_CXX_COMPILER=$clang" "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$root/build/launcher/bin" "-DHAZE_SHARED_ROOT=$assets" "-DHAZE_LAUNCHER_TESTS=$([int][bool]$Test)"
 if ($LASTEXITCODE -ne 0) { throw 'Launcher configuration failed.' }
 & $cmake --build "$root/build/launcher" --parallel 4
 if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed.' }
