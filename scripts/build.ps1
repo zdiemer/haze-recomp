@@ -382,7 +382,7 @@ if ($Test) {
     & $movieSailTest
     if ($LASTEXITCODE -ne 0) { throw 'Haze movie lifecycle regression failed.' }
     $moviePamfTest = Join-Path $root 'local/test_movie_pamf.exe'
-    & $clang /nologo /W0 /O1 /std:c++20 "/I$root/port" "/Fe$moviePamfTest" "/Fo$root/local/test_movie_pamf.obj" "$root/tests/test_movie_pamf.cpp"
+    & $clang /nologo /W0 /O1 /EHsc /std:c++20 "/I$root/port" "/Fe$moviePamfTest" "/Fo$root/local/test_movie_pamf.obj" "$root/tests/test_movie_pamf.cpp"
     if ($LASTEXITCODE -ne 0) { throw 'PAMF parser test compilation failed.' }
     & $moviePamfTest
     if ($LASTEXITCODE -ne 0) { throw 'PAMF parser regression failed.' }
