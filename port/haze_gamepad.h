@@ -22,6 +22,10 @@ void haze_gamepad_shutdown();
 
 struct HazeControllerInfo { std::string name; bool connected=false,mapped=false; HazeInputFamily family=HazeInputFamily::Xbox; };
 HazeControllerInfo haze_gamepad_info();
+// Window thread. Compare physical inputs using the active controller's SDL
+// mapping. Full movement/camera axes overlap either direction of that axis.
+bool haze_gamepad_bindings_overlap(const std::string& first,bool first_axis,
+    const std::string& second,bool second_axis);
 enum class HazeBindingCapturePhase { Idle, Release, Listening, Captured, Cancelled };
 struct HazeBindingCapture {
     HazeBindingCapturePhase phase=HazeBindingCapturePhase::Idle;

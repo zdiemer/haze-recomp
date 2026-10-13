@@ -1,6 +1,7 @@
 #include "haze_controls_settings.h"
 #include "haze_input_key.h"
 #include "haze_input_source.h"
+#include "haze_gamepad.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -173,6 +174,7 @@ bool haze_control_save(HazeControlDocument& document,const HazeControlValues& va
 std::vector<std::string> haze_control_conflicts(const HazeControlValues& values,const std::string& id,const std::string& binding) {
     std::vector<std::string> result; if (lower(binding)=="none") return result;
     const bool keyboard=id.starts_with("Bindings.");
+    const bool full_axis=id.starts_with("Controller.");
     auto identity=[&](std::string text) {
         text=lower(text);
         if (!keyboard) {
@@ -187,7 +189,9 @@ std::vector<std::string> haze_control_conflicts(const HazeControlValues& values,
         if (spec.id()==id || (spec.kind!=HazeControlKind::Key && spec.kind!=HazeControlKind::Button && spec.kind!=HazeControlKind::Axis)) continue;
         if ((spec.kind==HazeControlKind::Key)!=keyboard) continue;
         const auto found=values.find(spec.id());
-        if (found!=values.end() && identity(found->second)==identity(binding)) result.push_back(spec.id());
+        if (found!=values.end() && (identity(found->second)==identity(binding) ||
+            (!keyboard && haze_gamepad_bindings_overlap(binding,full_axis,found->second,spec.kind==HazeControlKind::Axis))))
+            result.push_back(spec.id());
     }
     return result;
 }
