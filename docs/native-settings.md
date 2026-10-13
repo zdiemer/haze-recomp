@@ -1,9 +1,9 @@
 # Native settings pages
 
 Work in progress for #58, built on the live graphics backend from #10. This
-branch currently provides native **Video** and **Audio** pages and shared
-page/input infrastructure. Controls still uses the retail page; its provider
-and rebinding belong to the separate #23 PR.
+branch provides native **Video**, **Audio** and **Controls** pages and shared
+page/input infrastructure. The Controls provider is added by the separate #23
+PR stacked on the #58 branch; see [Controls settings](control-settings.md).
 
 ## Navigation and persistence
 
@@ -172,7 +172,8 @@ persistence remains required before claiming all failed writes preserve saves.
 - Finish Audio gameplay effect checks, preserve saves through mid-write failure,
   and assess headset/voice support. Master/device/focus-mute need new backend
   work; coordinate device recovery with #49.
-- Integrate the separate Controls provider from #23.
+- Validate the separate Controls provider from #23 through its remaining
+  physical-device and gameplay acceptance checks.
 - Implement and verify timed keep/revert for display changes. A restart marker
   alone does not satisfy this requirement.
 - Verify physical keyboard/mouse/controller interaction in both main and pause

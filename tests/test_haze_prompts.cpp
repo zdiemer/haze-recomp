@@ -62,6 +62,20 @@ int main(int argc,char** argv) {
     }
     assert(pad_icon(HazeInputFamily::Switch,"south")=="switch_button_b");
     assert(pad_icon(HazeInputFamily::PlayStation,"start")=="playstation3_button_start");
+    assert(pad_icon(HazeInputFamily::Xbox,"raw:garbage").empty());
+    // Native binding previews use actual PNGs without changing gameplay glyphs.
+    HDC screen=GetDC(nullptr),dc=CreateCompatibleDC(screen);
+    HBITMAP bitmap=CreateCompatibleBitmap(screen,64,64); auto old=SelectObject(dc,bitmap);
+    const auto preview_revision=generation.load();
+    for (const char* key:{"F9","PageDown","Mouse5","K"}) assert(haze_prompts_draw_binding(dc,HazeInputFamily::Keyboard,key,0,0,64));
+    for (auto family:{HazeInputFamily::Xbox,HazeInputFamily::PlayStation,HazeInputFamily::Switch}) {
+        assert(haze_prompts_draw_binding(dc,family,"raw:h0.4",0,0,64));
+        assert(haze_prompts_draw_binding(dc,family,"-leftx",0,0,64));
+        assert(haze_prompts_draw_binding(dc,family,"east",0,0,64));
+    }
+    assert(!haze_prompts_draw_binding(dc,HazeInputFamily::Keyboard,"None",0,0,64));
+    assert(generation.load()==preview_revision);
+    SelectObject(dc,old); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(nullptr,screen);
     write_setting("Bindings","Cross","None"); refresh(HazeInputFamily::Keyboard);
     assert(published && empty_slot(*published,12));
     write_setting("Bindings","Cross","Mouse2"); refresh(HazeInputFamily::Keyboard);

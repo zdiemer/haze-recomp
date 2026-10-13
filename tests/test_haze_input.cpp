@@ -54,6 +54,7 @@ void haze_menu_update(void*,const HazeGamepadState&) {}
 void haze_menu_shutdown() {}
 void haze_video_menu_register() {}
 void haze_audio_menu_register() {}
+void haze_controls_menu_register() {}
 static CellPadHostInput sample() {
     CellPadHostInput input{0,128,128,128,128,0,0};
     assert(poll(0,&input,nullptr)==1);
@@ -78,6 +79,11 @@ int main() {
     assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
     assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
     assert(!sample().buttons && !menu_back_reports);
+    keys[VK_SPACE]=true; haze_input_menu_retail();
+    assert(!sample().buttons && menu_back_reports==3);
+    keys[VK_SPACE]=false;
+    assert(!sample().buttons && !menu_back_reports);
+    assert(!sample().buttons); // Retail handoff never injects Back.
     keys['W']=keys['D']=keys[VK_SPACE]=true;
     auto p=sample(); assert(p.lx==255 && p.ly==1 && (p.buttons&CELL_PAD_CTRL_CROSS));
     keys['S']=keys['A']=true;

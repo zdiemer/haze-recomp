@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cstdio>
 static HWND foreground;
-static unsigned returns,activations;
+static unsigned returns,activations,retail_returns;
 static HWND test_foreground() { return foreground; }
 static BOOL test_activate(HWND hwnd) { ++activations; foreground=hwnd; return TRUE; }
 static HWND test_focus(HWND) { return nullptr; }
@@ -18,10 +18,13 @@ static BOOL test_show(HWND,int) { return TRUE; }
 #include "../port/haze_menu.cpp"
 #include "../port/haze_video_menu.cpp"
 void haze_input_menu_return() { ++returns; }
+void haze_input_menu_retail() { ++retail_returns; }
 unsigned haze_input_menu_button(int vk) {
     return vk=='J' ? CELL_PAD_CTRL_CROSS : vk=='K' ? CELL_PAD_CTRL_CIRCLE : vk=='L' ? CELL_PAD_CTRL_SQUARE : 0;
 }
 bool haze_prompts_draw_icon(void*,int,int,int,int) { return false; }
+bool haze_prompts_draw_binding(void*,HazeInputFamily,const char*,int,int,int) { return false; }
+HazeInputFamily haze_input_family() { return HazeInputFamily::Keyboard; }
 static HazeGraphicsState graphics;
 static unsigned applies;
 static bool fail_apply;
@@ -135,6 +138,37 @@ int main(int argc,char** argv) {
     assert(haze_menu_request(HazeMenuPage::Audio)); haze_menu_update(owner,{});
     action(0); completion=HazeMenuApply::Applied; haze_menu_update(owner,{});
     assert(!applying && !notice_error && notice=="Audio settings saved." && queued==2);
+    key(VK_ESCAPE);
+    HazeMenuModal capture_dialog;
+    unsigned captured_key=0,chosen=0,control_defaults=0;
+    HazeMenuProvider controls;
+    controls.title="CONTROLS"; controls.begin=[] {};
+    controls.rows=[] { return std::vector<HazeMenuRow>{{"binding","Bind key","W","Capture a binding",{},false,0,1,.05,true}}; };
+    controls.defaults=[&] { ++control_defaults; };
+    controls.activate=[&](const std::string&) { capture_dialog={1,"Capture","Press an input",{"Unbind","Cancel"},true}; };
+    controls.modal=[&] { return capture_dialog; };
+    controls.modal_key=[&](int vk) { captured_key=vk; capture_dialog={2,"Preview","Apply this input?",{"Use","Unbind","Cancel"},false}; };
+    controls.modal_choose=[&](int choice) { chosen=choice+1; capture_dialog={}; };
+    controls.update=[&](bool focused) { if (!focused) capture_dialog={}; };
+    haze_menu_register(HazeMenuPage::Controls,std::move(controls));
+    foreground=owner; assert(haze_menu_request(HazeMenuPage::Controls)); haze_menu_update(owner,{});
+    key(VK_RETURN); assert(capture_dialog.capturing);
+    key('L'); assert(captured_key=='L' && !capture_dialog.capturing && control_defaults==0);
+    render(nullptr);
+    key(VK_RIGHT); key(VK_RETURN); assert(chosen==2 && !capture_dialog.revision && haze_menu_active());
+    key(VK_RETURN); returned=returns;
+    pad.input.buttons=CELL_PAD_CTRL_CIRCLE; haze_menu_update(owner,pad);
+    assert(haze_menu_active() && capture_dialog.capturing && returns==returned);
+    capture_dialog={2,"Preview","Controller captured",{"Use","Unbind","Cancel"},false};
+    haze_menu_update(owner,pad); // The captured held Back cannot dismiss preview.
+    assert(capture_dialog.revision && haze_menu_active());
+    pad.input.buttons=0; haze_menu_update(owner,pad);
+    pad.input.buttons=CELL_PAD_CTRL_CIRCLE; haze_menu_update(owner,pad);
+    assert(!capture_dialog.revision && haze_menu_active() && chosen==3 && returns==returned);
+    key(VK_RETURN); foreground=nullptr; haze_menu_update(owner,{});
+    assert(!capture_dialog.revision && haze_menu_active());
+    foreground=owner; key(VK_RETURN); key(VK_ESCAPE);
+    assert(!capture_dialog.revision && haze_menu_active());
     key(VK_ESCAPE);
     haze_menu_shutdown(); DestroyWindow(owner);
     std::puts("Native page navigation, staging, failure recovery, rendering and input tests passed.");

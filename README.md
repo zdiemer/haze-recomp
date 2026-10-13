@@ -318,6 +318,12 @@ the file for that run. See [graphics settings](docs/graphics-settings.md) for
 costs, examples, validation and remaining game-side options.
 
 PC input is configured in `config/input.ini`, which reloads while running.
+**Settings > Control Setup** opens the PC Controls page for keyboard, mouse
+and controller bindings, sensitivity, deadzones and prompt style. Select a
+binding to capture an input, review conflicts, then **Apply** to save and use
+it immediately. **Back** discards staged edits; **Defaults** also requires
+Apply. See [Controls settings](docs/control-settings.md) for supported inputs,
+device mappings and validation status.
 The launcher defaults to automatic keyboard/mouse and SDL gamepad input.
 WASD moves; arrows navigate;
 Space confirms/skips; Enter starts; Escape pauses and releases the mouse.
@@ -376,8 +382,9 @@ page with its Default layout:
 | Melee | F |
 | Menu confirm / back / start or pause | Space / X / Enter or Escape |
 
-Haze defaults to toggle zoom and crouch. Its **Settings > Control Setup** menu
-can change those to held input. Selecting a different controller layout there
+Haze defaults to toggle zoom and crouch. **Game control options** at the bottom
+of the PC Controls page opens the original menu to change those to held input.
+Selecting a different controller layout there
 also changes the actions associated with the PC button bindings.
 
 The Ubisoft, Free Radical and menu attract videos currently have no decoder.
