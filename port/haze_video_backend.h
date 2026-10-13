@@ -12,6 +12,10 @@ typedef struct {
  * or fails. A failed prepare has nothing to finish. */
 int haze_video_prepare(const haze_video_live* settings, char* error, unsigned capacity);
 void haze_video_finish(int commit);
+/* Window/render thread only, outside a quality transaction. Requested tracks
+ * focus-loss retry policy; active is the actual DXGI exclusive state. */
+int haze_video_display_get(int* requested,int* active,char* error,unsigned capacity);
+int haze_video_display_set(int requested,int active,char* error,unsigned capacity);
 #ifdef __cplusplus
 }
 #endif
