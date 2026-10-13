@@ -51,7 +51,8 @@ static bool menu_active;
 bool haze_menu_active() { return menu_active; }
 bool haze_menu_has_focus() { return false; }
 void haze_menu_update(void*,const HazeGamepadState&) {}
-void haze_menu_shutdown() {}
+static bool menu_exiting_process;
+void haze_menu_shutdown(bool exiting_process) { menu_exiting_process=exiting_process; }
 void haze_video_menu_register() {}
 void haze_audio_menu_register() {}
 void haze_controls_menu_register() {}
@@ -332,5 +333,6 @@ int main() {
     assert(!isolated.playback(123,(std::string(prefix)+"story.pam").c_str(),true,1000));
     assert(!isolated.filter(1050,0,true,cross));
     assert(!isolated.filter(1400,0,true,cross));
+    haze_input_shutdown(); assert(menu_exiting_process);
     puts("Haze keyboard taps, focus release, mouse capture gating and movie skip isolation passed.");
 }

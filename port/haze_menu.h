@@ -45,7 +45,9 @@ bool haze_menu_active();
 bool haze_menu_has_focus();
 void* haze_menu_owner();
 void haze_menu_update(void* owner,const HazeGamepadState& pad);
-void haze_menu_shutdown();
+// Final process exit skips provider callbacks: the native shutdown path owns
+// display cleanup and must not start another preview rollback/GPU wait.
+void haze_menu_shutdown(bool exiting_process=false);
 void haze_menu_retail();
 void haze_video_menu_register();
 void haze_controls_menu_register();

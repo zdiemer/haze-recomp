@@ -438,7 +438,7 @@ unsigned haze_input_menu_button(int virtual_key) {
 }
 void haze_input_shutdown() {
     haze_quit_menu_shutdown();
-    haze_menu_shutdown();
+    haze_menu_shutdown(true);
     startup_prompt.close();
     capture(false);
     haze_gamepad_shutdown(); gamepad_initialized=false;

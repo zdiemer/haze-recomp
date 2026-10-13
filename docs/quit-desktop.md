@@ -54,6 +54,15 @@ port state and its mutex also remain intact for outstanding worker calls;
 normal process exit ends those workers. The audio extension compiles the pinned
 SDK source once and is guarded by its hash, as with the renderer extension.
 
+The render loop consumes a committed exit before another input/settings update.
+Final menu teardown skips provider callbacks and retires the active page before
+destroying its window. An unconfirmed Video preview is never saved or rolled
+back through the normal rendering wait during this teardown; renderer shutdown
+relinquishes exclusive mode and process exit removes the windows. Closing only
+the settings menu still reverts its preview. The two-second GPU bound applies
+to the final shutdown wait, not a render operation already in progress before
+the exit is committed.
+
 After the guest frame loop starts, ordinary window-close requests use the same
 save/settings coordination without an extra confirmation. Before that boundary
 is available, the existing early-boot window-close behavior remains. Failed
