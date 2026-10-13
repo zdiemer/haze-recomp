@@ -18,6 +18,24 @@ static ULONGLONG test_time() { ticks+=8; return ticks; }
 static UINT forwarded_message;
 static std::string forwarded_caption;
 static RAWINPUT raw_packet;
+static HWND mouse_capture;
+static int cursor_count=0;
+static unsigned capture_calls=0;
+static POINT cursor_position{640,360};
+static LONG client_width=1280,client_height=720;
+static HWND test_capture(HWND h) { auto old=mouse_capture; mouse_capture=h; ++capture_calls; return old; }
+static HWND test_get_capture() { return mouse_capture; }
+static BOOL test_release_capture() { mouse_capture=nullptr; return TRUE; }
+static int test_show_cursor(BOOL show) { return cursor_count+=show ? 1 : -1; }
+static BOOL test_clip(const RECT*) { return TRUE; }
+static BOOL test_cursor(POINT* point) { *point=cursor_position; return TRUE; }
+static BOOL test_set_cursor(int x,int y) { cursor_position={x,y}; return TRUE; }
+static BOOL test_client(HWND,RECT* r) { *r={0,0,client_width,client_height}; return TRUE; }
+static BOOL test_screen_to_client(HWND,POINT*) { return TRUE; }
+static int test_map(HWND,HWND,POINT*,UINT) { return 0; }
+static BOOL test_title(HWND,LPCSTR) { return TRUE; }
+static BOOL test_register(PCRAWINPUTDEVICE,UINT,UINT) { return TRUE; }
+static LONG_PTR test_subclass(HWND,int,LONG_PTR) { return 1; }
 static UINT test_raw_input(HRAWINPUT,UINT,LPVOID data,PUINT size,UINT) {
     assert(*size==sizeof(raw_packet));
     memcpy(data,&raw_packet,sizeof(raw_packet)); return sizeof(raw_packet);
@@ -35,6 +53,20 @@ static LRESULT test_window_proc(WNDPROC,HWND,UINT msg,WPARAM,LPARAM lp) {
 #undef CallWindowProc
 #define CallWindowProc test_window_proc
 #define GetRawInputData test_raw_input
+#define SetCapture test_capture
+#define GetCapture test_get_capture
+#define ReleaseCapture test_release_capture
+#define ShowCursor test_show_cursor
+#define ClipCursor test_clip
+#define GetCursorPos test_cursor
+#define SetCursorPos test_set_cursor
+#define GetClientRect test_client
+#define ScreenToClient test_screen_to_client
+#define MapWindowPoints test_map
+#define SetWindowTextA test_title
+#define RegisterRawInputDevices test_register
+#undef SetWindowLongPtr
+#define SetWindowLongPtr test_subclass
 #undef DefWindowProc
 #define DefWindowProc test_default_proc
 #include "../port/haze_input.cpp"
@@ -47,8 +79,8 @@ HazeGamepadState haze_gamepad_update() { return fake_pad; }
 void haze_gamepad_shutdown() {}
 void haze_prompts_initialize(const char*) {}
 void haze_prompts_update(HazeInputFamily) {}
-static bool menu_active;
-bool haze_menu_active() { return menu_active; }
+static bool native_menu_active;
+bool haze_menu_active() { return native_menu_active; }
 bool haze_menu_has_focus() { return false; }
 void haze_menu_update(void*,const HazeGamepadState&) {}
 void haze_menu_shutdown() {}
@@ -70,19 +102,31 @@ int main() {
     for (auto& b : bindings) b.vk=key_code(b.fallback);
     assert(key_code("w")=='W'); assert(key_code("Mouse2")==VK_RBUTTON);
     assert(sample().lx==128);
-    menu_active=true; keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=true;
+    native_menu_active=true; keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=true;
     auto blocked=sample(); assert(!blocked.buttons && blocked.lx==128 && blocked.ly==128);
-    menu_active=false; haze_input_menu_return();
-    assert(!sample().buttons && menu_back_reports==3);
+    native_menu_active=false; haze_input_menu_return();
+    assert(!sample().buttons && menu_return_pending);
+    assert(!haze_input_take_pointer().back); // Closing keys must be released.
     keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=false;
-    assert(!sample().buttons && menu_back_reports==2);
-    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
-    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
-    assert(!sample().buttons && !menu_back_reports);
+    for (int i=0;i<100;++i) assert(!sample().buttons);
+    assert(menu_return_pending); // Arbitrary GetInfo/backend polls cannot lose Back.
+    focused=false;
+    assert(!haze_input_take_pointer().back && menu_return_pending);
+    focused=true; gamepad_initialized=true; controller_sample_focused=false;
+    assert(!haze_input_take_pointer().back && menu_return_pending);
+    controller_sample_focused=true;
+    auto back=haze_input_take_pointer();
+    assert(back.active && back.back && !back.pressed && !back.held && !back.released);
+    assert(!menu_return_pending && !haze_input_take_pointer().back);
+    gamepad_initialized=false;
+    haze_input_menu_return(); haze_input_menu_state(false);
+    assert(!menu_return_pending && !haze_input_take_pointer().back);
+    assert(!sample().buttons);
     keys[VK_SPACE]=true; haze_input_menu_retail();
-    assert(!sample().buttons && menu_back_reports==3);
+    assert(!sample().buttons && menu_return_pending);
+    assert(!haze_input_take_pointer().back && menu_return_pending);
     keys[VK_SPACE]=false;
-    assert(!sample().buttons && !menu_back_reports);
+    assert(!haze_input_take_pointer().back && !menu_return_pending);
     assert(!sample().buttons); // Retail handoff never injects Back.
     keys['W']=keys['D']=keys[VK_SPACE]=true;
     auto p=sample(); assert(p.lx==255 && p.ly==1 && (p.buttons&CELL_PAD_CTRL_CROSS));
@@ -162,6 +206,8 @@ int main() {
     assert(forwarded_message==0 && (sample().buttons&CELL_PAD_CTRL_START));
     window_proc(window,WM_KEYUP,VK_ESCAPE,0); ticks+=121;
     assert(!(sample().buttons&CELL_PAD_CTRL_START));
+    haze_input_menu_state(true); haze_input_menu_state(false);
+    sample(); // Guest pause/resume consumes the pending pause and release gate.
     window_proc(window,WM_SETTEXT,0,(LPARAM)"Haze | FPS: 30.00");
     assert(forwarded_caption.find("FPS: 30.00")!=std::string::npos &&
            forwarded_caption.find("F1: Capture mouse")!=std::string::npos);
@@ -175,7 +221,46 @@ int main() {
     assert(sample().ry==128);
     assert(haze_input_take_mouse(dx,dy,speed,inverse));
     assert(dx==double(LONG_MIN)*2 && dy==double(LONG_MAX)*2);
+    // Menus reject both F1 capture and gameplay clicks, even during the delay
+    // before the window thread releases capture. Release activates GUI once.
+    haze_input_menu_state(true);
+    mouse_motion.add(900,600);
+    window_proc(window,WM_KEYDOWN,VK_F1,0);
+    assert(!haze_input_take_mouse(dx,dy,speed,inverse));
+    keys[VK_LBUTTON]=true;
+    window_proc(window,WM_LBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    assert(!(sample().buttons&CELL_PAD_CTRL_R1));
+    auto pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.pressed && pointer_packet.held);
+    window_proc(window,WM_LBUTTONUP,0,MAKELPARAM(cursor_position.x,cursor_position.y)); keys[VK_LBUTTON]=false;
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.released && !pointer_packet.held);
+    assert(!haze_input_take_pointer().released);
+    cursor_position={320,180};
+    window_proc(window,WM_LBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    cursor_position={640,360};
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    window_proc(window,WM_LBUTTONUP,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.pressed && pointer_packet.held && !pointer_packet.released);
+    assert(pointer_packet.x==.25f && pointer_packet.y==.25f);
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.held && !pointer_packet.released && pointer_packet.x==.5f);
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.released && !pointer_packet.held && pointer_packet.x==.5f);
+    assert(!haze_input_take_pointer().released);
+    haze_input_menu_state(false); sample();
+    captured=1; // The window update recaptures when gameplay resumes.
+    assert(haze_input_take_mouse(dx,dy,speed,inverse) && dx==0 && dy==0);
+    // Keyboard navigation cancels pointer ownership without stale activation.
+    haze_input_menu_state(true);
+    window_proc(window,WM_LBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    window_proc(window,WM_KEYDOWN,VK_DOWN,0);
+    assert(!haze_input_take_pointer().active);
+    window_proc(window,WM_KEYUP,VK_DOWN,0);
+    haze_input_menu_state(false); sample();
     // Every button can press and release, including all four face buttons.
+    captured=1;
     clear_keys(); ticks+=121;
     for (const auto& b : bindings) {
         keys[b.vk]=true;
@@ -183,8 +268,8 @@ int main() {
         keys[b.vk]=false;
         assert(!(sample().buttons & b.button));
     }
-    window_proc(window,WM_RBUTTONDOWN,0,0);
-    window_proc(window,WM_RBUTTONUP,0,0);
+    window_proc(window,WM_RBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    window_proc(window,WM_RBUTTONUP,0,MAKELPARAM(cursor_position.x,cursor_position.y));
     assert(sample().buttons&CELL_PAD_CTRL_R3);
     ticks+=121;
     assert(!(sample().buttons&CELL_PAD_CTRL_R3));
@@ -268,11 +353,11 @@ int main() {
     const auto old_cross=bindings[0].vk;
     bindings[0].vk=VK_LBUTTON;
     startup_skip.playback(123,uri,true,ticks); ticks+=300;
-    window_proc(window,WM_LBUTTONDOWN,0,0);
+    window_proc(window,WM_LBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
     assert(!captured && sample().buttons==CELL_PAD_CTRL_CROSS);
     startup_skip.playback(123,uri,false,ticks);
     assert(!sample().buttons);
-    window_proc(window,WM_LBUTTONUP,0,0); assert(!sample().buttons);
+    window_proc(window,WM_LBUTTONUP,0,MAKELPARAM(cursor_position.x,cursor_position.y)); assert(!sample().buttons);
     bindings[0].vk=old_cross;
     DeleteFileA(config_path);
     HazeStartupSkip isolated;
@@ -315,5 +400,39 @@ int main() {
     assert(!isolated.playback(123,(std::string(prefix)+"story.pam").c_str(),true,1000));
     assert(!isolated.filter(1050,0,true,cross));
     assert(!isolated.filter(1400,0,true,cross));
+    // Exercise production attachment/update/capture against a deterministic
+    // window API, without clipping or hiding the user's real desktop cursor.
+    clear_keys(); memset(keys,0,sizeof(keys)); captured=0; menu_active=false;
+    capture_policy={}; fake_pad={}; enabled=true; focused=false; capture_calls=0;
+    haze_input_attach((void*)1); assert(!captured && !capture_calls);
+    focused=true; ticks+=10; haze_input_update();
+    assert(captured && capture_calls==1 && cursor_count<0);
+    window_proc(window,WM_KEYDOWN,VK_F1,0);
+    assert(!captured && cursor_count>=0);
+    for (int i=0;i<10;i++) { ticks+=10; haze_input_update(); }
+    assert(!captured && capture_calls==1); // Startup cannot undo F1.
+    window_proc(window,WM_KEYDOWN,VK_F1,0); assert(captured);
+    haze_input_menu_state(true); ticks+=10; haze_input_update();
+    assert(!captured);
+    window_proc(window,WM_KEYDOWN,VK_F1,0); assert(!captured);
+    cursor_position={320,540}; window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    auto mapped=haze_input_take_pointer();
+    assert(mapped.active && mapped.x==.25f && mapped.y==.75f);
+    client_width=960; client_height=540; cursor_position={480,135};
+    window_proc(window,WM_SIZE,0,0); window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    mapped=haze_input_take_pointer();
+    assert(mapped.x==.5f && mapped.y==.25f); // Recompute after a window/display resize.
+    haze_input_menu_state(false); ticks+=10; haze_input_update(); assert(captured);
+    focused=false; window_proc(window,WM_KILLFOCUS,0,0);
+    ticks+=10; haze_input_update(); assert(!captured && cursor_count>=0);
+    focused=true; ticks+=10; haze_input_update(); assert(captured);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0);
+    ticks+=10; haze_input_update(); assert(!captured);
+    ticks+=1000; haze_input_update(); assert(captured); // Guest ignored pause during loading.
+    haze_input_shutdown(); assert(!captured && !mouse_capture && cursor_count>=0);
+    capture_policy={}; capture_policy.enabled=false; enabled=false;
+    haze_input_attach((void*)1); ticks+=10; haze_input_update(); assert(!captured);
+    haze_input_shutdown();
     puts("Haze keyboard taps, focus release, mouse capture gating and movie skip isolation passed.");
 }

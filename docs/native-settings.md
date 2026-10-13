@@ -1,9 +1,9 @@
 # Native settings pages
 
 Work in progress for #58, built on the live graphics backend from #10. This
-branch provides native **Video**, **Audio** and **Controls** pages and shared
-page/input infrastructure. The Controls provider is added by the separate #23
-PR stacked on the #58 branch; see [Controls settings](control-settings.md).
+branch currently provides native **Video** and **Audio** pages and shared
+page/input infrastructure. Controls still uses the retail page; its provider
+and rebinding belong to the separate #23 PR.
 
 ## Navigation and persistence
 
@@ -236,11 +236,31 @@ power loss. Broader save recovery belongs to #48.
   failed persistence and restart persistence in the full game.
 - Correct and retest Back navigation: in `video-native-1`, Escape closed the
   native Controls panel but left the retail Control Setup page underneath.
-  An explicit guest Circle pulse then returned normally. The current synthetic
-  Back lasts only two backend polls; the SDK polls at 4 ms intervals from both
+  An explicit guest Circle pulse then returned normally. The previous synthetic
+  Back lasted only two backend polls; the SDK polls at 4 ms intervals from both
   data and information calls, so those polls do not prove guest consumption.
 - Verify repeated graphics apply/reset under sustained gameplay and finish the
   GPU acceptance checks in #10. Shared retail page IDs prove the intended pause
   route, but do not replace running that route.
 
 Quit to Desktop (#57) and Add to Steam (#47) remain separate features/PRs.
+
+## Current-main integration and Back delivery (2026-10-13)
+
+The settings branch now includes main efc7db9 and its SDK revision
+3cd8e810caade4907e583bd38febfc684dd472cf. The retail mouse-menu bridge lives in
+`haze_menu_pointer.cpp`; the native settings provider remains in `haze_menu.cpp`.
+Their guarded generated-code patches are chained, and composition is tested.
+
+Back no longer expires after two host pad polls. Pending returns suppress host
+input until the guest GUI consumes its input packet. That consumer waits for
+focus, a current controller sample, and released keys/buttons before delivering
+one Back event through the existing retail pointer bridge. Queued pointer events
+are discarded while the native page owns input. Leaving the guest menu stack
+cancels a pending return.
+
+The complete input/menu/audio regression suite passes against the current SDK,
+including repeated host polls before guest consumption, focus/sample gating,
+single Back delivery, and cancellation after the guest leaves its menus.
+Native Back/reopen verification remains pending; the earlier reproduced failure
+must not be considered resolved by these tests alone.
