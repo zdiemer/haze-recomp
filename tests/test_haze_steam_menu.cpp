@@ -28,6 +28,7 @@ unsigned haze_input_menu_button(int vk) { return vk==VK_TAB ? CELL_PAD_CTRL_SELE
 bool haze_prompts_draw_icon(void*,int,int,int,int) { return true; }
 bool haze_prompts_draw_binding(void*,HazeInputFamily,const char*,int,int,int) { return true; }
 HazeInputFamily haze_input_family() { return HazeInputFamily::Keyboard; }
+const char* haze_input_config_path() { return ""; }
 HazeQuitOffer haze_quit_offer() { return offer; }
 bool haze_quit_guest_ready() { return true; }
 void haze_quit_resume_guest() {}
@@ -65,7 +66,11 @@ int main() {
     SetEnvironmentVariableW(L"HAZE_LAUNCHER_ARGUMENTS",L"--shared-root \"C:/Haze data\" --savedata \"C:/My saves\"");
     auto owner=CreateWindowA("STATIC","Steam menu fixture",WS_POPUP,0,0,1920,1080,nullptr,nullptr,GetModuleHandle(nullptr),nullptr); assert(owner);
     foreground=owner; haze_steam_menu_register(); frame(owner);
-    assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
+    // A real footer click may temporarily activate its own popup window.
+    foreground=quit_ui::button;
+    assert(SendMessage(quit_ui::button,WM_MOUSEACTIVATE,0,0)==MA_NOACTIVATE);
+    click(quit_ui::button,RECT{0,0,10,10}); frame(owner);
+    assert(foreground==panel);
     assert(haze_menu_active() && !haze_quit_menu_active() && current==HazeMenuPage::Desktop);
     assert(steam_menu::selected.empty()); action(0); assert(!installs && notice_error);
     const auto accounts=steam_menu::rows()[1].choices;

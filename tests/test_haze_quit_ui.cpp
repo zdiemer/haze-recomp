@@ -20,6 +20,10 @@ static BOOL test_show(HWND,int) { return TRUE; }
 static HazeQuitOffer current_offer{1,true,false};
 static bool settings=false;
 static unsigned returned;
+static HazeInputFamily family=HazeInputFamily::Keyboard;
+static std::string input_path;
+const char* haze_input_config_path() { return input_path.c_str(); }
+HazeInputFamily haze_input_family() { return family; }
 HazeQuitOffer haze_quit_offer() { return current_offer; }
 bool haze_quit_guest_ready() { return true; }
 void haze_quit_resume_guest() {}
@@ -51,13 +55,30 @@ int main() {
     HWND owner=CreateWindowA("STATIC","Quit test",WS_POPUP,0,0,1920,1080,nullptr,nullptr,GetModuleHandle(nullptr),nullptr); assert(owner);
     foreground=owner; frame(owner);
     assert(quit_ui::button && quit_ui::dialog);
+    assert(SendMessage(quit_ui::button,WM_MOUSEACTIVATE,0,0)==MA_NOACTIVATE);
+    assert(quit_ui::action_binding=="Tab");
+    family=HazeInputFamily::Xbox; frame(owner); assert(quit_ui::action_binding=="View");
+    family=HazeInputFamily::PlayStation; frame(owner); assert(quit_ui::action_binding=="Share");
+    family=HazeInputFamily::Switch; frame(owner); assert(quit_ui::action_binding=="-");
+    family=HazeInputFamily::Keyboard; frame(owner);
+    char path[MAX_PATH]{};
+    const auto relative="local/quit-prompt-"+std::to_string(GetCurrentProcessId())+".ini";
+    assert(GetFullPathNameA(relative.c_str(),MAX_PATH,path,nullptr)); input_path=path;
+    assert(WritePrivateProfileStringA("Bindings","Select","J",path)); quit_ui::next_prompt_check=0;
+    frame(owner); assert(quit_ui::action_binding=="J / Tab");
+    assert(WritePrivateProfileStringA("Bindings","Select","None",path)); quit_ui::next_prompt_check=0;
+    frame(owner); assert(quit_ui::action_binding=="Tab");
+    assert(WritePrivateProfileStringA("ControllerBindings","Select","north",path));
+    family=HazeInputFamily::Xbox; frame(owner); assert(quit_ui::action_binding=="Y");
+    assert(DeleteFileA(path)); input_path.clear(); family=HazeInputFamily::Keyboard; frame(owner);
+    foreground=nullptr; click(quit_ui::button,5,5); assert(!haze_quit_menu_active()); foreground=owner;
     settings=true; assert(!haze_quit_menu_key(VK_TAB,false)); settings=false;
     current_offer.available=false; assert(!haze_quit_menu_key(VK_TAB,false)); current_offer.available=true;
     assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
     assert(haze_quit_state().phase==HazeQuitPhase::Confirm && quit_ui::selected==0);
     screenshot("local/quit-main-confirm.bmp");
     key(VK_RETURN); assert(!haze_quit_menu_active() && returned==1); // Cancel is the default.
-    frame(owner); click(quit_ui::button,5,5); frame(owner);
+    frame(owner); foreground=quit_ui::button; click(quit_ui::button,5,5); frame(owner);
     assert(haze_quit_menu_active()); key(VK_RIGHT); key(VK_SPACE);
     assert(haze_quit_state().phase==HazeQuitPhase::Waiting);
     assert(haze_quit_cancel(haze_quit_state().generation)); foreground=owner; frame(owner);
