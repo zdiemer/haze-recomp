@@ -61,7 +61,44 @@ int main(int argc,char** argv) {
         for (int i=0;i<24;i++) assert(!empty_slot(*published,i));
     }
     assert(pad_icon(HazeInputFamily::Switch,"south")=="switch_button_b");
+    assert(pad_icon(HazeInputFamily::Xbox,"start")=="xbox_button_menu");
+    assert(pad_icon(HazeInputFamily::Xbox,"back")=="xbox_button_view");
     assert(pad_icon(HazeInputFamily::PlayStation,"start")=="playstation3_button_start");
+    assert(pad_icon(HazeInputFamily::Xbox,"raw:garbage").empty());
+    // Native binding previews use actual PNGs without changing gameplay glyphs.
+    HDC screen=GetDC(nullptr),dc=CreateCompatibleDC(screen);
+    HBITMAP bitmap=CreateCompatibleBitmap(screen,64,64); auto old=SelectObject(dc,bitmap);
+    const auto preview_revision=generation.load();
+    for (const char* key:{"F9","PageDown","Mouse5","K"}) assert(haze_prompts_draw_binding(dc,HazeInputFamily::Keyboard,key,0,0,64));
+    for (auto family:{HazeInputFamily::Xbox,HazeInputFamily::PlayStation,HazeInputFamily::Switch}) {
+        assert(haze_prompts_draw_binding(dc,family,"raw:h0.4",0,0,64));
+        assert(haze_prompts_draw_binding(dc,family,"-leftx",0,0,64));
+        assert(haze_prompts_draw_binding(dc,family,"east",0,0,64));
+    }
+    assert(!haze_prompts_draw_binding(dc,HazeInputFamily::Keyboard,"None",0,0,64));
+    assert(generation.load()==preview_revision);
+    SelectObject(dc,old); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(nullptr,screen);
+    // The title's {E} token addresses Start (slot 8), and must refresh while
+    // the title remains open, without changing any other keyboard binding.
+    refresh(HazeInputFamily::Keyboard);
+    const auto enter_start=published;
+    write_setting("Bindings","Start","J"); refresh(HazeInputFamily::Keyboard);
+    assert(published && !empty_slot(*published,8) && *published!=*enter_start);
+    for (int y=0;y<int(height);y++) for (int x=0;x<int(width);x++) {
+        if (x>=128 && x<192 && y>=60 && y<120) continue;
+        for (int c=0;c<4;c++) assert((*published)[(y*width+x)*4+c]==(*enter_start)[(y*width+x)*4+c]);
+    }
+    write_setting("Bindings","Start","None"); refresh(HazeInputFamily::Keyboard);
+    assert(published && empty_slot(*published,8));
+    write_setting("Bindings","Start","Enter"); refresh(HazeInputFamily::Keyboard);
+    assert(published && *published==*enter_start);
+    for (auto family:{HazeInputFamily::Xbox,HazeInputFamily::PlayStation,HazeInputFamily::Switch}) {
+        write_setting("ControllerBindings","Start","start"); refresh(family);
+        const auto original_start=published;
+        write_setting("ControllerBindings","Start","north"); refresh(family);
+        assert(published && !empty_slot(*published,8) && *published!=*original_start);
+    }
+    write_setting("ControllerBindings","Start","start");
     write_setting("Bindings","Cross","None"); refresh(HazeInputFamily::Keyboard);
     assert(published && empty_slot(*published,12));
     write_setting("Bindings","Cross","Mouse2"); refresh(HazeInputFamily::Keyboard);

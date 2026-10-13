@@ -1,4 +1,5 @@
 #include "haze_prompts.h"
+#include "haze_input_source.h"
 #include "rsx_live_draw.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -15,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 
 namespace {
 using Microsoft::WRL::ComPtr;
@@ -84,11 +86,15 @@ const u8* pixels(u32 format,u32 w,u32 h,const u8* source,size_t bytes,void*) {
 std::string key_icon(std::string name) {
     if (name=="none" || name.empty()) return {};
     if (name.size()==1 && std::isalnum((unsigned char)name[0])) return "keyboard_"+name;
+    if (name=="backspace" || name=="delete" || name=="insert" || name=="home" || name=="end" ||
+        name=="f2" || name=="f3" || name=="f4" || name=="f5" || name=="f7" || name=="f8" || name=="f9" ||
+        name=="f10" || name=="f11" || name=="f12") return "keyboard_"+name;
     const std::pair<const char*,const char*> aliases[]={
         {"space","keyboard_space"},{"enter","keyboard_enter"},{"escape","keyboard_escape"},
         {"tab","keyboard_tab"},{"shift","keyboard_shift"},{"ctrl","keyboard_ctrl"},{"alt","keyboard_alt"},
         {"up","keyboard_arrow_up"},{"down","keyboard_arrow_down"},
         {"left","keyboard_arrow_left"},{"right","keyboard_arrow_right"},
+        {"pageup","keyboard_page_up"},{"pagedown","keyboard_page_down"},
         {"mouse1","mouse_left"},{"mouse2","mouse_right"},{"mouse3","mouse_scroll"},
         {"mouse4","mouse_side_back"},{"mouse5","mouse_side_forward"}};
     for (const auto& [from,to]:aliases) if (name==from) return to;
@@ -96,6 +102,8 @@ std::string key_icon(std::string name) {
 }
 std::string pad_icon(HazeInputFamily family,std::string name) {
     if (name=="none" || name.empty()) return {};
+    if (haze_raw_source(name).kind!=HazeRawSource::None) return family==HazeInputFamily::Xbox ? "controller_xboxseries" : family==HazeInputFamily::Switch ? "controller_switch_pro" : "controller_playstation3";
+    if (name[0]=='-' || name[0]=='+') name.erase(0,1);
     if (name=="a") name="south";
     if (name=="b") name="east";
     if (name=="x") name="west";
@@ -103,7 +111,7 @@ std::string pad_icon(HazeInputFamily family,std::string name) {
     const char* positions[]={"south","east","west","north","leftshoulder","rightshoulder",
         "lefttrigger","righttrigger","leftstick","rightstick","start","back","dpup","dpdown","dpleft","dpright"};
     const char* xbox[]={"button_a","button_b","button_x","button_y","lb","rb","lt","rt",
-        "stick_l_press","stick_r_press","button_start","button_back","dpad_up","dpad_down","dpad_left","dpad_right"};
+        "stick_l_press","stick_r_press","button_menu","button_view","dpad_up","dpad_down","dpad_left","dpad_right"};
     const char* ps[]={"button_cross","button_circle","button_square","button_triangle","trigger_l1","trigger_r1","trigger_l2","trigger_r2",
         "stick_l_press","stick_r_press","3_button_start","3_button_select","dpad_up","dpad_down","dpad_left","dpad_right"};
     const char* sw[]={"button_b","button_a","button_y","button_x","button_l","button_r","button_zl","button_zr",
@@ -262,4 +270,50 @@ void haze_prompts_update(HazeInputFamily family) {
         for (const auto& [path,time]:watched) if (!(stamp(path)==time)) { changed=true; break; }
     }
     if (changed) { first=false; current=family; rebuild(family); }
+}
+static bool draw_icon(void* context,const std::shared_ptr<const Atlas>& atlas,int slot,int x,int y,int size) {
+    if (!atlas || slot<0 || slot>=24) return false;
+    std::array<unsigned char,64*60*4> bgra{};
+    for (int py=0;py<60;++py) for (int px=0;px<64;++px) {
+        const size_t source=((slot/6*60+py)*width+slot%6*64+px)*4;
+        const size_t target=(py*64+px)*4;
+        const unsigned alpha=(*atlas)[source+3];
+        for (int channel=0;channel<3;++channel)
+            bgra[target+channel]=static_cast<unsigned char>(((*atlas)[source+2-channel]*alpha+(channel==2 ? 18:20)*(255-alpha))/255);
+    }
+    BITMAPINFO bitmap{}; bitmap.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    bitmap.bmiHeader.biWidth=64; bitmap.bmiHeader.biHeight=-60;
+    bitmap.bmiHeader.biPlanes=1; bitmap.bmiHeader.biBitCount=32;
+    bitmap.bmiHeader.biCompression=BI_RGB;
+    StretchDIBits((HDC)context,x,y,size,size,0,0,64,60,bgra.data(),&bitmap,DIB_RGB_COLORS,SRCCOPY);
+    return true;
+}
+bool haze_prompts_draw_icon(void* context,int slot,int x,int y,int size) {
+    return draw_icon(context,std::atomic_load(&published),slot,x,y,size);
+}
+bool haze_prompts_draw_binding(void* context,HazeInputFamily family,const char* binding,int x,int y,int size) {
+    if (!GetPrivateProfileIntA("Prompts","Enabled",1,config.c_str())) return false;
+    std::string value=binding; for (auto& c:value) c=char(std::tolower((unsigned char)c));
+    const auto icon=family==HazeInputFamily::Keyboard ? key_icon(value) : pad_icon(family,value);
+    if (icon.empty()) return false;
+    char directory[1024]; GetPrivateProfileStringA("Prompts","Directory","../assets/input-prompts",directory,sizeof(directory),config.c_str());
+    const char* folder=family==HazeInputFamily::Keyboard ? "keyboard" : family==HazeInputFamily::Xbox ? "xbox" : family==HazeInputFamily::Switch ? "switch" : "playstation";
+    const auto path=fs::path(config).parent_path()/directory/folder/(icon+".png");
+    struct Glyph { std::shared_ptr<const Atlas> atlas; FileStamp file; ULONGLONG next=0; };
+    static std::map<fs::path,Glyph> cache;
+    if (cache.size()>64) cache.clear();
+    auto& glyph=cache[path]; const auto now=GetTickCount64();
+    if (now>=glyph.next) {
+        glyph.next=now+500; const auto file=stamp(path);
+        if (!glyph.atlas || !(glyph.file==file)) {
+            glyph.file=file; glyph.atlas.reset();
+            const auto initialized=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+            ComPtr<IWICImagingFactory> factory; Image image;
+            if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory))) && decode(factory.Get(),path,image)) {
+                auto atlas=std::make_shared<Atlas>(); atlas->fill(0); place(*atlas,image,0); glyph.atlas=atlas;
+            }
+            factory.Reset(); if (SUCCEEDED(initialized)) CoUninitialize();
+        }
+    }
+    return draw_icon(context,glyph.atlas,0,x,y,size);
 }
