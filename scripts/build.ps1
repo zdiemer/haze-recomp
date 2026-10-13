@@ -60,6 +60,16 @@ if (-not $RuntimeOnly) {
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
 if ($Test) {
     New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
+    $audioRingTest = Join-Path $root 'local/test_audio_ring.exe'
+    & $clang /nologo /W0 /O2 /std:c11 /Gy /Gw "/I$sdk/include" "/Fe$audioRingTest" "/Fo$root/local/test_audio_ring.obj" "$sdk/libs/audio/tests/test_audio_ring.c" /link /OPT:REF ole32.lib
+    if ($LASTEXITCODE -ne 0) { throw 'Audio ring/routing test compilation failed.' }
+    & $audioRingTest
+    if ($LASTEXITCODE -ne 0) { throw 'Audio ring/routing regression failed.' }
+    $nativeFloatTest = Join-Path $root 'local/test_spu_float_native.exe'
+    & $clang /nologo /W0 /O2 /Ob1 /DSPU_FLOAT_NATIVE_RUNTIME=1 /clang:-msse4.1 "/I$sdk/include" "/Fe$nativeFloatTest" "/Fo$root/local/test_spu_float_native.obj" "$sdk/runtime/spu/tests/test_spu_float_native.c"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU native arithmetic test compilation failed.' }
+    & $nativeFloatTest
+    if ($LASTEXITCODE -ne 0) { throw 'SPU native arithmetic/reference regression failed.' }
     & $python "$root/tests/test_wait_timeline.py"
     if ($LASTEXITCODE -ne 0) { throw 'Wait timeline syscall naming and interval-union tests failed.' }
     $graphicsTest = Join-Path $root 'local/test_haze_graphics.exe'
@@ -181,12 +191,12 @@ if ($Test) {
     & $padTest
     if ($LASTEXITCODE -ne 0) { throw 'Host pad input packet test failed.' }
     $hazeInputTest = Join-Path $root 'local/test_haze_input.exe'
-    & $clang /nologo /W0 /O1 /std:c++20 "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/Fe$hazeInputTest" "/Fo$root/local/test_haze_input.obj" "$root/tests/test_haze_input.cpp" /link user32.lib
+    & $clang /nologo /W0 /O1 /std:c++20 "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/Fe$hazeInputTest" "/Fo$root/local/test_haze_input.obj" "$root/tests/test_haze_input.cpp" /link user32.lib gdi32.lib
     if ($LASTEXITCODE -ne 0) { throw 'Haze keyboard/mouse test compilation failed.' }
     & $hazeInputTest
     if ($LASTEXITCODE -ne 0) { throw 'Haze keyboard/mouse mapping test failed.' }
     $hazeCameraTest = Join-Path $root 'local/test_haze_camera.exe'
-    & $clang /nologo /W0 /O1 /std:c++20 "/I$root/tests/fixtures/camera" "/I$sdk/include" "/Fe$hazeCameraTest" "/Fo$root/local/test_haze_camera.obj" "$root/tests/test_haze_camera.cpp"
+    & $clang /nologo /W0 /O1 /std:c++20 "/I$root/tests/fixtures/camera" "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/Fe$hazeCameraTest" "/Fo$root/local/test_haze_camera.obj" "$root/tests/test_haze_camera.cpp" /link user32.lib gdi32.lib
     if ($LASTEXITCODE -ne 0) { throw 'Native camera test compilation failed.' }
     & $hazeCameraTest
     if ($LASTEXITCODE -ne 0) { throw 'Native camera gating/rotation test failed.' }

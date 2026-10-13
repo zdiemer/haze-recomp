@@ -82,6 +82,22 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
 endif()
 
 # ---------------------------------------------------------------------------
+# Native GUI pointer bridge
+# ---------------------------------------------------------------------------
+set(HAZE_MENU_SOURCE "${RECOMP_DIR}/ppu_recomp_001.cpp")
+if(EXISTS "${HAZE_MENU_SOURCE}")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HAZE_MENU_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_menu/ppu_recomp_001.cpp")
+    add_custom_command(OUTPUT "${HAZE_MENU_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_input.py"
+            "${HAZE_MENU_SOURCE}" "${HAZE_MENU_PATCHED}"
+        DEPENDS "${HAZE_MENU_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_input.py"
+        VERBATIM)
+    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_MENU_SOURCE}")
+    list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}")
+    set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+endif()
+# ---------------------------------------------------------------------------
 # ps3recomp runtime library
 # ---------------------------------------------------------------------------
 # Built from source as a subdirectory rather than imported as a prebuilt
@@ -89,6 +105,7 @@ endif()
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
 # Winsock/XInput imports -- the link then fails on every platform for a
 # different reason. add_subdirectory hands all of that over with the target.
+option(PS3RECOMP_NATIVE_FLOAT_RUNTIME "Build accelerated SPU arithmetic" ON)
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 
@@ -247,6 +264,7 @@ add_executable(${PROJECT_NAME}
     stubs.cpp
     haze_input.cpp
     haze_camera.cpp
+    haze_menu.cpp
     haze_guest_pacer.cpp
     haze_spu_triplet_copy.cpp
     haze_graphics.cpp
@@ -277,6 +295,9 @@ if(SPU_SOURCES)
         INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
     set_source_files_properties(${SPU_SOURCES} PROPERTIES
         COMPILE_DEFINITIONS SPU_USE_DISPATCH_MT)
+    if(PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+        set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS SPU_FLOAT_NATIVE_RUNTIME=1)
+    endif()
     if(HAZE_SPU_BYTE_COMPARE)
         # Explicit experiment: these extra branches can change inlining.
         set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS SPU_COMPARE_BYTE_OPS)
