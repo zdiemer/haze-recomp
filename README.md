@@ -25,6 +25,10 @@ in the Start menu. No separate tools or development environment are needed.
 
 ![Haze installer: choose the ISO and installation folder](docs/images/installer.png)
 
+After the installer prepares the game, the launcher is ready to use:
+
+![Haze installer: installation complete with Play Haze](docs/images/installer-complete.png)
+
 The tested disc-decrypted image is `Haze (USA) (En,Fr,Es).iso`
 (8,498,184,192 bytes), BLUS30094, disc version 01.02 / application version 01.00.
 Its **SHA-256** is:

@@ -95,6 +95,10 @@ and verified before execution. The MSI/ZIP contain neither RPCS3 nor Sony firmwa
 Firmware is downloaded from Sony and checksum-verified. No placeholder notices
 or unfulfilled source offers are used by the automated packager.
 
+When RPCS3's required system runtime is missing, installation also downloads
+Microsoft's pinned Visual C++ redistributable, verifies its checksum and signature,
+and requests administrator approval to install that prerequisite.
+
 ## Validation
 
 PR CI covers existing asset-free runtime/launcher/UI tests, private-input filtering,
