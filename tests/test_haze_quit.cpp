@@ -4,8 +4,14 @@
 #include <cstdio>
 #include "../port/haze_save_status.cpp"
 #include "../port/haze_quit.cpp"
+static bool guest_ready=true;
+bool haze_quit_guest_ready() { return guest_ready; }
+void haze_quit_resume_guest() {}
 
 int main() {
+    guest_ready=false; assert(!haze_quit_window_close()); guest_ready=true;
+    assert(haze_quit_window_close()); auto close_generation=haze_quit_state().generation;
+    assert(haze_quit_poll(0,false,false)); assert(haze_quit_cancel(close_generation));
     assert(!haze_quit_request(true,0));
     assert(haze_quit_request(true,1));
     auto generation=haze_quit_state().generation;

@@ -14,6 +14,8 @@ namespace quit_guest {
 std::mutex mutex;
 HazeQuitOffer offer;
 std::atomic<bool> parked=false;
+std::atomic<bool> ready=false;
+std::atomic<void*> resume_event=nullptr;
 #ifdef _WIN32
 uint64_t owner=0;
 uint32_t page_context=0;
@@ -39,6 +41,12 @@ HazeQuitOffer haze_quit_offer() {
     std::lock_guard lock(quit_guest::mutex); return quit_guest::offer;
 }
 bool haze_quit_guest_parked() { return quit_guest::parked.load(); }
+bool haze_quit_guest_ready() { return quit_guest::ready.load(); }
+void haze_quit_resume_guest() {
+#ifdef _WIN32
+    if (auto event=quit_guest::resume_event.load()) SetEvent(event);
+#endif
+}
 void haze_quit_guest_page(ppu_context* ctx) {
 #ifdef _WIN32
     if (!ctx || (quit_guest::owner && ctx->thread_id!=quit_guest::owner)) return;
@@ -59,20 +67,25 @@ void haze_quit_guest_page(ppu_context* ctx) {
 }
 void haze_quit_guest_tick(ppu_context* ctx) {
 #ifdef _WIN32
-    if (!ctx || !quit_guest::owner || ctx->thread_id!=quit_guest::owner) return;
+    if (!ctx) return;
+    if (!quit_guest::owner) quit_guest::owner=ctx->thread_id;
+    if (ctx->thread_id!=quit_guest::owner) return;
+    if (!quit_guest::resume_event) quit_guest::resume_event=CreateEvent(nullptr,TRUE,FALSE,nullptr);
+    if (!quit_guest::resume_event) return;
+    quit_guest::ready=true;
     quit_guest::observe();
     const auto offer=haze_quit_offer();
     const auto audio=haze_audio_state();
+    ResetEvent(quit_guest::resume_event);
     if (!haze_quit_poll(offer.available ? offer.generation : 0,vm_read32(0x137a390)!=0,
         audio.phase==HazeAudioPhase::Queued || audio.phase==HazeAudioPhase::Saving)) return;
     // Hold the producer at the audited common frame boundary. Rendering and
     // the window thread continue; cancellation releases the unchanged frame.
     quit_guest::parked=true;
-    for (;;) {
-        const auto phase=haze_quit_state().phase;
-        if (phase!=HazeQuitPhase::Ready && phase!=HazeQuitPhase::Stopping) break;
-        Sleep(10);
-    }
+    // A native event avoids repeatedly reading C++ state while host exit runs
+    // static destructors. Only cancellation wakes this thread; committed exit
+    // leaves it asleep until the OS ends the process and owns the handle.
+    WaitForSingleObject(quit_guest::resume_event,INFINITE);
     quit_guest::parked=false;
 #else
     (void)ctx;

@@ -343,7 +343,11 @@ the current bindings. PNG edits and INI saves reload within half a second.
 `HAZE_INPUT_CONFIG` selects another configuration file. SDL supports hotplug and custom device mappings; controller
 buttons, axes, deadzones, trigger threshold and look inversion also live in the
 INI. See [controls implementation and verification](docs/controls.md).
-Closing the game window now ends its native process.
+The main and pause menus offer **Quit to Desktop**. Click the action or use
+Select (Tab by default); its confirmation defaults to Cancel. Quit waits for
+active saves/settings before stopping native output. Ordinary window-close
+requests use the same coordination once the guest frame loop is running.
+See [Quit to Desktop](docs/quit-desktop.md) for behavior and validation status.
 
 From an isolated worktree, share the existing SDK, lifts and game assets while
 keeping build products and run logs in the worktree:

@@ -15,6 +15,7 @@ HazeQuitState haze_quit_state();
 // cannot confirm a later request or request an exit from a different page.
 bool haze_quit_request(bool gameplay,uint64_t menu_generation);
 bool haze_quit_confirm(uint64_t generation);
+bool haze_quit_window_close();
 bool haze_quit_cancel(uint64_t generation);
 // Called at the owning guest frame boundary, after queued settings work. On
 // Ready the caller must park that producer until cancellation or host exit.
@@ -29,6 +30,8 @@ struct HazeQuitOffer {
 };
 HazeQuitOffer haze_quit_offer();
 bool haze_quit_guest_parked();
+bool haze_quit_guest_ready();
+void haze_quit_resume_guest();
 struct ppu_context;
 void haze_quit_guest_page(ppu_context* context);
 void haze_quit_guest_tick(ppu_context* context);

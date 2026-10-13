@@ -154,6 +154,15 @@ if(WIN32)
     get_target_property(HAZE_SDK_SOURCES ps3recomp_runtime SOURCES)
     list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_RSX_SOURCE}")
     list(APPEND HAZE_SDK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c")
+    set(HAZE_AUDIO_SOURCE "${PS3RECOMP_DIR}/libs/audio/cellAudio.c")
+    file(READ "${HAZE_AUDIO_SOURCE}" HAZE_AUDIO_TEXT)
+    string(REPLACE "\r\n" "\n" HAZE_AUDIO_TEXT "${HAZE_AUDIO_TEXT}")
+    string(SHA256 HAZE_AUDIO_HASH "${HAZE_AUDIO_TEXT}")
+    if(NOT HAZE_AUDIO_HASH STREQUAL "c3b286fafb999c35758be7516733250446f69e768ab83502eee43e459aafa72f")
+        message(FATAL_ERROR "Audio backend changed: audit native output shutdown before building")
+    endif()
+    list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_AUDIO_SOURCE}")
+    list(APPEND HAZE_SDK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_backend.c")
     set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${HAZE_SDK_SOURCES}")
     if(HAZE_RSX_PROFILE)
         set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c"
@@ -285,6 +294,7 @@ add_executable(${PROJECT_NAME}
     haze_save_status.cpp
     haze_quit.cpp
     haze_quit_guest.cpp
+    haze_quit_menu.cpp
     haze_display.cpp
     haze_spu_idle.c
     ${PS3RECOMP_SCAFFOLD}

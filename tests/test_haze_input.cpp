@@ -55,6 +55,14 @@ void haze_menu_shutdown() {}
 void haze_video_menu_register() {}
 void haze_audio_menu_register() {}
 void haze_controls_menu_register() {}
+static bool quit_active=false,close_accepted=false;
+bool haze_quit_menu_active() { return quit_active; }
+bool haze_quit_menu_has_focus() { return false; }
+bool haze_quit_menu_key(int,bool) { return false; }
+void haze_quit_menu_update(void*,const HazeGamepadState&) {}
+void haze_quit_menu_shutdown() {}
+HazeQuitOffer haze_quit_offer() { return {}; }
+bool haze_quit_window_close() { return close_accepted; }
 static CellPadHostInput sample() {
     CellPadHostInput input{0,128,128,128,128,0,0};
     assert(poll(0,&input,nullptr)==1);
@@ -84,6 +92,15 @@ int main() {
     keys[VK_SPACE]=false;
     assert(!sample().buttons && !menu_back_reports);
     assert(!sample().buttons); // Retail handoff never injects Back.
+    quit_active=true; keys['W']=keys[VK_SPACE]=true;
+    blocked=sample(); assert(!blocked.buttons && blocked.ly==128);
+    double quit_x,quit_y,quit_speed; bool quit_invert;
+    assert(!haze_input_take_mouse(quit_x,quit_y,quit_speed,quit_invert));
+    quit_active=false; keys['W']=keys[VK_SPACE]=false;
+    haze_input_menu_retail(); assert(!sample().buttons && !menu_back_reports);
+    close_accepted=true; forwarded_message=0; window_proc(window,WM_CLOSE,0,0);
+    assert(forwarded_message!=WM_CLOSE);
+    close_accepted=false; window_proc(window,WM_CLOSE,0,0); assert(forwarded_message==WM_CLOSE);
     keys['W']=keys['D']=keys[VK_SPACE]=true;
     auto p=sample(); assert(p.lx==255 && p.ly==1 && (p.buttons&CELL_PAD_CTRL_CROSS));
     keys['S']=keys['A']=true;

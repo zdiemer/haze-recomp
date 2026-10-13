@@ -42,6 +42,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "haze_quit.h"
+#ifdef _WIN32
+#include "haze_video_backend.h"
+extern "C" int haze_audio_stop_output(unsigned timeout_ms);
+#endif
 #ifdef __EMSCRIPTEN__
 #include "haze_wasm_vm.h"
 #include <emscripten/emscripten.h>
@@ -382,6 +387,24 @@ static DWORD WINAPI frame_clock(LPVOID)
             }
             haze_input_update();
             haze_graphics_update();
+#ifdef _WIN32
+            if (haze_quit_take_shutdown(haze_quit_guest_parked())) {
+                /* The guest producer is parked and save admission is closed.
+                 * Output and display cleanup belong on this window thread.
+                 * Other guest threads end with the host process; retain their
+                 * shared port state until then instead of destroying locks. */
+                haze_input_shutdown();
+                const int audio_stopped=haze_audio_stop_output(2000);
+                if (s_rsx_live) {
+                    rsx_live_draw_dump_present_samples();
+                    haze_video_stop(2000);
+                }
+                SetThreadExecutionState(ES_CONTINUOUS);
+                fprintf(stderr,"[quit] Native shutdown complete; audio=%s.\n",audio_stopped ? "stopped" : "process teardown");
+                fflush(NULL);
+                exit(0);
+            }
+#endif
             /* Present on a guest flip. A present on a fixed clock can catch the
              * drain mid-frame and flash a partial one. Before the first flip
              * present freely, so the window is not blank during boot. */

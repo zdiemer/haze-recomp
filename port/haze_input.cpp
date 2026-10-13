@@ -13,6 +13,8 @@
 #include "haze_startup.h"
 #include "haze_startup_prompt.h"
 #include "haze_input_key.h"
+#include "haze_quit.h"
+#include "haze_quit_menu.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -135,6 +137,7 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
+        if (haze_quit_menu_key(int(wp),(lp&(1ll<<30))!=0)) { capture(false); return 0; }
         if (wp == VK_F6) { if (!(lp & (1ll<<30))) haze_graphics_request_reload(); return 0; }
         record_key((int)wp,true,GetTickCount64());
         if (!enabled) break;
@@ -172,7 +175,11 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_XBUTTONDOWN: case WM_XBUTTONUP:
         record_key(HIWORD(wp)==XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2,
                    msg==WM_XBUTTONDOWN,GetTickCount64()); break;
-    case WM_KILLFOCUS: case WM_CLOSE: case WM_DESTROY:
+    case WM_CLOSE:
+        clear_keys(); capture(false);
+        if (haze_quit_window_close()) return 0;
+        break;
+    case WM_KILLFOCUS: case WM_DESTROY:
         clear_keys(); capture(false); break;
     case WM_CAPTURECHANGED:
         if (captured && (HWND)lp != hwnd) capture(false);
@@ -204,7 +211,7 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     ULONGLONG now = GetTickCount64();
     HWND foreground=GetForegroundWindow();
     const bool focused=foreground && foreground==window.load();
-    if (haze_menu_active()) {
+    if (haze_menu_active() || haze_quit_menu_active()) {
         *input=CellPadHostInput{0,128,128,128,128,0,0};
         clear_keys(); mouse_motion.clear(); InterlockedExchange(&wheel,0); return 1;
     }
@@ -351,7 +358,7 @@ bool haze_input_take_mouse(double& x, double& y, double& speed, bool& invert) {
     std::lock_guard<std::mutex> lock(settings_mutex);
     mouse_motion.take(x,y);
     speed=sensitivity; invert=invert_y;
-    return enabled && captured && !haze_menu_active() && !menu_back_reports && GetForegroundWindow()==window.load();
+    return enabled && captured && !haze_menu_active() && !haze_quit_menu_active() && !menu_back_reports && GetForegroundWindow()==window.load();
 }
 void haze_input_update() {
     const auto now=GetTickCount64();
@@ -365,19 +372,27 @@ void haze_input_update() {
             haze_input_reload();
         }
     }
+    HazeGamepadState latest=controller_state;
+    bool sample_focused=controller_sample_focused;
     if (gamepad_initialized) {
-        const auto state=haze_gamepad_update();
-        const bool focused=GetForegroundWindow()==window.load() || haze_menu_has_focus();
+        latest=haze_gamepad_update();
+        const auto& state=latest;
+        const bool focused=GetForegroundWindow()==window.load() || haze_menu_has_focus() || haze_quit_menu_has_focus();
         if (focused && state.connected && (!enabled || last_family!=HazeInputFamily::Keyboard))
             last_family=state.family;
         if (focused && state.activity) { last_family=state.family; capture(false); }
-        std::lock_guard<std::mutex> lock(settings_mutex);
-        controller_state=state;
-        controller_sample_focused=focused;
+        sample_focused=focused;
     }
     haze_prompts_update(last_family.load());
-    if (haze_menu_active()) capture(false);
-    haze_menu_update(window.load(),controller_state);
+    if (haze_menu_active() || haze_quit_menu_active() || haze_quit_offer().available) capture(false);
+    // Give menu actions first ownership of a new controller press. Publishing
+    // it to the guest before opening Quit could also activate the retail page.
+    haze_menu_update(window.load(),latest);
+    haze_quit_menu_update(window.load(),latest);
+    {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        controller_state=latest; controller_sample_focused=sample_focused;
+    }
     if (startup_skip.showing()) {
         const auto family=last_family.load();
         if (now>=next_hint_check || family!=hint_family) {
@@ -422,6 +437,7 @@ unsigned haze_input_menu_button(int virtual_key) {
     return buttons;
 }
 void haze_input_shutdown() {
+    haze_quit_menu_shutdown();
     haze_menu_shutdown();
     startup_prompt.close();
     capture(false);
