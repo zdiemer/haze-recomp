@@ -161,3 +161,7 @@ Keep attempt lost foreground focus and did not save fullscreen. Exclusive
 state, popup visibility, monitor changes and restart persistence still need
 verification. The probe exited normally with code 0 and did not alter its
 copied save profile.
+
+## Current-main integration (2026-10-13)
+
+Merged main efc7db9, including the retail mouse-menu bridge and audio fixes. The complete input regression suite and full native FMA build pass against main's exact SDK revision 3cd8e810caade4907e583bd38febfc684dd472cf, isolated in menu-sdk-main. The older 8660186 SDK lacks the native-float entry point now required by main. Logs: local/main-sdk-tests.log and local/main-sdk-build.log. Earlier native acceptance evidence predates this integration; remaining interactive checks above are still pending.

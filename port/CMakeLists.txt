@@ -95,12 +95,28 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
 endif()
 
 # ---------------------------------------------------------------------------
-# ps3recomp runtime library
+# Native GUI pointer bridge
 # ---------------------------------------------------------------------------
 set(HAZE_MENU_SOURCE "${RECOMP_DIR}/ppu_recomp_001.cpp")
 if(EXISTS "${HAZE_MENU_SOURCE}")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_MENU_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_menu/ppu_recomp_001.cpp")
+    add_custom_command(OUTPUT "${HAZE_MENU_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_input.py"
+            "${HAZE_MENU_SOURCE}" "${HAZE_MENU_PATCHED}"
+        DEPENDS "${HAZE_MENU_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_input.py"
+        VERBATIM)
+    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_MENU_SOURCE}")
+    list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}")
+    set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+endif()
+# ---------------------------------------------------------------------------
+# ps3recomp runtime library
+# ---------------------------------------------------------------------------
+set(HAZE_MENU_SOURCE "${HAZE_MENU_PATCHED}")
+if(EXISTS "${RECOMP_DIR}/ppu_recomp_001.cpp")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HAZE_MENU_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_menu_pages/ppu_recomp_001.cpp")
     add_custom_command(OUTPUT "${HAZE_MENU_PATCHED}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_pages.py"
             "${HAZE_MENU_SOURCE}" "${HAZE_MENU_PATCHED}"
@@ -117,6 +133,7 @@ endif()
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
 # Winsock/XInput imports -- the link then fails on every platform for a
 # different reason. add_subdirectory hands all of that over with the target.
+option(PS3RECOMP_NATIVE_FLOAT_RUNTIME "Build accelerated SPU arithmetic" ON)
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 
@@ -171,7 +188,7 @@ if(WIN32)
     file(READ "${HAZE_AUDIO_SOURCE}" HAZE_AUDIO_TEXT)
     string(REPLACE "\r\n" "\n" HAZE_AUDIO_TEXT "${HAZE_AUDIO_TEXT}")
     string(SHA256 HAZE_AUDIO_HASH "${HAZE_AUDIO_TEXT}")
-    if(NOT HAZE_AUDIO_HASH STREQUAL "c3b286fafb999c35758be7516733250446f69e768ab83502eee43e459aafa72f")
+    if(NOT HAZE_AUDIO_HASH STREQUAL "b174688dc8ae62fa67f35888477b5543310cdfee33e6f613e9bb796b7b0c0504")
         message(FATAL_ERROR "Audio backend changed: audit native output shutdown before building")
     endif()
     list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_AUDIO_SOURCE}")
@@ -297,11 +314,12 @@ add_executable(${PROJECT_NAME}
     stubs.cpp
     haze_input.cpp
     haze_camera.cpp
+    haze_menu.cpp
     haze_guest_pacer.cpp
     haze_spu_triplet_copy.cpp
     haze_graphics.cpp
     haze_graphics_live.cpp
-    haze_menu.cpp
+    haze_menu_pointer.cpp
     haze_video_menu.cpp
     haze_audio_menu.cpp
     haze_save_status.cpp
@@ -337,6 +355,9 @@ if(SPU_SOURCES)
         INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
     set_source_files_properties(${SPU_SOURCES} PROPERTIES
         COMPILE_DEFINITIONS SPU_USE_DISPATCH_MT)
+    if(PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+        set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS SPU_FLOAT_NATIVE_RUNTIME=1)
+    endif()
     if(HAZE_SPU_BYTE_COMPARE)
         # Explicit experiment: these extra branches can change inlining.
         set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS SPU_COMPARE_BYTE_OPS)
