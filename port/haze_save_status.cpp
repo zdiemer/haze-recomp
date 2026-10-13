@@ -7,6 +7,11 @@ namespace {
 std::mutex mutex;
 HazeSaveStatus status;
 std::deque<HazeSaveStatus> history;
+thread_local bool settings_armed=false;
+}
+void haze_save_settings_arm(bool armed) { settings_armed=armed; }
+extern "C" int haze_save_is_settings(void) {
+    std::lock_guard lock(mutex); return status.busy && status.settings;
 }
 HazeSaveStatus haze_save_status() {
     std::lock_guard lock(mutex); return status;
@@ -24,6 +29,7 @@ uint64_t haze_save_begin(uint32_t worker) {
     std::lock_guard lock(mutex);
     if (status.ticket) { history.push_back(status); if (history.size()>16) history.pop_front(); }
     ++status.ticket; status.busy=true; status.completed=false; status.result=0;
+    status.settings=settings_armed; settings_armed=false;
     std::fprintf(stderr,"[settings-save] Started save %llu\n",(unsigned long long)status.ticket);
     return status.ticket;
 }

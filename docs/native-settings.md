@@ -179,14 +179,33 @@ device at startup; its diagnostic mute environment variable is cached and does
 not provide mute-on-focus-loss. Master volume, device selection and focus mute
 therefore need backend work and coordination with device recovery (#49).
 
-The pinned save-data backend writes profile files directly. The locked-file
-test proves failure before writing; it does not prove recovery from a short
-write, disk-full failure or interruption after truncation. Atomic profile-file
-persistence remains required before claiming all failed writes preserve saves.
+The pinned save-data backend writes profile files directly. A reproduction
+against its unchanged write function returned an access error after a short
+write had replaced a 1 MiB profile with only 512 KiB of new data. Audio Apply
+now marks its save-worker ticket and uses a title-owned transaction around the
+audited SDK callback sequence. The original SDK checkout remains untouched;
+the build generates a guarded copy and rejects changes to its audited hash.
+
+For an existing Audio profile, one complete `_PROFILE.DAT` write is staged in
+a private sibling directory, flushed and closed. It replaces the original
+only after the final guest save callback succeeds. PARAM.SFO writes are staged
+too and must match the existing metadata; Audio does not publish metadata
+changes. Missing profiles, unexpected file operations and metadata changes
+report failure. Other save/load operations retain the original SDK behavior.
+
+Real-file tests cover short writes, flush/close/replacement failures, a failed
+final callback, duplicate writes, metadata failures, profile locking, competing
+Audio transactions, external edits, cleanup and successful publication. The
+Audio bridge tests verify that only its own Apply arms the transaction.
+These tests do not establish full-game compatibility of the new hook. A new
+native save/restart check is still required. This is also not a general
+checkpoint/new-profile recovery system: it does not coordinate nonparticipating
+external writers after the last conflict check or guarantee recovery from
+power loss. Broader save recovery belongs to #48.
 
 ## Work still required before #58 can close
 
-- Finish Audio gameplay effect checks, preserve saves through mid-write failure,
+- Finish Audio gameplay effect checks and native save/restart validation,
   and assess headset/voice support. Master/device/focus-mute need new backend
   work; coordinate device recovery with #49.
 - Integrate the separate Controls provider from #23.
