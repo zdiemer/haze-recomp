@@ -130,8 +130,8 @@ maximized restoration, Keep, overlap and thread refusal, and failed-revert retry
 Those window tests inject the DXGI boundary. The actual renderer extension has
 deterministic seams for exclusive transitions, denied modes, partial buffer
 acquisition, resize failure, device failure and unsuccessful recovery. The full
-native build passes; real GPU display transitions and timed UI acceptance remain
-unverified. Implementation follows Microsoft's [fullscreen transition](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-setfullscreenstate)
+native build passes. Native window-size confirmation is covered below;
+exclusive-fullscreen acceptance remains incomplete. Implementation follows Microsoft's [fullscreen transition](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-setfullscreenstate)
 and [swap-chain resize](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
 requirements.
 
@@ -141,3 +141,22 @@ focus loss, stale revisions, reentrant readers/writers, wrong-thread confirmatio
 launch overrides, quality-only application, locked/stale files, allocation
 failure, partial transition failure and failed-revert retry. The preview never
 writes the file; successful Keep is verified against the serialized values.
+
+### Native window-size confirmation
+
+The combined candidate (`1c52af1` binary, SDK `8660186`) exercised the actual
+Video provider and D3D12 backend in `menu-acceptance/local/runs/video-native-1`.
+Starting at 1280x720, a 1920x1080 preview changed the real client geometry while
+the graphics INI hash stayed unchanged. The visible Revert-first dialog counted
+down; timeout restored the original window rectangle and file hash. Repeating
+the preview and choosing Keep retained 1920x1080 and wrote that value to the
+INI. The result dialog reported successful application. These were posted-key
+checks with the native panel in the foreground, not physical-controller tests.
+
+Fullscreen attempts reached monitor-sized geometry and restored the saved
+windowed rectangle without changing its INI. They do not establish usable
+exclusive-fullscreen confirmation: the transition changed focus, and a later
+Keep attempt lost foreground focus and did not save fullscreen. Exclusive
+state, popup visibility, monitor changes and restart persistence still need
+verification. The probe exited normally with code 0 and did not alter its
+copied save profile.
