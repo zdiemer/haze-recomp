@@ -283,6 +283,8 @@ add_executable(${PROJECT_NAME}
     haze_video_menu.cpp
     haze_audio_menu.cpp
     haze_save_status.cpp
+    haze_quit.cpp
+    haze_quit_guest.cpp
     haze_display.cpp
     haze_spu_idle.c
     ${PS3RECOMP_SCAFFOLD}

@@ -4,11 +4,11 @@ import hashlib
 from pathlib import Path
 ENTRY='void func_00680FA0(ppu_context* ctx) {'
 DIGEST='56f434e9a85787e2471f2569106c05ee280af91f84d1b37efeecf10ffbf0ae1e'
-DECL='\n        extern void haze_audio_guest_tick(ppu_context*);'
+DECL='\n        extern void haze_audio_guest_tick(ppu_context*);\n        extern void haze_quit_guest_tick(ppu_context*);'
 # All frame paths converge here, including menus that bypass the optional
 # guest pacing branch at 00681358 entirely.
 SITE='loc_006812DC:\n'
-CALL='        haze_audio_guest_tick(ctx);\n'
+CALL='        haze_audio_guest_tick(ctx);\n        haze_quit_guest_tick(ctx);\n'
 def patch(source):
     if source.count(ENTRY)!=1: raise ValueError('Expected one guest frame function')
     start=source.index(ENTRY); end=source.index('\nvoid ',start+len(ENTRY))

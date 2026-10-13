@@ -7,6 +7,7 @@ namespace {
 std::mutex mutex;
 HazeSaveStatus status;
 std::deque<HazeSaveStatus> history;
+bool sealed=false;
 }
 HazeSaveStatus haze_save_status() {
     std::lock_guard lock(mutex); return status;
@@ -22,10 +23,19 @@ uint64_t haze_save_begin(uint32_t worker) {
     // save worker descriptor; do not reinterpret load completion as a save.
     if (worker!=0xe71ac8) return 0;
     std::lock_guard lock(mutex);
+    if (sealed || status.busy) return HAZE_SAVE_REJECTED;
     if (status.ticket) { history.push_back(status); if (history.size()>16) history.pop_front(); }
     ++status.ticket; status.busy=true; status.completed=false; status.result=0;
     std::fprintf(stderr,"[settings-save] Started save %llu\n",(unsigned long long)status.ticket);
     return status.ticket;
+}
+bool haze_save_seal(uint64_t expected_ticket) {
+    std::lock_guard lock(mutex);
+    if (status.busy || status.ticket!=expected_ticket) return false;
+    sealed=true; return true;
+}
+void haze_save_unseal() {
+    std::lock_guard lock(mutex); sealed=false;
 }
 uint64_t haze_save_current() {
     std::lock_guard lock(mutex); return status.busy ? status.ticket : 0;

@@ -24,7 +24,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Controller tests failed.' }
 $clang=Join-Path $vs 'VC/Tools/Llvm/x64/bin/clang-cl.exe'
 New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
 $ErrorActionPreference='Continue' # Windows PowerShell promotes native stderr warnings.
-foreach ($test in @('test_haze_input','test_haze_camera','test_haze_graphics','test_haze_video_backend','test_haze_menu_guest','test_haze_menu','test_haze_save_status','test_haze_controls')) {
+foreach ($test in @('test_haze_input','test_haze_camera','test_haze_graphics','test_haze_video_backend','test_haze_menu_guest','test_haze_menu','test_haze_save_status','test_haze_controls','test_haze_quit')) {
     & $clang /nologo /W4 /O1 /std:c++20 "/I$root/tests/fixtures/camera" "/I$root/tests/fixtures/video" "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/I$sdk/libs/video" "/Fe$root/local/$test.exe" "/Fo$root/local/$test.obj" "$root/tests/$test.cpp" /link user32.lib gdi32.lib comdlg32.lib
     if ($LASTEXITCODE -ne 0) { throw "$test compilation failed" }
     & "$root/local/$test.exe"
@@ -36,8 +36,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Menu page patch guard failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Save status patch guard failed.' }
 & "$assets/.venv/Scripts/python.exe" "$root/tests/test_audio_tick_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Audio tick patch guard failed.' }
-& $clang /nologo /W4 /O1 /std:c++20 "/I$assets/generated/ppu" "/I$sdk/include" "/I$sdk/libs/input" "/Fe$root/local/test_haze_audio.exe" "/Fo$root/local/test_haze_audio.obj" "$root/tests/test_haze_audio.cpp"
-if ($LASTEXITCODE -ne 0) { throw 'Audio bridge compilation failed.' }
-& "$root/local/test_haze_audio.exe"
-if ($LASTEXITCODE -ne 0) { throw 'Audio bridge tests failed.' }
+foreach ($test in @('test_haze_audio','test_haze_quit_guest')) {
+    & $clang /nologo /W4 /O1 /std:c++20 "/I$assets/generated/ppu" "/I$sdk/include" "/I$sdk/libs/input" "/Fe$root/local/$test.exe" "/Fo$root/local/$test.obj" "$root/tests/$test.cpp"
+    if ($LASTEXITCODE -ne 0) { throw "$test compilation failed." }
+    & "$root/local/$test.exe"
+    if ($LASTEXITCODE -ne 0) { throw "$test failed." }
+}
 exit 0 # Native compiler warnings on stderr are not a failed test run.

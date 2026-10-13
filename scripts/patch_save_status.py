@@ -21,6 +21,11 @@ def patch(source):
         if address=='00721F48':
             body=original.replace(entry,entry+'\n        extern uint64_t haze_save_begin(uint32_t);\n        extern void haze_save_launched(uint64_t,int32_t);\n        const uint64_t haze_save_ticket=haze_save_begin((uint32_t)ctx->gpr[3]);',1)
             body=body.replace('return;','haze_save_launched(haze_save_ticket,(int32_t)ctx->gpr[3]); return;')
+            # Admission and shutdown sealing share one mutex. Refusing here,
+            # before the original sets its busy flag or creates a thread,
+            # closes the gap between observing idle and stopping the host.
+            admission='        const uint64_t haze_save_ticket=haze_save_begin((uint32_t)ctx->gpr[3]);'
+            body=body.replace(admission,admission+'\n        if (haze_save_ticket==UINT64_MAX) { ctx->gpr[3]=uint64_t(int64_t(-1)); return; }',1)
         else:
             body=original.replace(entry,entry+'\n        extern uint64_t haze_save_current();\n        extern void haze_save_finished(uint64_t,int32_t);\n        const uint64_t haze_save_ticket=haze_save_current();\n        int32_t haze_save_result=INT32_MIN;',1)
             result_site='        vm_write32(ctx->gpr[9] + 0x0, ctx->gpr[29]);'

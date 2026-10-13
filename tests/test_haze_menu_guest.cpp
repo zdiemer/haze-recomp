@@ -6,6 +6,7 @@ std::vector<uint8_t> memory(0x320000);
 HazeMenuPage received=HazeMenuPage::None;
 unsigned requests;
 bool haze_audio_guest_open(ppu_context*) { return true; }
+void haze_quit_guest_page(ppu_context*) {}
 uint8_t vm_read8(uint64_t p) { return memory.at(size_t(p)); }
 uint32_t vm_read32(uint64_t p) {
     return uint32_t(vm_read8(p))<<24 | uint32_t(vm_read8(p+1))<<16 | uint32_t(vm_read8(p+2))<<8 | vm_read8(p+3);
