@@ -55,6 +55,20 @@ class Setup(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('unsupported ELF', result.stderr)
 
+    def test_download_hash_checked_before_promotion(self):
+        import hashlib
+        good = hashlib.sha256(b'fixture').hexdigest()
+        mock = "function Invoke-WebRequest { param($UseBasicParsing,$Uri,$OutFile,$TimeoutSec) [IO.File]::WriteAllText($OutFile,'fixture') }\n"
+        # A switch parameter is required to mirror the real cmdlet's invocation.
+        mock = mock.replace('$UseBasicParsing,', '[switch]$UseBasicParsing,')
+        result = self.run_ps(mock + f"Receive-HazeDownload 'https://example.invalid/tool' '{good}' 'tool.7z'")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.path / 'tool.7z').read_bytes(), b'fixture')
+        (self.path / 'tool.7z').unlink()
+        result = self.run_ps(mock + f"Receive-HazeDownload 'https://example.invalid/tool' '{'0' * 64}' 'tool.7z'")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.path / 'tool.7z').exists())
+
     def test_helper_exit_and_timeout(self):
         for body, timeout, expected in [('exit 0', 10, 0), ('exit 7', 10, 1), ('Start-Sleep 20', 1, 1)]:
             (self.path / 'child.ps1').write_text(body)

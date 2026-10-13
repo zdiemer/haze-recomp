@@ -23,6 +23,7 @@ def prepare(project, work, inputs_commit):
     shutil.copyfile(work / 'redistribution/HazeRecomp-dependency-sources.zip', output / 'HazeRecomp-dependency-sources.zip')
     files = inventory(output)
     manifest = {'schema': 1, 'version': version, 'commit': commit, 'inputs_commit': inputs_commit,
+                'tooling_commit': subprocess.check_output(['git', '-C', str(Path(__file__).resolve().parents[1]), 'rev-parse', 'HEAD'], text=True).strip(),
                 'files': files}
     (output / 'release.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     hashes = inventory(output)

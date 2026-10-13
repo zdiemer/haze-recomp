@@ -88,7 +88,7 @@ def bundle(sources, project, ffmpeg, output):
         stream.write(ffmpeg / 'build-config.log', 'ffmpeg-build-config.log')
         for name in ('build-ffmpeg.ps1', 'build-ffmpeg.sh'):
             stream.write(ROOT / 'scripts' / name, name)
-        for name, directory in (('haze', project), ('ps3recomp', project / 'external/ps3recomp')):
+        for name, directory in (('haze', project), ('ps3recomp', project / 'external/ps3recomp'), ('release-tooling', ROOT)):
             source = output / f'{name}-source.zip'
             subprocess.run(['git', '-C', str(directory), 'archive', '--format=zip',
                             '-o', str(source.resolve()), 'HEAD'], check=True)

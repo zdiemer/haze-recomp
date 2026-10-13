@@ -28,7 +28,7 @@ $files = @(Get-ChildItem -LiteralPath $Directory -File | ForEach-Object FullName
 # Keep partial uploads private. Only reveal the release after every asset exists.
 & gh release create $Tag @files --repo $Repository --verify-tag --draft --title "Haze Recomp $Tag" --notes-file $Notes
 if ($LASTEXITCODE -ne 0) { throw 'Draft upload failed. Inspect the draft before retrying.' }
-$uploaded = & gh release view $Tag --repo $Repository --json assets | ConvertFrom-Json
+$uploaded = & gh api "repos/$Repository/releases/tags/$Tag" | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify uploaded release assets.' }
 $expected = @($files | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
 $actual = @($uploaded.assets | ForEach-Object name | Sort-Object)
@@ -36,6 +36,8 @@ if (Compare-Object $expected $actual) { throw 'Uploaded asset set differs; relea
 foreach ($file in $files) {
     $asset = $uploaded.assets | Where-Object name -EQ ([IO.Path]::GetFileName($file))
     if ($asset.size -ne (Get-Item -LiteralPath $file).Length) { throw 'Uploaded size differs; release remains a draft.' }
+    $expectedDigest = 'sha256:' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($asset.digest -ne $expectedDigest) { throw 'Uploaded checksum differs; release remains a draft.' }
 }
 & gh release edit $Tag --repo $Repository --draft=false
 if ($LASTEXITCODE -ne 0) { throw 'Publishing failed; inspect the existing draft.' }
