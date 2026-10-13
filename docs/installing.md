@@ -17,6 +17,11 @@ internet access during preparation and at least 12 GB free. Windows x64, SSE4.1
 and D3D12 graphics support are required. Encrypted raw dumps, other regions and
 updated executables are unsupported.
 
+If the required Microsoft Visual C++ system runtime is absent or outdated, the
+installer downloads and verifies Microsoft's signed redistributable and installs
+it automatically. Windows may request administrator approval for that prerequisite;
+the Haze application itself is installed for the current user.
+
 The installed application contains the ready-to-use launcher and runtime files.
 Installer scripts and extraction tools are temporary payloads, not a setup task
 that the launcher asks you to run later. Firmware and game data come from the

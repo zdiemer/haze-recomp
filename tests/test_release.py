@@ -55,8 +55,10 @@ class Release(unittest.TestCase):
         self.assertIsNotNone(package.find('w:MajorUpgrade', ns))
         components = package.findall('.//w:Component', ns)
         settings = next(c for c in components if (f := c.find('w:File', ns)) is not None and f.get('Name') == 'input.ini')
-        self.assertEqual(settings.get('Permanent'), 'yes')
-        self.assertEqual(settings.get('NeverOverwrite'), 'yes')
+        self.assertIsNone(settings.get('Permanent'))
+        self.assertIsNone(settings.get('NeverOverwrite'))
+        defaults = package.find('.//w:Directory[@Name="defaults"]', ns)
+        self.assertIsNotNone(defaults.find('w:Directory[@Name="config"]', ns))
         self.assertNotIn('RemoveFile', wxs.read_text())
 
     def test_runtime_allowlist_rejects_local_data(self):

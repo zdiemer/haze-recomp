@@ -58,7 +58,11 @@ def wix_source(stage: Path, output: Path, release_version: str) -> None:
     feature = node(package, "Feature", Id="Main", Title="Haze Recomp", Level="1")
     directories = {".": install}
     for relative in inventory(stage):
-        path = Path(relative)
+        # MSI owns defaults; the bootstrapper creates user settings only when
+        # absent. Permanent MSI components retain machine-wide location state
+        # and can skip settings after uninstall/reinstall to another directory.
+        installed_relative = 'defaults/' + relative if relative.startswith('config/') else relative
+        path = Path(installed_relative)
         parent = Path()
         for part in path.parts[:-1]:
             previous = parent.as_posix()
@@ -67,14 +71,10 @@ def wix_source(stage: Path, output: Path, release_version: str) -> None:
             if key not in directories:
                 ident = "D" + hashlib.sha256(key.encode()).hexdigest()[:24]
                 directories[key] = node(directories[previous], "Directory", Id=ident, Name=part)
-        ident = hashlib.sha256(relative.encode()).hexdigest()[:24]
-        attrs = {"Id": "C" + ident, "Guid": str(uuid.uuid5(uuid.UUID(UPGRADE_CODE), relative))}
-        # Settings survive major upgrades, repair and uninstall. User-created
-        # saves, caches and launcher.ini are never installer-owned files.
-        if relative.startswith("config/"):
-            attrs.update(Permanent="yes", NeverOverwrite="yes")
+        ident = hashlib.sha256(installed_relative.encode()).hexdigest()[:24]
+        attrs = {"Id": "C" + ident, "Guid": str(uuid.uuid5(uuid.UUID(UPGRADE_CODE), installed_relative))}
         component = node(directories[parent.as_posix()], "Component", **attrs)
-        node(component, "File", Id="F" + ident, Source=str((stage / path).resolve()), Name=path.name)
+        node(component, "File", Id="F" + ident, Source=str((stage / relative).resolve()), Name=path.name)
         node(component, "RegistryValue", Root="HKCU", Key="Software\\HazeRecomp\\Components",
              Name=ident, Value=release_version, Type="string", KeyPath="yes")
         node(feature, "ComponentRef", Id="C" + ident)

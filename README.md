@@ -23,6 +23,8 @@ RPCS3 helper and Sony firmware, prepares the game, and installs the launcher.
 When it finishes, click **Play Haze**. Subsequent launches use **Haze Recomp**
 in the Start menu. No separate tools or development environment are needed.
 
+![Haze installer: choose the ISO and installation folder](docs/images/installer.png)
+
 The tested disc-decrypted image is `Haze (USA) (En,Fr,Es).iso`
 (8,498,184,192 bytes), BLUS30094, disc version 01.02 / application version 01.00.
 Its **SHA-256** is:

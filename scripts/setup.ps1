@@ -1,5 +1,6 @@
 param([string]$Iso, [string]$Firmware, [string]$DataDirectory, [string]$InstallDirectory, [switch]$DownloadFirmware, [switch]$NoGui)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $root = Split-Path $PSScriptRoot -Parent
 $install = if ($InstallDirectory) { (Resolve-Path -LiteralPath $InstallDirectory).Path } else { $root }
 . "$PSScriptRoot/setup-common.ps1"
@@ -53,11 +54,10 @@ try {
     Receive-HazeDownload $helper.url $helper.sha256 $helperArchive
     Invoke-HazeHelper $sevenZip @('x',$helperArchive,"-o$rpcs3",'-y','-bsp0') $attempt "$attempt/helper-extract"
     if (-not (Test-Path -LiteralPath "$rpcs3/rpcs3.exe")) { throw 'RPCS3 download did not contain its executable.' }
-    # The helper uses the same app-local CRT as the game, without a separate
-    # Visual C++ redistributable installation or changes to another RPCS3 copy.
-    Get-ChildItem -LiteralPath $install -Filter '*.dll' | Where-Object {
-        $_.Name -match '^(msvcp|vcruntime|concrt|vccorlib)'
-    } | Copy-Item -Destination $rpcs3
+    # RPCS3 explicitly rejects app-local MSVC DLLs. Let it use the supported
+    # system runtime, installing Microsoft's signed redistributable if needed.
+    Install-HazeSystemRuntime "$tools/vc-runtime.json" $attempt
+    $env:RPCS3_CONFIG_DIR = "$rpcs3/portable"
     # Override inherited RPCS3_CONFIG_DIR and any installed RPCS3 configuration.
     New-Item -ItemType Directory -Path "$rpcs3/portable/log" -Force | Out-Null
     $flash = "$rpcs3/portable/dev_flash"

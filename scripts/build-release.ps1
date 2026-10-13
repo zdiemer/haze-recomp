@@ -32,12 +32,18 @@ function Run-ReleaseStep([string]$Name, [string]$Exe, [string[]]$Arguments) {
         & $Exe @Arguments *> "$work/logs/$Name.log"
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = 'Stop' }
-    if ($code -ne 0) { throw "$Name failed (exit $code). Logs remain on the build machine." }
+    if ($code -ne 0) {
+        if ($Name -eq 'ffmpeg' -or $Name -eq 'package' -or $Name -eq 'licenses') {
+            Get-Content -LiteralPath "$work/logs/$Name.log" -Tail 30 | Write-Output
+        }
+        throw "$Name failed (exit $code). Full logs remain on the build machine."
+    }
 }
 Run-ReleaseStep 'verify-inputs' $Python @("$tooling/scripts/build_inputs.py", '--verify', $inputsPath)
 Run-ReleaseStep 'sources' $Python @("$tooling/scripts/release_sources.py", '--fetch', "$work/sources")
 Run-ReleaseStep 'ffmpeg' $shell @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$tooling/scripts/build-ffmpeg.ps1",
     '-Source',"$work/sources/ffmpeg",'-OutputDirectory',"$work/ffmpeg",'-MsysRoot',$MsysRoot)
+Run-ReleaseStep 'codecs' $Python @("$tooling/tests/test_release_codecs.py", "$work/ffmpeg")
 Run-ReleaseStep 'game' $shell @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$project/scripts/build.ps1",
     '-Configuration','Release','-SharedRoot',$inputsPath,'-Python',$Python,'-Jobs',"$Jobs",
     '-SDL3Root',"$work/sources/sdl",'-FFmpegRoot',"$work/ffmpeg")

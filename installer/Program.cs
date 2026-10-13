@@ -132,6 +132,13 @@ internal sealed class Installer : Form
                 int result = Run(Path.Combine(system, "msiexec.exe"), "/i " + Quote(Path.Combine(temporary, "HazeRecomp.msi")) +
                     " /qn /norestart INSTALLFOLDER=" + Quote(target) + " /l*v " + Quote(Path.Combine(logDirectory, "msi.log")), "msi-process.log");
                 if (result != 0 && result != 3010) throw new Exception("Windows Installer failed (" + result + ").");
+                string defaults = Path.Combine(target, "defaults", "config");
+                string settings = Path.Combine(target, "config");
+                Directory.CreateDirectory(settings);
+                foreach (string file in Directory.GetFiles(defaults, "*.ini")) {
+                    string setting = Path.Combine(settings, Path.GetFileName(file));
+                    if (!File.Exists(setting)) File.Copy(file, setting);
+                }
                 if (!keep) {
                     Report("Preparing your game and downloading firmware...");
                     result = Run(Path.Combine(system, "WindowsPowerShell/v1.0/powershell.exe"),

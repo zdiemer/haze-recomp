@@ -14,7 +14,7 @@ def build_installer(msi, tools, output, version):
         for path in sorted((tools / '7zip').rglob('*')):
             if path.is_file():
                 stream.write(path, 'tools/7zip/' + path.relative_to(tools / '7zip').as_posix())
-        for name in ('release-tools.json', 'firmware.json'):
+        for name in ('release-tools.json', 'firmware.json', 'vc-runtime.json'):
             stream.write(ROOT / 'config' / name, 'tools/' + name)
         for name in ('setup.ps1', 'setup-common.ps1'):
             stream.write(ROOT / 'scripts' / name, 'scripts/' + name)

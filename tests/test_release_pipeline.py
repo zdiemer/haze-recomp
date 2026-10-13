@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import sys
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -77,6 +78,57 @@ class Artifacts(unittest.TestCase):
         (self.root / 'SHA256SUMS.txt').write_text('changed')
         with self.assertRaisesRegex(ValueError, 'Checksums'):
             release_artifacts.verify(self.root)
+
+    def publisher(self, bad_digest=False, existing=False):
+        script = self.root / 'fake-publish.ps1'
+        # Place mocks outside the strictly allowlisted artifact directory.
+        artifacts = self.root / 'artifacts'
+        artifacts.mkdir()
+        for path in list(self.root.iterdir()):
+            if path.is_file():
+                path.rename(artifacts / path.name)
+        notes = self.root / 'notes.txt'
+        notes.write_text('Synthetic publication regression.\n')
+        calls = self.root / 'calls.txt'
+        payload = {'assets': [{'name': path.name, 'size': path.stat().st_size,
+                    'digest': 'sha256:' + ('0' * 64 if bad_digest else release.digest(path))}
+                   for path in artifacts.iterdir()]}
+        publisher = Path(__file__).resolve().parents[1] / 'scripts/publish-release.ps1'
+        def quoted(path):
+            return "'" + str(path).replace("'", "''") + "'"
+        script.write_text("$ErrorActionPreference='Stop'\nfunction global:gh {\n"
+            "$global:LASTEXITCODE=0\n$command=$args -join ' '\n"
+            f"Add-Content -LiteralPath {quoted(calls)} -Value $command\n"
+            "if ($command -like 'api */git/ref/tags/*') {\n"
+            f"  return '{{\"object\":{{\"type\":\"commit\",\"sha\":\"{self.commit}\"}}}}'\n}}\n"
+            "if ($command -match '/releases\\?per_page=') { " + ("return 'v0.1.0'" if existing else 'return') + " }\n"
+            "if ($command -like 'api */releases/tags/*') {\n"
+            f"  return '{json.dumps(payload)}'\n}}\n}}\n"
+            f"& {quoted(publisher)} -Directory {quoted(artifacts)} -Tag v0.1.0 -Commit {self.commit} "
+            f"-Notes {quoted(notes)} -Python {quoted(sys.executable)}\n", encoding='utf-8')
+        result = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)],
+                                capture_output=True, text=True, timeout=30)
+        return result, calls.read_text() if calls.exists() else ''
+
+    def test_publisher_reveals_only_verified_complete_draft(self):
+        result, calls = self.publisher()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('release create', calls)
+        self.assertIn('--draft', calls)
+        self.assertIn('release edit v0.1.0', calls)
+
+    def test_bad_uploaded_digest_keeps_draft_private(self):
+        result, calls = self.publisher(bad_digest=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Uploaded checksum differs', result.stderr)
+        self.assertIn('release create', calls)
+        self.assertNotIn('release edit', calls)
+
+    def test_existing_release_cannot_be_overwritten(self):
+        result, calls = self.publisher(existing=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('release create', calls)
+        self.assertNotIn('release edit', calls)
 
 
 if __name__ == '__main__':
