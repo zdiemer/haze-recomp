@@ -170,9 +170,9 @@ std::wstring validate(const Plan& p,std::wstring& repair_key) {
     if (!GetBinaryTypeW(p.executable.c_str(),&binary_type) || binary_type!=SCS_64BIT_BINARY) {
         repair_key=L"Executable"; return L"The selected file is not a usable 64-bit Windows executable. Rebuild or choose HazeRecomp.exe.\n\n"+p.executable.wstring();
     }
-    if (!fs::is_regular_file(p.elf,ec)) { repair_key=L"DiscDirectory"; return L"Haze disc files have not been prepared. Set up from your decrypted USA disc ISO and download firmware from Sony, or choose an already prepared disc folder containing PS3_GAME. You can also run Setup.cmd in the installation folder.\n\n"+p.elf.wstring(); }
+    if (!fs::is_regular_file(p.elf,ec)) { repair_key=L"DiscDirectory"; return L"Haze disc files have not been prepared. Run the Haze installer with your decrypted USA disc ISO, or choose an already prepared disc folder containing PS3_GAME.\n\n"+p.elf.wstring(); }
     if (!fs::is_regular_file(p.disc/L"PS3_GAME/PARAM.SFO",ec)) { repair_key=L"DiscDirectory"; return L"The disc folder is incomplete: PS3_GAME/PARAM.SFO is missing."; }
-    if (!fs::is_regular_file(p.firmware/L"sys/external/flashMP3.pic",ec)) { repair_key=L"Firmware"; return L"PS3 firmware has not been prepared. Run Setup.cmd in the release folder, or choose an extracted dev_flash folder containing sys/external/flashMP3.pic.\n\n"+p.firmware.wstring(); }
+    if (!fs::is_regular_file(p.firmware/L"sys/external/flashMP3.pic",ec)) { repair_key=L"Firmware"; return L"PS3 firmware has not been prepared. Run the Haze installer again, or choose an extracted dev_flash folder containing sys/external/flashMP3.pic.\n\n"+p.firmware.wstring(); }
     if (!fs::is_regular_file(p.input,ec)) return L"The input configuration is missing. Reinstall config/input.ini or configure InputConfig in launcher.ini.\n\n"+p.input.wstring();
     if (!p.graphics.empty() && !fs::is_regular_file(p.graphics,ec)) return L"The configured graphics INI is missing. Correct GraphicsConfig in launcher.ini.\n\n"+p.graphics.wstring();
     return {};

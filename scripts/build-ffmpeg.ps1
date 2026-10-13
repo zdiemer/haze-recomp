@@ -21,6 +21,9 @@ $output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPat
 if (Test-Path -LiteralPath $output) { throw 'Use a new FFmpeg output directory.' }
 & "$MsysRoot/usr/bin/bash.exe" "$root/scripts/build-ffmpeg.sh" $sourcePath "$output-build" $output
 if ($LASTEXITCODE -ne 0) { throw 'FFmpeg compilation failed.' }
+# FFmpeg's MSVC install puts import libraries alongside the DLLs. The game
+# dependency contract expects those libraries under lib/.
+Copy-Item -Path "$output/bin/*.lib" -Destination "$output/lib"
 foreach ($name in @('COPYING.LGPLv2.1', 'COPYING.LGPLv3', 'LICENSE.md')) {
     Copy-Item -LiteralPath "$sourcePath/$name" -Destination $output
 }

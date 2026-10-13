@@ -1,118 +1,109 @@
-# Windows release process
+# Windows binary releases
 
-`VERSION` is the source for the three-part product/MSI version. Increment it for
-every public build and tag `vX.Y.Z`. Never replace published tags or assets.
-Keep experimental releases marked as prereleases. The MSI UpgradeCode is stable;
-component identities derive from paths. Mutable settings are preserved.
+`.github/workflows/release.yml` builds on GitHub-hosted Windows 2022 runners.
+Pushing `vX.Y.Z` builds the tagged code, fetches the pinned private generated
+inputs, compiles the game and dependencies, packages the installer, uploads all
+assets to a draft, verifies the uploads, then publishes the completed release.
+No developer PC or self-hosted runner is required.
 
-## Asset-free CI
+## One-time configuration
 
-`.github/workflows/ci.yml` runs on PRs and pushes to main with read-only
-permissions, Windows 2022, Python 3.12.10, LLVM 20.1.8, the committed SDK gitlink,
-and checksum-pinned SDL source. Logs survive failures for 14 days. No game files,
-firmware, generated game translations, secrets or self-hosted runners are needed.
+The private repository `zdiemer/haze-build-inputs` holds only the generated C/C++
+and headers needed to compile. It has a read-only deploy key whose private half
+is the `BUILD_INPUTS_SSH_KEY` Actions secret in this repository. Do not enable
+write access or expose this secret to pull-request workflows. This configuration
+is already provisioned for the main repository; forks must supply their own.
 
-Run `git submodule update --init --recursive`, then
-`./scripts/ci.ps1 -Python (Get-Command python).Source` in an asset-free checkout.
-The script rejects dirty/mismatched SDKs and local game/generated inputs. It runs
-the runtime, launcher, input/controller/UI, icon, Steam, setup and packaging
-regressions serially because existing suites share some fixture paths.
+`config/build-inputs.json` pins the private repository, full input commit and SDK
+gitlink. The snapshot includes a SHA-256 manifest verified before building.
+There are no ISO/ELF/BIN files or game assets in this snapshot. The installer
+creates the runtime EBOOT.ELF and game files from the user's ISO.
 
-The hosted image supplies serviced MSVC libraries and Windows SDKs; it is not
-immutable. Logs record ImageVersion, SDK revision and CMake compiler detection.
-Source/compiler pins do not imply bit-identical Windows builds.
-
-Local-only checks: full game compilation, generated guest patch guards, disc
-movie decode/timed playback, ISO/firmware preparation, actual gameplay/save/load,
-controller hardware, display changes and final clean-Windows acceptance.
-Public CI green does not establish that these passed.
-
-## Build and package
-
-Use a clean release checkout and local supported assets/translations:
+To refresh inputs, export a new local directory:
 
 ```powershell
-./scripts/build.ps1 -Configuration Release -Test
-./scripts/build-launcher.ps1 -Configuration Release -Test
-./scripts/prepare-release-tools.ps1
-./scripts/stage-runtime.ps1 -Game build/haze/HazeRecomp.exe `
-  -Launcher build/launcher/bin/HazeLauncher.exe -OutputDirectory build/runtime-stage
-dotnet tool install wix --version 6.0.2 --tool-path build/wix
-python scripts/release.py --runtime build/runtime-stage --tools build/release-tools `
-  --licenses local/release-licenses --notes local/release-notes.txt `
-  --output build/release-0.1.0 --wix build/wix/wix.exe
+python scripts/build_inputs.py --export generated --output local/new-build-inputs
+python scripts/build_inputs.py --verify local/new-build-inputs
 ```
 
-Prepare tools into a new directory; never package an existing RPCS3 installation.
-The script downloads official hash-pinned archives and records extracted-file
-hashes. Do not execute RPCS3 in this pristine tree. Changes to helper/firmware pins
-require repeating first-run validation.
+Commit the resulting snapshot to the **private** repository. Update the full
+commit and matching SDK revision in `config/build-inputs.json` through a PR.
+Never make the private repository public or upload it as an Actions artifact.
+Private storage does not itself establish redistribution rights for a compiled
+game-derived executable.
 
-Runtime staging collects transitive non-system DLLs and the app-local VC runtime;
-missing dependencies fail staging. Packaging admits only the staged binaries,
-pinned helper trees, configuration, input-prompt assets, setup scripts, licenses,
-notes, version and hash manifest. It excludes development launcher defaults,
-generated sources, game/firmware inputs, build trees, saves and local settings.
-Review the manifest. The staging metadata records the checkout commit but cannot
-prove an arbitrary supplied executable's origin; build those binaries yourself.
+## Cut a release
 
-Outputs are a per-user x64 MSI, portable ZIP and SHA256SUMS.txt. ZIP entry order
-and timestamps are fixed; bit-reproducible MSI/compiler output is not claimed.
-If signing, sign executable inputs before staging and the MSI before final
-hashing/acceptance. Unsigned releases must identify that in their notes.
+1. Update `VERSION` (three numeric fields) and `docs/release-notes.txt` in a PR.
+   Merge it and wait for the asset-free Windows checks to pass.
+2. Push an annotated tag at that main commit:
 
-## Redistribution requirements
+   ```powershell
+   git tag -a v0.1.1 <main-commit> -m 'Haze Recomp 0.1.1'
+   git push origin refs/tags/v0.1.1
+   ```
 
-Supply actual license texts plus THIRD-PARTY-NOTICES.txt and SOURCE-OFFER.txt
-in local/release-licenses. These are required inputs, not placeholder assurances.
-Cover project/SDK notices, input-prompt artwork, SDL, FFmpeg and its dependencies,
-VC runtime redistribution, 7-Zip, RPCS3 and the libraries in its Windows archive
-(including Qt/FFmpeg). Review upstream build configurations and versions.
+3. Watch **Windows release** in Actions. It publishes only after the complete
+   artifact set is built and verified. A tag must match `VERSION` and refer to
+   a commit on main. Existing releases and assets are never overwritten.
 
-[RPCS3 is GPLv2](https://github.com/RPCS3/rpcs3/blob/master/LICENSE). Its separate
-unmodified CLI executable is intended as aggregation. Preserve license/notices
-and provide complete corresponding machine-readable source for the exact binary,
-including required submodules, dependency source and build scripts, alongside
-the release, or fulfill a compliant written source offer. A generic GitHub link
-alone is not a source-distribution plan. SOURCE-OFFER.txt describes the actual
-fulfillment method; publishing also requires a reviewed corresponding-source
-archive. Fulfill the LGPL source/relinking obligations of bundled libraries.
+For an existing tag, use **Actions > Windows release > Run workflow**, enter
+the tag, and enable `publish`. Without that checkbox the workflow builds and
+retains the deliverables as an Actions artifact without publishing a release.
+This supports the existing `v0.1.0` tag without moving it. The workflow version
+provides packaging/installer tooling while game code comes from the chosen tag.
 
-Firmware is downloaded from Sony by the user or supplied locally, never bundled.
-Review embedded/generated executable content and its redistribution provenance
-before approving binary publication. PR CI never creates public releases.
+If an upload fails, inspect the incomplete draft and its assets before removing
+that draft and rerunning. Do not delete or move the tag. A published version is
+immutable: fix problems in a new version instead.
 
-## Acceptance gates and publishing
+## What gets built and published
 
-Validate the exact MSI/ZIP hashes to be published. Fresh custom paths plus a PATH
-containing only Windows directories test independence from development tools.
-They do not prove absence of machine-wide DLLs; also validate a clean Windows
-installation without RPCS3 or development tools before a public release.
+- `HazeRecomp-X.Y.Z-Setup.exe`: the complete interactive installer. It embeds a
+  per-user MSI and temporary preparation tools. It installs the launcher/game,
+  prepares the user's ISO and firmware, validates the launcher, then offers Play.
+- `HazeRecomp-X.Y.Z-windows-x64.zip`: portable application files for users with
+  already prepared disc/firmware paths; it does not perform first installation.
+- `HazeRecomp-dependency-sources.zip`: exact source archives, project/SDK sources,
+  FFmpeg configure log and the dependency build recipe.
+- `release.json` and `SHA256SUMS.txt`: commit/input provenance and artifact hashes.
 
-- Install as a normal user and launch via Start and another working directory.
-  Exercise missing/encrypted/wrong-region ISO, bad firmware, cancellation,
-  network failure, hash mismatch and corrupt helper output.
-- Complete ISO + Sony-download preparation and offline firmware preparation.
-  Verify title, movies, campaign start, audio, input, save, quit and second-session
-  load. Record OS/GPU/driver and evidence paths.
-- Test spaces/Unicode paths and reruns after failure. Verify old configuration
-  and prepared data survive failures and unrelated RPCS3 installs are untouched.
-- Customize an older MSI installation, create a save, then upgrade, repair,
-  uninstall and reinstall. Check preservation and downgrade blocking. Test ZIP
-  extraction separately.
-- Review notes, package manifest, notices, source archive and redistribution.
+Only this explicit set is uploaded. The internal MSI, build directory, logs,
+generated sources and keys are excluded. Compiler diagnostics can contain private
+source excerpts, so build logs stay on the runner and are not public artifacts.
+When investigating a build failure, reproduce that step locally with the private
+snapshot. There is no cache of private input files or build objects.
 
-Record these results in docs/release-acceptance.example.json, replacing false
-gates with actual evidence links and matching hashes. After public CI passes
-for the release commit, push its annotated tag and create a draft:
+## Dependencies and notices
 
-```powershell
-./scripts/publish-release.ps1 -Directory build/release-0.1.0 `
-  -Evidence local/release-acceptance.json -Notes local/release-notes.txt `
-  -SourceArchive local/corresponding-source.zip
-```
+LLVM, WiX, Python, action revisions, SDK, input snapshot, tool archives and source
+archives are pinned. Windows SDK/MSVC and MSYS2 system tools are serviced by the
+runner image; bit-for-bit reproducibility of the executable/MSI is not claimed.
 
-The publisher validates evidence, hashes and the remote tag commit and uploads
-the MSI, ZIP, checksums, evidence and source archive to a **draft prerelease**.
-Review that concrete draft before publishing in GitHub. It never overwrites tags
-or releases. Tooling/tests in this PR are not a clean-Windows or release approval.
+FFmpeg DLLs are built from the exact pinned source with MPEG-2 video, ATRAC3+
+audio, scaling and resampling enabled. External libraries, GPL and nonfree
+features are disabled. This avoids redistributing an opaque prebuilt FFmpeg
+dependency collection. FFmpeg remains dynamically linked and replaceable.
+The matching source archive and build recipe are shipped alongside the binary.
+
+7-Zip is bundled with its source and notices, including the unRAR restriction.
+SDL, project/SDK and input-prompt licenses are included, together with Microsoft's
+installed distributable-code list for the app-local VC runtime.
+
+RPCS3 is downloaded directly from the pinned official release during installation
+and verified before execution. The MSI/ZIP contain neither RPCS3 nor Sony firmware.
+Firmware is downloaded from Sony and checksum-verified. No placeholder notices
+or unfulfilled source offers are used by the automated packager.
+
+## Validation
+
+PR CI covers existing asset-free runtime/launcher/UI tests, private-input filtering,
+package integrity, tag/commit matching, and compilation of the actual installer
+with synthetic payloads. The release build compiles the complete game from the
+private snapshot, runs launcher tests and verifies installer payloads/checksums.
+
+Before promoting a version, exercise the installer with the supported ISO on a
+fresh Windows environment, then test movies, campaign start, audio, input,
+save/load and upgrades. Hosted compilation is not evidence that a full campaign
+or every GPU works. Record actual limitations in the release notes rather than
+marking an unperformed acceptance test as passed. Releases are currently unsigned.
