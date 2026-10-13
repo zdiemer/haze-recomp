@@ -29,12 +29,23 @@ try {
         # splatting of a scalar '-Test' does not preserve the switch correctly.
         $arguments = @($check | Select-Object -Skip 1)
         if ($name -eq 'test-input.ps1' -and $SDL3Root) { $arguments += @('-SDL3Root', $SDL3Root) }
-        & $shell -NoProfile -ExecutionPolicy Bypass -File "$root/scripts/$name" @arguments
-        if ($LASTEXITCODE -ne 0) { throw "CI failed: $name" }
+        # Transcripts alone omit output from child PowerShell processes.
+        # Keep each complete suite log, including native compiler stderr.
+        try {
+            $ErrorActionPreference = 'Continue'
+            & $shell -NoProfile -ExecutionPolicy Bypass -File "$root/scripts/$name" @arguments 2>&1 |
+                Tee-Object -FilePath "$root/local/ci/$name.log"
+            $code = $LASTEXITCODE
+        } finally { $ErrorActionPreference = 'Stop' }
+        if ($code -ne 0) { throw "CI failed: $name" }
     }
     foreach ($test in @('test_thread_priority.py', 'test_setup.py', 'test_release.py')) {
-        & $Python "$root/tests/$test"
-        if ($LASTEXITCODE -ne 0) { throw "CI failed: $test" }
+        try {
+            $ErrorActionPreference = 'Continue'
+            & $Python "$root/tests/$test" 2>&1 | Tee-Object -FilePath "$root/local/ci/$test.log"
+            $code = $LASTEXITCODE
+        } finally { $ErrorActionPreference = 'Stop' }
+        if ($code -ne 0) { throw "CI failed: $test" }
     }
     Write-Output 'Local-only: game build, lifted-code guards, disc movie decode/playback, firmware compatibility, gameplay, real devices and clean Windows acceptance. See docs/releasing.md.'
 } finally { Stop-Transcript }
