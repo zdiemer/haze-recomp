@@ -42,6 +42,9 @@ int main() {
     invalid=initial.values; invalid["ControllerBindings.Cross"]="a";
     assert(haze_control_conflicts(invalid,"ControllerBindings.Circle","south").size()==1);
     haze_controls_menu_register(); registered.begin();
+    // Unsupported lock keys must not prevent capture from becoming ready.
+    // Keep real bindable W held first to verify its release is still required.
+    held[VK_NUMLOCK]=held[VK_CAPITAL]=held[VK_SCROLL]=true;
     held['W']=true; registered.activate("Bindings.Forward"); registered.update(true); registered.modal_key('P');
     assert(registered.modal().capturing && value("Bindings.Forward")=="W");
     held['W']=false; registered.update(true); registered.modal_key('S');
