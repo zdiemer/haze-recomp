@@ -18,6 +18,8 @@ assert combined==pointer_patch(modified)
 assert combined.count('haze_menu_page_loaded(ctx,haze_page);')==2
 assert combined.count('haze_menu_pointer_after(input);')==1
 assert combined.count('haze_menu_context(static_cast<uint32_t>(ctx->gpr[3]));')==1
+assert combined.count('haze_original_0031B9C0(ctx);\n    DRAIN_TRAMPOLINE(ctx);')==1
+assert combined.count('haze_audio_guest_tick(ctx);')==1
 for changed in (modified,source.replace(ENTRY,ENTRY+'\n        ctx->gpr[4]=0;',1),source+'\n'+ENTRY):
     try: patch(changed)
     except ValueError: pass

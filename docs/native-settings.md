@@ -303,3 +303,37 @@ opening Sound Setup after loading a campaign checkpoint failed the default
 profile restoration check and retained the retail page. The corrected build
 still needs that same native check. A diagnostic run of the old build exited
 normally with its copied profile unchanged, before reaching the pause page.
+
+## Pause Audio profile initialization
+
+Native campaign probes found pause widget values `100/100/100`, while the
+existing profile loader restored `65/70/70`. Deferring the snapshot to later
+frames did not resolve that mismatch. The native page therefore initializes
+widgets from the active profile through the audited `00100828` loader before
+capturing its baseline. It checks the loaded values against the profile, probes
+defaults, and verifies both widget restoration and unchanged profile values.
+Opening the page does not apply a mix or save a profile.
+
+The pause GUI clears the manager's temporary current-context slot between
+calls, as the existing pointer and Quit bridges also document. Queued Audio
+edits wait while that slot is absent. A post-dispatch hook in the audited
+`0031B9C0` wrapper processes them while the context is installed; the existing
+outer frame hook remains available. Guest calls preserve CPU state and the
+trampoline, and the default-profile restoration equality check remains intact.
+
+Regression coverage includes initial widgets that differ from the profile,
+initialization and restoration failures, unchanged profile/mix on opening,
+and a queued Apply waiting while the temporary context is absent. The full
+settings suite and native build pass (`audio-profile-init-tests.log` and
+`audio-profile-init-build.log`).
+
+Native run `pause-audio-profile-init-1` loaded the copied campaign checkpoint,
+paused, and opened PC Audio with Music 65, effects/dialogue 70, and subtitles Off.
+Music 60 saved successfully. A subsequent Music 55 request encountered a locked
+final profile replacement: the save failed, settings rolled back, saved profile
+and metadata hashes stayed unchanged, and the transaction staging was removed.
+The process exited normally with code 0. Its executable SHA256 was
+`ef5dfedc8002b419ff76b21fe04c0a13bef3d0eb5072e01ba205a6096a6f045d`.
+This used diagnostic pad input and posted menu keys on a nonvisible desktop;
+the visible input desktop remained Default. It does not prove visible focus,
+physical input, listening, or the combined build's full acceptance.
