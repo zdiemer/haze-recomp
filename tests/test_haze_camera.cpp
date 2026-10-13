@@ -10,6 +10,7 @@ std::unordered_map<uint64_t,uint32_t> memory;
 void (*installed)(ppu_context*);
 double dx,dy;
 bool capture=true, inversion=false;
+bool gameplay=true;
 unsigned original_calls,consumptions;
 float observed_yaw,observed_pitch;
 constexpr uint32_t motor=0x1000,actor=0x2000,controls=0x3000;
@@ -24,6 +25,7 @@ bool haze_input_take_mouse(double& x,double& y,double& speed,bool& invert) {
     x=dx; y=dy; dx=dy=0; speed=.1; invert=inversion; ++consumptions;
     return capture;
 }
+bool haze_menu_gameplay_allowed() { return gameplay; }
 void func_0024D3A0(ppu_context*) {
     ++original_calls;
     observed_yaw=read_float(motor+0xb0); observed_pitch=read_float(motor+0xac);
@@ -56,6 +58,9 @@ int main() {
     memory[controls]=0xdd9f78; memory[motor+0xa0]=0; installed(&ctx);
     assert(observed_yaw==0 && dx==0); // Inactive player discards pending counts.
     memory[motor+0xa0]=1; installed(&ctx); assert(observed_yaw==0);
-    assert(original_calls==99);
+    gameplay=false; dx=900; installed(&ctx);
+    assert(observed_yaw==0 && dx==0); // Menus discard motion even if captured.
+    gameplay=true; installed(&ctx); assert(observed_yaw==0);
+    assert(original_calls==101);
     puts("Native camera: same-frame rotation, no deadzone/cap/drift, distance invariance, limits and gating passed.");
 }
