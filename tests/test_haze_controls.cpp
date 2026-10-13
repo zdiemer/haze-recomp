@@ -21,6 +21,7 @@ void haze_input_reload() { ++reloads; }
 unsigned haze_input_menu_button(int) { return 0; }
 HazeInputFamily haze_input_family() { return HazeInputFamily::Keyboard; }
 HazeControllerInfo haze_gamepad_info() { return {"Fixture controller",true,true}; }
+bool haze_gamepad_bindings_overlap(const std::string&,bool,const std::string&,bool) { return false; }
 void haze_gamepad_capture_begin(bool) { gamepad_capture={HazeBindingCapturePhase::Release,{},"Release"}; }
 void haze_gamepad_capture_cancel() { gamepad_capture={HazeBindingCapturePhase::Cancelled,{},"Cancelled"}; }
 HazeBindingCapture haze_gamepad_capture() { return gamepad_capture; }

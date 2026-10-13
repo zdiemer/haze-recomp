@@ -22,6 +22,8 @@ struct Device {
     std::vector<Sint16> previous_axes;
     std::vector<bool> previous_buttons;
     std::vector<Uint8> previous_hats;
+    std::vector<SDL_GamepadBinding> mapping;
+    bool menu_aliases=false,standard_aliases=false;
 };
 std::vector<Device> devices;
 SDL_JoystickID selected=0;
@@ -83,6 +85,71 @@ Source source(std::string value) {
     if (axis!=SDL_GAMEPAD_AXIS_INVALID) { Source out(axis_source+axis); out.sign=sign; return out; }
     fprintf(stderr,"[input] Unknown controller binding '%s'; disabled\n",value.c_str());
     return -1;
+}
+struct PhysicalSource { HazeRawSource::Kind kind; int index,mask=0; double low=0,high=0; };
+std::vector<PhysicalSource> physical_sources(const Device* device,const Source& s,bool full_axis) {
+    std::vector<PhysicalSource> result;
+    if (s.raw.kind!=HazeRawSource::None) {
+        const auto& r=s.raw;
+        result.push_back({r.kind,r.index,r.mask,
+            full_axis || r.sign<0 ? -32768. : 1.,full_axis || r.sign>=0 ? 32767. : -1.});
+        return result;
+    }
+    if (!device || !device->pad || s.named<0) return result;
+    for (const auto& b:device->mapping) {
+        const bool axis=b.output_type==SDL_GAMEPAD_BINDTYPE_AXIS;
+        if (axis ? s.named!=axis_source+b.output.axis.axis :
+            b.output_type!=SDL_GAMEPAD_BINDTYPE_BUTTON || s.named!=b.output.button) continue;
+        double first=0,last=1;
+        if (axis && !full_axis) {
+            const double start=b.output.axis.axis_min,end=b.output.axis.axis_max;
+            const double low=s.sign<0 ? -32768. : 1.,high=s.sign<0 ? -1. : 32767.;
+            if (start==end) { if (start<low || start>high) continue; }
+            else {
+                const double a=(low-start)/(end-start),z=(high-start)/(end-start);
+                first=std::max(0.,std::min(a,z)); last=std::min(1.,std::max(a,z));
+                if (first>last) continue;
+            }
+        }
+        if (b.input_type==SDL_GAMEPAD_BINDTYPE_AXIS) {
+            const double start=b.input.axis.axis_min,end=b.input.axis.axis_max;
+            // SDL turns an axis into a button at the midpoint of its mapped
+            // range. Axis outputs instead interpolate through the output range.
+            if (!axis) first=.5;
+            const double a=start+(end-start)*first,z=start+(end-start)*last;
+            result.push_back({HazeRawSource::Axis,b.input.axis.axis,0,std::min(a,z),std::max(a,z)});
+        } else if (!axis || full_axis || b.output.axis.axis_max*s.sign>0) {
+            if (b.input_type==SDL_GAMEPAD_BINDTYPE_BUTTON)
+                result.push_back({HazeRawSource::Button,b.input.button});
+            else if (b.input_type==SDL_GAMEPAD_BINDTYPE_HAT)
+                result.push_back({HazeRawSource::Hat,b.input.hat.hat,b.input.hat.hat_mask});
+        }
+    }
+    return result;
+}
+bool overlaps(const Device* device,const Source& a,bool a_axis,const Source& b,bool b_axis) {
+    if (a.named>=0 && a.named==b.named &&
+        (a.named<axis_source || a_axis || b_axis || a.sign==b.sign)) return true;
+    for (const auto& x:physical_sources(device,a,a_axis))
+        for (const auto& y:physical_sources(device,b,b_axis)) {
+            if (x.kind!=y.kind || x.index!=y.index) continue;
+            if (x.kind==HazeRawSource::Button ||
+                (x.kind==HazeRawSource::Hat && (x.mask&y.mask)) ||
+                (x.kind==HazeRawSource::Axis && std::max(x.low,y.low)<=std::min(x.high,y.high))) return true;
+        }
+    return false;
+}
+void refresh_mapping(Device& device) {
+    device.mapping.clear();
+    if (device.pad) {
+        int count=0; auto mapped=SDL_GetGamepadBindings(device.pad,&count);
+        if (mapped) { for (int i=0;i<count;++i) device.mapping.push_back(*mapped[i]); SDL_free(mapped); }
+    }
+    device.menu_aliases=device.standard_aliases=false;
+    for (int i=0;i<3;++i) for (int j=0;j<i;++j) {
+        if (overlaps(&device,bindings[i].source,false,bindings[j].source,false)) device.menu_aliases=true;
+        if (overlaps(&device,Source(i),false,Source(j),false)) device.standard_aliases=true;
+    }
 }
 HazeInputFamily family(SDL_Gamepad* pad) {
     if (forced_family>=0) return static_cast<HazeInputFamily>(forced_family);
@@ -229,6 +296,7 @@ void haze_gamepad_configure(const char* path) {
         if (SDL_AddGamepadMappingsFromFile(file.string().c_str())<0)
             fprintf(stderr,"[input] Cannot load mapping file %s: %s\n",file.string().c_str(),SDL_GetError());
     }
+    for (auto& device:devices) refresh_mapping(device);
 }
 bool haze_gamepad_initialize(const char* config) {
     if (initialized) return true;
@@ -263,11 +331,13 @@ HazeGamepadState haze_gamepad_update() {
             auto found=std::find_if(devices.begin(),devices.end(),[&](const Device& d) { return d.id==ids[i]; });
             if (found!=devices.end()) {
                 if (!found->pad && SDL_IsGamepad(ids[i])) found->pad=SDL_OpenGamepad(ids[i]);
+                refresh_mapping(*found);
                 continue;
             }
             if (auto* joystick=SDL_OpenJoystick(ids[i])) {
                 auto* pad=SDL_IsGamepad(ids[i]) ? SDL_OpenGamepad(ids[i]) : nullptr;
                 devices.push_back({ids[i],pad,joystick});
+                refresh_mapping(devices.back());
                 // Keep connection-time rest values stable across captures.
                 // SDL's initial-state report can initialize lazily on a device's
                 // first axis event, which may be the motion being rebound.
@@ -307,29 +377,28 @@ HazeGamepadState haze_gamepad_update() {
         // Unbinding gameplay inputs must not strand the player in Settings.
         // Recovery applies only to absent menu bindings and only to the UI.
         auto unbound=[](const Source& s) { return s.named<0 && s.raw.kind==HazeRawSource::None; };
-        auto same=[](const Source& a,const Source& b) { return a.named==b.named && a.sign==b.sign &&
-            a.raw.kind==b.raw.kind && a.raw.index==b.raw.index && a.raw.sign==b.raw.sign && a.raw.mask==b.raw.mask; };
-        bool recovery=false;
+        bool recovery=d.menu_aliases;
         for (int i=0;i<3;++i) {
             const auto& s=bindings[i].source;
             if (unbound(s) || s.named>=axis_source || s.raw.kind==HazeRawSource::Axis) recovery=true;
-            for (int j=0;j<i;++j) if (same(s,bindings[j].source)) recovery=true;
         }
         if (recovery) {
-            out.menu_recovery_raw=d.pad==nullptr;
+            const bool mapped=d.pad && !d.standard_aliases;
+            out.menu_recovery_raw=!mapped;
             out.menu_recovery=CELL_PAD_CTRL_CROSS|CELL_PAD_CTRL_CIRCLE|CELL_PAD_CTRL_SQUARE;
             out.menu_input.buttons=0;
             const unsigned masks[]={CELL_PAD_CTRL_CROSS,CELL_PAD_CTRL_CIRCLE,CELL_PAD_CTRL_SQUARE};
-            for (int i=0;i<3;++i) if (d.pad ? SDL_GetGamepadButton(d.pad,static_cast<SDL_GamepadButton>(i)) :
+            for (int i=0;i<3;++i) if (mapped ? SDL_GetGamepadButton(d.pad,static_cast<SDL_GamepadButton>(i)) :
                 i<SDL_GetNumJoystickButtons(d.joystick) && SDL_GetJoystickButton(d.joystick,i)) out.menu_input.buttons|=masks[i];
             const unsigned directions[]={CELL_PAD_CTRL_UP,CELL_PAD_CTRL_RIGHT,CELL_PAD_CTRL_DOWN,CELL_PAD_CTRL_LEFT};
             const SDL_GamepadButton pad_directions[]={SDL_GAMEPAD_BUTTON_DPAD_UP,SDL_GAMEPAD_BUTTON_DPAD_RIGHT,SDL_GAMEPAD_BUTTON_DPAD_DOWN,SDL_GAMEPAD_BUTTON_DPAD_LEFT};
-            for (int i=0;i<4;++i) if (d.pad ? SDL_GetGamepadButton(d.pad,pad_directions[i]) :
+            for (int i=0;i<4;++i) if (mapped ? SDL_GetGamepadButton(d.pad,pad_directions[i]) :
                 SDL_GetNumJoystickHats(d.joystick)>0 && (SDL_GetJoystickHat(d.joystick,0)&(1<<i))) out.menu_input.buttons|=directions[i];
         }
         if (recovery || unbound(stick_sources[0]) || unbound(stick_sources[1])) {
-            const int x=d.pad ? SDL_GetGamepadAxis(d.pad,SDL_GAMEPAD_AXIS_LEFTX) : SDL_GetNumJoystickAxes(d.joystick)>0 ? SDL_GetJoystickAxis(d.joystick,0) : 0;
-            const int y=d.pad ? SDL_GetGamepadAxis(d.pad,SDL_GAMEPAD_AXIS_LEFTY) : SDL_GetNumJoystickAxes(d.joystick)>1 ? SDL_GetJoystickAxis(d.joystick,1) : 0;
+            const bool mapped=d.pad && !out.menu_recovery_raw;
+            const int x=mapped ? SDL_GetGamepadAxis(d.pad,SDL_GAMEPAD_AXIS_LEFTX) : SDL_GetNumJoystickAxes(d.joystick)>0 ? SDL_GetJoystickAxis(d.joystick,0) : 0;
+            const int y=mapped ? SDL_GetGamepadAxis(d.pad,SDL_GAMEPAD_AXIS_LEFTY) : SDL_GetNumJoystickAxes(d.joystick)>1 ? SDL_GetJoystickAxis(d.joystick,1) : 0;
             if (recovery || unbound(stick_sources[0])) out.menu_input.lx=x<-16384 ? 0 : x>16384 ? 255 : 128;
             if (recovery || unbound(stick_sources[1])) out.menu_input.ly=y<-16384 ? 0 : y>16384 ? 255 : 128;
         }
@@ -343,6 +412,13 @@ HazeControllerInfo haze_gamepad_info() {
         return {name ? name : "Controller",true,d.pad!=nullptr,family(d.pad)};
     }
     return {"No controller connected",false,false};
+}
+bool haze_gamepad_bindings_overlap(const std::string& first,bool first_axis,const std::string& second,bool second_axis) {
+    for (auto& device:devices) if (device.id==selected) {
+        refresh_mapping(device);
+        return overlaps(&device,source(first),first_axis,source(second),second_axis);
+    }
+    return overlaps(nullptr,source(first),first_axis,source(second),second_axis);
 }
 void haze_gamepad_capture_begin(bool axis_only) {
     capture_axis=axis_only; capture_device=selected; capture_centers.clear();
