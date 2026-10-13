@@ -54,3 +54,31 @@ be advertised as results for this smaller checkpoint.
 Consistent frame pacing, loading behavior, broad campaign coverage and 144 FPS
 remain open. The pre-existing local jump-table discovery defect is tracked
 separately in [#78](https://github.com/zdiemer/haze-recomp/issues/78).
+
+## Checkpoint validation
+
+The ordinary build and complete regression suite pass with SDK `793e89f`:
+
+```powershell
+./scripts/build.ps1 -SharedRoot E:/Code/haze-recomp -SDL3Root E:/Code/haze-recomp/build/haze/_deps/sdl3-src -SpuFma -Test -Jobs 2 -OutputDirectory local/candidates/native-performance-checkpoint
+```
+
+This includes all 41 extracted native-read checks and the complete WARP texture
+suite, including actual bytes read back after cache clear and LRU eviction.
+The new fixture's initial and final command-list states were corrected before
+the passing run. The suite also covers the existing input/menu, graphics,
+shader, audio, save and SPU runtime regressions. Only two compiler jobs were used.
+
+The tested executable SHA-256 is
+`880054082DCB0EDF93EFA5E9D82B2C5B132B0FF908B209DDAFC85282ABAB88E4`.
+Muted run `20261013-175215-782` resumes a private copy of the real jungle save;
+a pre-close screenshot verifies rendered gameplay after the Nectar prompt.
+It uses 2560x1440, 8192 shadows, VSync off and no cap. Normal window close exits
+with code 0 and no timeout. Its stderr has no fatal, unresolved indirect-call
+or DXGI-device error match. All seven baseline save hashes remain unchanged.
+This is a checkpoint smoke test, not an FPS comparison or full-campaign proof;
+the runner's broad `gameplay_validated` flag remains false.
+
+Private evidence: `local/native-performance-checkpoint-{build,retest}.log`,
+`local/native-performance-checkpoint-smoke-*`, and the run directory above.
+No evidence files containing game data or binaries are committed.
