@@ -264,6 +264,20 @@ including repeated host polls before guest consumption, focus/sample gating,
 single Back delivery, and cancellation after the guest leaves its menus.
 The full native FMA build also passes (`local/back-consumption-build.log`), with
 executable SHA256 `bfe9be237fb77e2f3bfc2106313b2c07474b38cadd5a29b3a3072f755ee5dd2e`.
-Native Back/reopen verification remains pending: a visible test was deferred
-because a separate user-owned game was running. The earlier reproduced failure
-must not be considered resolved by these tests alone.
+Two subsequent native Controls runs on current main reproduced the failure.
+The diagnostic run established that the GUI consumer was reached with owner
+focus, but the release gate never completed. A simultaneous Windows key-state
+query reported only Num Lock (VK 0x90) held. The previous scan of every Windows
+key therefore blocked Back on an unrelated key. Both owned runs exited 0 and
+retained the original profile hash.
+
+The release gate now checks configured game bindings/movement and the menu's
+navigation/mouse keys. A regression keeps Num Lock, Caps Lock and Scroll Lock
+held while verifying that genuine closing inputs still delay Back and that
+releasing those inputs delivers it once. The full settings regression suite
+and incremental Settings/Controls/Quit builds pass (`back-lock-key-tests.log`
+and `back-lock-key-build.log`). Temporary trace instrumentation was removed.
+
+Native Back/reopen verification of this final lock-key fix remains pending:
+the next visible launch was deferred because another user-owned game started.
+The earlier reproduced failure must not be considered resolved in-game yet.
