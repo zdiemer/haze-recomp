@@ -1,4 +1,12 @@
 $ErrorActionPreference = 'Stop'
+function Receive-HazeDownload([string]$Url, [string]$Sha256, [string]$Destination) {
+    if ($Sha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid download checksum.' }
+    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile "$Destination.partial" -TimeoutSec 600
+    if ((Get-FileHash -LiteralPath "$Destination.partial" -Algorithm SHA256).Hash -ne $Sha256) {
+        throw 'Setup download checksum mismatch. The downloaded file was not used.'
+    }
+    Move-Item -LiteralPath "$Destination.partial" -Destination $Destination
+}
 function Read-HazeSfo([string]$Path) {
     $data = [IO.File]::ReadAllBytes($Path)
     if ($data.Length -lt 20 -or [BitConverter]::ToUInt32($data, 0) -ne 0x46535000) {

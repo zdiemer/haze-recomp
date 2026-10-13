@@ -1,0 +1,134 @@
+name: Windows release
+on:
+  push:
+    tags: ['v*']
+    branches: [codex/release-pipeline] # Full hosted validation before merging.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (including the earlier v0.1.0 tag)
+        required: true
+        type: string
+      publish:
+        description: Publish verified binaries; otherwise retain an Actions artifact
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'zdiemer/haze-recomp'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    outputs:
+      tag: ${{ steps.target.outputs.tag }}
+      commit: ${{ steps.target.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          path: project
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release target and input lock
+        id: target
+        shell: powershell
+        env:
+          REQUESTED_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = git -C project rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve release commit' }
+          $version = (Get-Content project/VERSION).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid VERSION' }
+          if ($env:REQUESTED_TAG) {
+            if ($env:REQUESTED_TAG -ne "v$version") { throw 'Tag must match VERSION' }
+            $tagCommit = git -C project rev-parse "refs/tags/$env:REQUESTED_TAG^{}"
+            if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $commit) { throw 'Not the tagged commit' }
+            git -C project merge-base --is-ancestor $commit origin/main
+            if ($LASTEXITCODE -ne 0) { throw 'Release commit must be on main' }
+          }
+          $lock = Get-Content tooling/config/build-inputs.json -Raw | ConvertFrom-Json
+          if ($lock.commit -notmatch '^[a-f0-9]{40}$') { throw 'Input snapshot must be pinned' }
+          "inputs_repository=$($lock.repository)" >> $env:GITHUB_OUTPUT
+          "inputs_commit=$($lock.commit)" >> $env:GITHUB_OUTPUT
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "tag=$env:REQUESTED_TAG" >> $env:GITHUB_OUTPUT
+      - name: Fetch private generated sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ${{ steps.target.outputs.inputs_repository }}
+          ref: ${{ steps.target.outputs.inputs_commit }}
+          ssh-key: ${{ secrets.BUILD_INPUTS_SSH_KEY }}
+          persist-credentials: false
+          path: private-inputs
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.10'
+      - name: Prepare FFmpeg build tools
+        id: msys
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: MSYS
+          install: make diffutils
+          cache: false
+      - name: Install pinned LLVM
+        shell: powershell
+        run: |
+          choco install llvm --version=20.1.8 --allow-downgrade --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'LLVM installation failed' }
+          "HAZE_LLVM_ROOT=C:\Program Files\LLVM" >> $env:GITHUB_ENV
+      - name: Build game, dependencies, notices and installers
+        shell: powershell
+        env:
+          MSYS_ROOT: ${{ steps.msys.outputs.msys2-location }}
+        run: |
+          ./tooling/scripts/build-release.ps1 -ProjectRoot project -Inputs private-inputs `
+            -Python (Get-Command python).Source -MsysRoot $env:MSYS_ROOT
+      - name: Verify release artifacts
+        shell: powershell
+        run: |
+          python tooling/scripts/release_artifacts.py verify --directory project/build/release/artifacts
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact verification failed' }
+      - name: Retain only public deliverables
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-release
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          path: project/build/release/artifacts/*
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || inputs.publish == true
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.10'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: windows-release
+          path: release-assets
+      - name: Publish complete binary release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          ./scripts/publish-release.ps1 -Directory release-assets -Tag $env:RELEASE_TAG `
+            -Commit $env:RELEASE_COMMIT -Notes docs/release-notes.txt -Python (Get-Command python).Source

@@ -1,0 +1,14 @@
+{
+  "ffmpeg": {
+    "url": "https://codeload.github.com/FFmpeg/FFmpeg/zip/29e619e767cde9045a75c29bc9a8278ae7b3a98b",
+    "sha256": "69ea98adb1b80aabdbecefdb0b545ff19ebcd7c6fc0cea9dd550b02f5b642a21"
+  },
+  "7zip": {
+    "url": "https://codeload.github.com/ip7z/7zip/zip/9128b80e3a471108678e2b3ec3c985861c8d7b0f",
+    "sha256": "1f130853758531194b11db884a4b15e9d0eaa2be4ef12c4a2d85adb89763030b"
+  },
+  "sdl": {
+    "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.zip",
+    "sha256": "9cd42377704398796071b8597cd7e21da254a43bad98c4199739647adc13fa6f"
+  }
+}

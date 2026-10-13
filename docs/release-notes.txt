@@ -1,0 +1,18 @@
+Haze Recomp for Windows x64
+
+Install the MSI, open Haze Recomp from Start, choose "Set up from disc ISO",
+and select your disc-decrypted Haze USA ISO (BLUS30094, 01.02 / 01.00).
+Setup downloads the pinned official RPCS3 helper and offers the verified Sony
+firmware download. No separately installed RPCS3 or development tools are needed.
+The full portable ZIP provides the same setup flow. Internet is required at setup.
+
+The installer is unsigned. Windows may display a publisher/SmartScreen warning.
+This is experimental software: full campaign completion, online co-op, every GPU
+and consistent performance are not validated. Keep backups of your saves.
+Setup validates the supported executable and firmware decoder hashes.
+
+SHA256SUMS.txt covers the MSI, ZIP, dependency sources and release.json.
+release.json records the code and private generated-input commit used by the build.
+HazeRecomp-dependency-sources.zip contains matching source and build information
+for redistributed open-source dependencies. License texts are inside both packages.
+Game assets, firmware files and private generated source files are not included.

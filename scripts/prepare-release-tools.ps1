@@ -10,7 +10,7 @@ if (Test-Path -LiteralPath $output) { throw 'Use a new output directory; never b
 if (-not (Test-Path -LiteralPath $SevenZip -PathType Leaf)) { throw 'The release builder requires 7-Zip to unpack the pinned tools.' }
 $lock = Get-Content "$root/config/release-tools.json" -Raw | ConvertFrom-Json
 New-Item -ItemType Directory -Path $output | Out-Null
-foreach ($name in @('rpcs3', '7zip')) {
+foreach ($name in @('7zip')) {
     $item = $lock.$name
     $archive = Join-Path $output ([IO.Path]::GetFileName($item.url))
     Invoke-WebRequest -UseBasicParsing -Uri $item.url -OutFile $archive
@@ -21,7 +21,7 @@ foreach ($name in @('rpcs3', '7zip')) {
 }
 Copy-Item -LiteralPath "$root/config/release-tools.json" -Destination "$output/release-tools.json"
 $files = @{}
-foreach ($name in @('rpcs3', '7zip')) {
+foreach ($name in @('7zip')) {
     $files[$name] = @{}
     $base = (Resolve-Path -LiteralPath "$output/$name").Path
     foreach ($file in Get-ChildItem -LiteralPath $base -Recurse -File) {

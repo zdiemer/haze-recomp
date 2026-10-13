@@ -1,39 +1,41 @@
 param(
     [Parameter(Mandatory)][string]$Directory,
-    [Parameter(Mandatory)][string]$Evidence,
+    [Parameter(Mandatory)][string]$Tag,
+    [Parameter(Mandatory)][string]$Commit,
     [Parameter(Mandatory)][string]$Notes,
-    [Parameter(Mandatory)][string]$SourceArchive
+    [string]$Python = 'python',
+    [string]$Repository = 'zdiemer/haze-recomp'
 )
 $ErrorActionPreference = 'Stop'
+if ($Tag -notmatch '^v\d+\.\d+\.\d+$' -or $Commit -notmatch '^[a-f0-9]{40}$') { throw 'Invalid release target.' }
 $root = Split-Path $PSScriptRoot -Parent
-$version = (Get-Content "$root/VERSION").Trim()
-$tag = "v$version"
-$commit = & git -C $root rev-parse HEAD
-if ($LASTEXITCODE -ne 0) { throw 'Cannot read release commit.' }
-$approval = Get-Content -LiteralPath $Evidence -Raw | ConvertFrom-Json
-if ($approval.version -ne $version -or $approval.commit -ne $commit) { throw 'Evidence must match this release commit and version.' }
-foreach ($gate in @('asset_free_ci','local_game_tests','fresh_setup_sony_download','offline_setup','clean_windows_startup','gameplay_save_load','upgrade_repair_uninstall','redistribution_review')) {
-    if ($approval.gates.$gate.passed -ne $true -or -not $approval.gates.$gate.evidence) { throw "Incomplete release gate: $gate" }
+& $Python "$root/scripts/release_artifacts.py" verify --directory $Directory --tag $Tag --commit $Commit
+if ($LASTEXITCODE -ne 0) { throw 'Release artifact verification failed.' }
+$ref = & gh api "repos/$Repository/git/ref/tags/$Tag" | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Release tag does not exist.' }
+$object = $ref.object
+while ($object.type -eq 'tag') {
+    $annotated = & gh api "repos/$Repository/git/tags/$($object.sha)" | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve annotated release tag.' }
+    $object = $annotated.object
 }
-if (-not (Get-Content -LiteralPath $Notes -Raw).Trim()) { throw 'Release notes are required.' }
-$files = @()
-foreach ($extension in @('msi','zip')) {
-    $name = "HazeRecomp-$version-windows-x64.$extension"
-    $file = Join-Path $Directory $name
-    $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($approval.artifacts.$name -ne $hash) { throw "Acceptance evidence does not match $name" }
-    $files += $file
+if ($object.type -ne 'commit' -or $object.sha -ne $Commit) { throw 'Remote tag does not match the binaries.' }
+$releases = & gh api "repos/$Repository/releases?per_page=100" --paginate | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Cannot check existing releases.' }
+$existing = @($releases | Where-Object tag_name -EQ $Tag)
+if ($existing.Count) { throw 'Release already exists. Inspect it before retrying; published files are never overwritten.' }
+$files = @(Get-ChildItem -LiteralPath $Directory -File | ForEach-Object FullName)
+# Keep partial uploads private. Only reveal the release after every asset exists.
+& gh release create $Tag @files --repo $Repository --verify-tag --draft --title "Haze Recomp $Tag" --notes-file $Notes
+if ($LASTEXITCODE -ne 0) { throw 'Draft upload failed. Inspect the draft before retrying.' }
+$uploaded = & gh release view $Tag --repo $Repository --json assets | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify uploaded release assets.' }
+$expected = @($files | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
+$actual = @($uploaded.assets | ForEach-Object name | Sort-Object)
+if (Compare-Object $expected $actual) { throw 'Uploaded asset set differs; release remains a draft.' }
+foreach ($file in $files) {
+    $asset = $uploaded.assets | Where-Object name -EQ ([IO.Path]::GetFileName($file))
+    if ($asset.size -ne (Get-Item -LiteralPath $file).Length) { throw 'Uploaded size differs; release remains a draft.' }
 }
-$sourceHash = (Get-FileHash -LiteralPath $SourceArchive).Hash.ToLowerInvariant()
-if ($approval.source_sha256 -ne $sourceHash) { throw 'Source archive does not match redistribution review.' }
-$files += $SourceArchive
-$checksums = Join-Path $Directory 'SHA256SUMS.txt'
-$lines = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant(),[IO.Path]::GetFileName($file) }
-[IO.File]::WriteAllText($checksums, ($lines -join "`n")+"`n", [Text.Encoding]::ASCII)
-$remote = & git -C $root ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}"
-if ($LASTEXITCODE -ne 0) { throw 'Cannot verify remote tag.' }
-$peeled = $remote | Where-Object { $_ -match '\^\{\}$' }
-$target = if ($peeled) { ($peeled -split '\s+')[0] } elseif ($remote) { ($remote -split '\s+')[0] } else { '' }
-if ($target -ne $commit) { throw "Push $tag pointing at $commit before creating a release." }
-& gh release create $tag @files $checksums $Evidence --repo zdiemer/haze-recomp --verify-tag --draft --prerelease --title "Haze Recomp $tag (experimental)" --notes-file $Notes
-if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed; inspect GitHub before retrying.' }
+& gh release edit $Tag --repo $Repository --draft=false
+if ($LASTEXITCODE -ne 0) { throw 'Publishing failed; inspect the existing draft.' }

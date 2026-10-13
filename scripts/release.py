@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+TOOLING = ROOT
 WIX = "http://wixtoolset.org/schemas/v4/wxs"
 UPGRADE_CODE = "6F7B431E-615D-4B96-AD16-8CE45E3B467B"
 
@@ -104,7 +105,7 @@ def stage_package(runtime: Path, tools: Path, licenses: Path, notes: Path, outpu
         raise ValueError("Runtime inputs changed since dependency staging")
     lock = json.loads((ROOT / "config/release-tools.json").read_text())
     recorded = json.loads((tools / "files.json").read_text())
-    for name in lock:
+    for name in ('7zip',):
         if inventory(tools / name) != recorded[name]:
             raise ValueError(f"Bundled {name} is modified; prepare a pristine tools directory")
     if json.loads((tools / "release-tools.json").read_text()) != lock:
@@ -121,27 +122,15 @@ def stage_package(runtime: Path, tools: Path, licenses: Path, notes: Path, outpu
     stage.mkdir(parents=True)
     for name in runtime_files:
         shutil.copy2(runtime / name, stage / name)
-    for name in ("rpcs3", "7zip"):
-        shutil.copytree(tools / name, stage / "tools" / name)
-    # Setup runs RPCS3 from a private copy with its own working directory. CRT
-    # DLLs beside the launcher would not satisfy that helper's loader search.
-    for name in runtime_files:
-        if name.lower().endswith('.dll') and name.lower().startswith(('msvcp', 'vcruntime', 'concrt', 'vccorlib')):
-            shutil.copy2(runtime / name, stage / "tools/rpcs3" / name)
-    for name in ("release-tools.json", "firmware.json"):
-        shutil.copy2(ROOT / "config" / name, stage / "tools" / name)
     shutil.copytree(licenses, stage / "licenses")
     shutil.copytree(ROOT / "assets/input-prompts", stage / "assets/input-prompts")
     (stage / "config").mkdir()
     for name in ("input.ini", "graphics.ini"):
         shutil.copy2(ROOT / "config" / name, stage / "config" / name)
-    (stage / "scripts").mkdir()
-    for name in ("setup.ps1", "setup-common.ps1"):
-        shutil.copy2(ROOT / "scripts" / name, stage / "scripts" / name)
-    for name in ("Setup.cmd", "LICENSE", "VERSION"):
+    for name in ("LICENSE", "VERSION"):
         shutil.copy2(ROOT / name, stage / name)
     shutil.copy2(notes, stage / "RELEASE-NOTES.txt")
-    shutil.copy2(ROOT / "docs/installing.md", stage / "INSTALLING.txt")
+    shutil.copy2(TOOLING / "docs/installing.md", stage / "INSTALLING.txt")
     (stage / "manifest.json").write_text(json.dumps({"version": release_version, "commit": commit,
         "files": inventory(stage)}, indent=2) + "\n", encoding="utf-8")
     return stage
@@ -166,8 +155,10 @@ def archive(stage: Path, output: Path) -> None:
 
 
 def main() -> None:
+    global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify", type=Path)
+    parser.add_argument("--project-root", type=Path, default=ROOT)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--tools", type=Path)
     parser.add_argument("--licenses", type=Path)
@@ -175,6 +166,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--wix", type=Path)
     args = parser.parse_args()
+    ROOT = args.project_root.resolve()
     if args.verify:
         verify(args.verify)
         return
@@ -187,7 +179,9 @@ def main() -> None:
     subprocess.run([str(args.wix.resolve()), "build", "-arch", "x64", str(wxs), "-o", str(msi)], check=True)
     zipped = args.output / f"{stage.name}.zip"
     archive(stage, zipped)
-    (args.output / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in (msi, zipped)), encoding="ascii")
+    from installer import build_installer
+    setup = build_installer(msi, args.tools, args.output, version())
+    (args.output / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in (setup, msi, zipped)), encoding="ascii")
     print(f"Release candidate: {args.output}. Complete the acceptance gates before publishing.")
 
 
