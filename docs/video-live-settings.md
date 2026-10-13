@@ -78,10 +78,24 @@ fullscreen preference with exclusive reacquisition deferred to the renderer's
 existing focus policy. Window placement restoration preserves hidden/maximized
 states and lets Windows recover placement when the original monitor is absent.
 
-This primitive does **not yet enable live display changes from Apply or F6**.
-The graphics-state transaction, countdown, Keep/Revert menu and deferred
-persistence still need integration in #58. Until then, their restart indicators
-remain accurate; callers must not leave a primitive transition unconfirmed.
+`haze_graphics_preview(window, configured, persist, error)` now wraps that
+primitive in a 15-second transaction. During preview, configured values and
+the file retain their previous contents; effective display values report the
+preview. Quality changes wait until Keep so reverting does not need to recreate
+old effects resources. `haze_graphics_confirm(revision, keep, error)` rejects
+stale confirmations, checks the deadline and current display, and prepares
+quality resources and saves only after Keep. A failed preparation or save
+restores the previous display; a failed restoration stays visible and retryable.
+
+The render loop's `haze_graphics_update` handles timeout, focus loss and minimize
+independently of menu visibility. Status snapshots include a preview revision,
+remaining seconds and restoration failure. Graphics status reads remain safe
+from synchronous window-message callbacks; an operation guard rejects reentrant
+writes without holding the status mutex through Win32 or DXGI calls.
+
+The Keep/Revert menu still needs integration in #58. Existing Apply and F6 use
+the original API and retain restart indicators until that integration lands.
+F6 is refused during a pending preview and never writes the file.
 
 The title compiles the pinned SDK renderer once through a small owning-translation-
 unit extension. CMake checks its normalized source hash so changed internals
@@ -120,3 +134,10 @@ native build passes; real GPU display transitions and timed UI acceptance remain
 unverified. Implementation follows Microsoft's [fullscreen transition](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-setfullscreenstate)
 and [swap-chain resize](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
 requirements.
+
+Settings-transaction tests inject the display boundary and clock while exercising
+real INI persistence. They cover the 15-second boundary, Keep exactly at expiry,
+focus loss, stale revisions, reentrant readers/writers, wrong-thread confirmation,
+launch overrides, quality-only application, locked/stale files, allocation
+failure, partial transition failure and failed-revert retry. The preview never
+writes the file; successful Keep is verified against the serialized values.

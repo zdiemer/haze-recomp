@@ -43,6 +43,7 @@ bool restore_window() {
 }
 }
 bool haze_display_pending() { return pending; }
+bool haze_display_can_keep() { return pending && preview_valid && GetCurrentThreadId()==previous.thread && IsWindow(previous.window); }
 bool haze_display_finish(bool keep,std::string& error) {
     error.clear();
     if (!pending) return true;
@@ -101,6 +102,7 @@ bool haze_display_begin(void* window,const char* mode,const char* monitor,const 
 }
 #else
 bool haze_display_pending() { return false; }
+bool haze_display_can_keep() { return false; }
 bool haze_display_begin(void*,const char*,const char*,const char*,std::string& error) { error="Display changes require the native Windows renderer."; return false; }
 bool haze_display_finish(bool,std::string&) { return true; }
 #endif

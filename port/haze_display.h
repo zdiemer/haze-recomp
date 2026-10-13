@@ -17,3 +17,4 @@ bool haze_display_configure(void* window,const char* mode,const char* monitor,co
 bool haze_display_begin(void* window,const char* mode,const char* monitor,const char* size,std::string& error);
 bool haze_display_finish(bool keep,std::string& error);
 bool haze_display_pending();
+bool haze_display_can_keep();
