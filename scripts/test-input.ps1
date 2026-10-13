@@ -24,9 +24,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Controller tests failed.' }
 $clang=Join-Path $vs 'VC/Tools/Llvm/x64/bin/clang-cl.exe'
 New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
 $ErrorActionPreference='Continue' # Windows PowerShell promotes native stderr warnings.
-foreach ($test in @('test_haze_input','test_haze_camera')) {
+foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title')) {
     & $clang /nologo /W4 /O1 /std:c++20 "/I$root/tests/fixtures/camera" "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/Fe$root/local/$test.exe" "/Fo$root/local/$test.obj" "$root/tests/$test.cpp" /link user32.lib gdi32.lib
     if ($LASTEXITCODE -ne 0) { throw "$test compilation failed" }
     & "$root/local/$test.exe"
     if ($LASTEXITCODE -ne 0) { throw "$test failed" }
 }
+& "$assets/.venv/Scripts/python.exe" "$root/tests/test_title_prompt_patch.py" "$assets/generated/ppu/ppu_recomp_002.cpp"
+if ($LASTEXITCODE -ne 0) { throw 'Title prompt patch guard failed.' }

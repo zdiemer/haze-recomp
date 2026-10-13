@@ -201,7 +201,7 @@ int main() {
     GetFullPathNameA("local/test-input-reload.ini",MAX_PATH,config_path,nullptr);
     {
         std::ofstream file(config_path);
-        file<<"[Bindings]\nCross=J\nForward=I\n[Mouse]\nSensitivity=0.25\nInvertY=1\n";
+        file<<"[Bindings]\nCross=J\nStart=K\nForward=I\n[Mouse]\nSensitivity=0.25\nInvertY=1\n";
     }
     config_time={}; next_config_check=0; ticks+=10;
     haze_input_update();
@@ -209,6 +209,9 @@ int main() {
     p=sample(); assert((p.buttons&CELL_PAD_CTRL_CROSS) && p.ly==1);
     keys['J']=keys['I']=false;
     assert(sensitivity==.25 && invert_y);
+    keys[VK_RETURN]=true; assert(!(sample().buttons&CELL_PAD_CTRL_START));
+    keys[VK_RETURN]=false; keys['K']=true; assert(sample().buttons&CELL_PAD_CTRL_START);
+    keys['K']=false; assert(!(sample().buttons&CELL_PAD_CTRL_START));
     // A rebound manual skip cannot activate Start, including across focus loss.
     startup_skip.configure(false,true);
     assert(startup_skip.playback(123,uri,true,ticks));

@@ -62,6 +62,27 @@ int main(int argc,char** argv) {
     }
     assert(pad_icon(HazeInputFamily::Switch,"south")=="switch_button_b");
     assert(pad_icon(HazeInputFamily::PlayStation,"start")=="playstation3_button_start");
+    // The title's {E} token addresses Start (slot 8), and must refresh while
+    // the title remains open, without changing any other keyboard binding.
+    refresh(HazeInputFamily::Keyboard);
+    const auto enter_start=published;
+    write_setting("Bindings","Start","J"); refresh(HazeInputFamily::Keyboard);
+    assert(published && !empty_slot(*published,8) && *published!=*enter_start);
+    for (int y=0;y<int(height);y++) for (int x=0;x<int(width);x++) {
+        if (x>=128 && x<192 && y>=60 && y<120) continue;
+        for (int c=0;c<4;c++) assert((*published)[(y*width+x)*4+c]==(*enter_start)[(y*width+x)*4+c]);
+    }
+    write_setting("Bindings","Start","None"); refresh(HazeInputFamily::Keyboard);
+    assert(published && empty_slot(*published,8));
+    write_setting("Bindings","Start","Enter"); refresh(HazeInputFamily::Keyboard);
+    assert(published && *published==*enter_start);
+    for (auto family:{HazeInputFamily::Xbox,HazeInputFamily::PlayStation,HazeInputFamily::Switch}) {
+        write_setting("ControllerBindings","Start","start"); refresh(family);
+        const auto original_start=published;
+        write_setting("ControllerBindings","Start","north"); refresh(family);
+        assert(published && !empty_slot(*published,8) && *published!=*original_start);
+    }
+    write_setting("ControllerBindings","Start","start");
     write_setting("Bindings","Cross","None"); refresh(HazeInputFamily::Keyboard);
     assert(published && empty_slot(*published,12));
     write_setting("Bindings","Cross","Mouse2"); refresh(HazeInputFamily::Keyboard);
