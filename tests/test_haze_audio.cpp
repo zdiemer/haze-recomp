@@ -46,7 +46,7 @@ void func_00100300(ppu_context* ctx) {
     for (int i=0;i<3;++i) vm_write32(test_profile+fields[i],vm_read32(test_widgets[i]+0x154));
     vm_write32(test_profile+0xd0,(vm_read32(test_profile+0xd0)&~0x20u)|(vm_read32(test_subtitles+0x170) ? 0x20u : 0));
     func_004D2F90(ctx);
-    if (!launch_failure) haze_save_begin(0xe71ac8);
+    if (!launch_failure) { haze_save_begin(0xe71ac8); assert(haze_save_is_settings()); }
 }
 static HazeMenuProvider registered;
 void haze_menu_register(HazeMenuPage page,HazeMenuProvider value) { assert(page==HazeMenuPage::Audio); registered=std::move(value); }
@@ -88,7 +88,7 @@ int main() {
     assert(registered.poll(message)==HazeMenuApply::Pending);
     auto ticket=haze_save_status().ticket; haze_save_finished(ticket,0);
     // Another save starting before the next menu frame cannot erase our result.
-    auto other=haze_save_begin(0xe71ac8); haze_save_finished(other,0);
+    auto other=haze_save_begin(0xe71ac8); assert(!haze_save_is_settings()); haze_save_finished(other,0);
     haze_audio_guest_tick(&ctx); assert(registered.poll(message)==HazeMenuApply::Applied);
     registered.change("music","10"); registered.change("subtitles","0"); assert(registered.apply(message)==HazeMenuApply::Pending);
     haze_audio_guest_tick(&ctx); haze_save_finished(haze_save_status().ticket,(int32_t)0x8002b402);

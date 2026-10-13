@@ -206,7 +206,11 @@ void haze_audio_guest_tick(ppu_context* ctx) {
     if (vm_read32(0x137a390) || haze_save_status().busy) return;
     const auto before=haze_save_status().ticket;
     set_widgets(ctx,values);
-    call(ctx,func_00100300,player);
+    {
+        haze_save_settings_arm(true);
+        struct SaveScope { ~SaveScope() { haze_save_settings_arm(false); } } save_scope;
+        call(ctx,func_00100300,player);
+    }
     const auto after=haze_save_status();
     if (after.ticket==before) { finish(ctx,false,"The game could not start saving. Previous audio settings restored."); return; }
     saving_ticket=after.ticket;
