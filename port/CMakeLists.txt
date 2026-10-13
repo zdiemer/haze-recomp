@@ -201,7 +201,10 @@ if(WIN32)
     file(READ "${HAZE_RSX_SOURCE}" HAZE_RSX_TEXT)
     string(REPLACE "\r\n" "\n" HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     string(SHA256 HAZE_RSX_HASH "${HAZE_RSX_TEXT}")
-    if(NOT HAZE_RSX_HASH STREQUAL "33d13ccf0e7f304b29070754dfebe1164f2dd339427137d41bc5cf46cf1f22d6")
+    # Packed depth adds renderer-owned resources and descriptor slots. The live
+    # settings transaction still fences before sampler/postprocess changes;
+    # display rollback only replaces scanout buffers. Neither owns depth copies.
+    if(NOT HAZE_RSX_HASH STREQUAL "3707dcdf73fc0f8dfefd57273845c1c7073a6a50d891d28c3f2140676d8e4721")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
