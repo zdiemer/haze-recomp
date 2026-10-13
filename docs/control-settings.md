@@ -85,6 +85,18 @@ the PC page or capture dialog owns it.
 
 ## Validation and remaining acceptance
 
+Keyboard capture waits for supported keys and mouse buttons to be released;
+unsupported lock keys do not hold it in the release step. A regression keeps
+Num Lock, Caps Lock and Scroll Lock reported down while releasing a held W,
+then verifies that a new binding can be previewed and staged. The previous
+all-key scan failed this check.
+
+The same failure reproduced in the combined `bb85443` game: the focused pause
+Controls dialog remained at "Release held inputs" after a posted P key. A
+concurrent key-state query reported only Num Lock (`0x90`) held. The owned
+process exited normally without changing its copied profile. This observation
+is separate from verification of the corrected build.
+
 The native build and complete input test runner passed against SDK `8660186`.
 Tests exercise the actual settings writer, provider, Win32 procedure, SDL
 virtual controllers, host input mapper and Kenney PNG renderer. Coverage

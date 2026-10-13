@@ -101,7 +101,10 @@ void update(bool focused) {
     if (keyboard) {
         if (!keyboard_neutral) {
             bool held=false;
-            for (int key=1;key<256;++key) if (GetAsyncKeyState(key)&0x8000) held=true;
+            // Wait for inputs this dialog can capture. Unsupported lock keys
+            // can report held indefinitely and must not block rebinding.
+            for (int key=1;key<256;++key)
+                if (!haze_key_name(key).empty() && (GetAsyncKeyState(key)&0x8000)) held=true;
             if (!held) { keyboard_neutral=true; dialog.message="Press a key or mouse button to preview. Escape cancels."; }
         }
         return;
