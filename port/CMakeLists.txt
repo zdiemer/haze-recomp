@@ -188,6 +188,8 @@ if(WIN32)
     file(READ "${HAZE_AUDIO_SOURCE}" HAZE_AUDIO_TEXT)
     string(REPLACE "\r\n" "\n" HAZE_AUDIO_TEXT "${HAZE_AUDIO_TEXT}")
     string(SHA256 HAZE_AUDIO_HASH "${HAZE_AUDIO_TEXT}")
+    # SDK 3cd8e81 changes downmix routing and a per-port diagnostic counter.
+    # The mixer thread flag/handle, locks and shutdown path remain unchanged.
     if(NOT HAZE_AUDIO_HASH STREQUAL "b174688dc8ae62fa67f35888477b5543310cdfee33e6f613e9bb796b7b0c0504")
         message(FATAL_ERROR "Audio backend changed: audit native output shutdown before building")
     endif()
