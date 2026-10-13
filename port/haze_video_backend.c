@@ -68,6 +68,28 @@ void haze_video_finish(int commit) {
     rsx_postprocess_destroy(&haze_pending.created);
     memset(&haze_pending,0,sizeof haze_pending);
 }
+int haze_video_stop(unsigned timeout_ms) {
+    if (GetWindowThreadProcessId(g_ld_display_hwnd,NULL)!=GetCurrentThreadId()) return 0;
+    haze_video_finish(0);
+    int ok=1;
+    /* No more draws follow this call. A queue fence covers submitted work;
+     * the unfinished command list is abandoned at process exit. Do not call
+     * ld_flush here: its normal rendering wait is deliberately unbounded. */
+    if (g.ready && g.queue && g.fence) {
+        const u64 value=++g.fence_value;
+        if (FAILED(g.queue->lpVtbl->Signal(g.queue,g.fence,value))) ok=0;
+        else if (g.fence->lpVtbl->GetCompletedValue(g.fence)<value) {
+            if (FAILED(g.fence->lpVtbl->SetEventOnCompletion(g.fence,value,g.fence_event)) ||
+                WaitForSingleObject(g.fence_event,timeout_ms)!=WAIT_OBJECT_0) ok=0;
+        }
+    }
+    if (g.swap && FAILED(g.swap->lpVtbl->SetFullscreenState(g.swap,FALSE,NULL))) ok=0;
+    g_ld_fullscreen_requested=0;
+    rsx_frame_limiter_destroy(&g_ld_frame_limiter);
+    g.ready=0;
+    fprintf(stderr,"[quit] Renderer stopped; final queue/display status=%s.\n",ok ? "complete" : "incomplete");
+    return ok;
+}
 
 int haze_video_display_get(int* requested,int* active,char* error,unsigned capacity) {
     BOOL fullscreen=FALSE;

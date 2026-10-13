@@ -12,6 +12,9 @@ typedef struct {
  * or fails. A failed prepare has nothing to finish. */
 int haze_video_prepare(const haze_video_live* settings, char* error, unsigned capacity);
 void haze_video_finish(int commit);
+/* Stop presenting, bound the final queue wait and relinquish exclusive mode.
+ * GPU allocations remain owned until process teardown, including on timeout. */
+int haze_video_stop(unsigned timeout_ms);
 /* Window/render thread only, outside a quality transaction. Requested tracks
  * focus-loss retry policy; active is the actual DXGI exclusive state. */
 int haze_video_display_get(int* requested,int* active,char* error,unsigned capacity);
