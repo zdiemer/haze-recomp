@@ -41,7 +41,8 @@ foreach ($key in $settings.Keys) {
 try {
     Write-Host 'Opening logos skip automatically by default (input.ini [Startup]). Movie playback is unavailable.'
     Write-Host 'Current Cross/confirm binding skips manually. Default controls: Enter starts; Space confirms; arrows navigate.'
-    Write-Host 'WASD moves. Click/F1 captures the mouse; Escape pauses and releases it.'
+    Write-Host 'WASD moves. Gameplay captures the mouse automatically; F1 releases it.'
+    Write-Host 'Escape pauses. Menus use the pointer: left click selects, right click goes back.'
     Write-Host "Session logs: $session"
     # This is the interactive game launcher; the separate run.ps1 is bounded.
     $game = Start-Process -FilePath $exe -ArgumentList ('"{0}"' -f $elf) -WorkingDirectory $session -WindowStyle Normal -PassThru -RedirectStandardOutput (Join-Path $session 'game.stdout.log') -RedirectStandardError (Join-Path $session 'game.stderr.log')
