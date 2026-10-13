@@ -8,6 +8,7 @@ struct HazeSaveStatus {
     uint64_t ticket=0;
     bool busy=false,completed=false;
     int32_t result=0;
+    bool settings=false;
 };
 HazeSaveStatus haze_save_status();
 HazeSaveStatus haze_save_status(uint64_t ticket);
@@ -21,3 +22,6 @@ void haze_save_unseal();
 uint64_t haze_save_current();
 void haze_save_launched(uint64_t ticket,int32_t result);
 void haze_save_finished(uint64_t ticket,int32_t result);
+// Arm only around the native Audio Apply call on its owning guest thread.
+void haze_save_settings_arm(bool armed);
+extern "C" int haze_save_is_settings(void);

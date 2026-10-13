@@ -142,6 +142,17 @@ endif()
 # The HLE NID table
 # ---------------------------------------------------------------------------
 if(WIN32)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HAZE_SAVEDATA_SOURCE "${PS3RECOMP_DIR}/libs/system/cellSaveData.c")
+    set(HAZE_SAVEDATA_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_savedata.py")
+    set(HAZE_SAVEDATA_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/haze_savedata/cellSaveData.c")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HAZE_SAVEDATA_SOURCE}" "${HAZE_SAVEDATA_PATCH}")
+    execute_process(COMMAND "${Python3_EXECUTABLE}" "${HAZE_SAVEDATA_PATCH}"
+        "${HAZE_SAVEDATA_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}" "${HAZE_SAVEDATA_OUTPUT}"
+        RESULT_VARIABLE HAZE_SAVEDATA_RESULT)
+    if(NOT HAZE_SAVEDATA_RESULT EQUAL 0)
+        message(FATAL_ERROR "Could not prepare the audited Audio save transaction")
+    endif()
     # The extension accesses private descriptor/resource state. Require an
     # explicit audit when the pinned renderer changes, including on LF checkouts.
     set(HAZE_RSX_SOURCE "${PS3RECOMP_DIR}/libs/video/rsx_live_draw.c")
@@ -153,6 +164,8 @@ if(WIN32)
     endif()
     get_target_property(HAZE_SDK_SOURCES ps3recomp_runtime SOURCES)
     list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_RSX_SOURCE}")
+    list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_SAVEDATA_SOURCE}")
+    list(APPEND HAZE_SDK_SOURCES "${HAZE_SAVEDATA_OUTPUT}")
     list(APPEND HAZE_SDK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c")
     set(HAZE_AUDIO_SOURCE "${PS3RECOMP_DIR}/libs/audio/cellAudio.c")
     file(READ "${HAZE_AUDIO_SOURCE}" HAZE_AUDIO_TEXT)
@@ -303,6 +316,9 @@ add_executable(${PROJECT_NAME}
     ${RECOMP_SOURCES}
     ${SPU_SOURCES}
 )
+if(WIN32)
+    target_sources(${PROJECT_NAME} PRIVATE haze_profile_transaction.cpp)
+endif()
 set_property(SOURCE haze_spu_idle.c APPEND PROPERTY
     INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
 
