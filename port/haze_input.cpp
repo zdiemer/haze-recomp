@@ -34,7 +34,7 @@ bool gamepad_initialized=false;
 std::mutex settings_mutex;
 HazeGamepadState controller_state;
 bool controller_sample_focused=false;
-std::atomic<int> menu_back_reports{0};
+std::atomic<bool> menu_return_pending{false};
 std::atomic<HazeInputFamily> last_family{HazeInputFamily::Keyboard};
 char config_path[MAX_PATH]{};
 ULONGLONG next_input_update=0, next_config_check=0;
@@ -348,17 +348,9 @@ int poll(u32 port, CellPadHostInput* input, void*) {
         *input=CellPadHostInput{0,128,128,128,128,0,0};
         clear_keys(); mouse_motion.clear(); InterlockedExchange(&wheel,0); return 1;
     }
-    if (menu_back_reports.load()) {
+    if (menu_return_pending.load()) {
         *input=CellPadHostInput{0,128,128,128,128,0,0}; clear_keys(); mouse_motion.clear();
-        if (!focused) return 1;
-        if (menu_back_reports==3) {
-            bool held=controller_state.input.buttons || controller_state.input.lx!=128 || controller_state.input.ly!=128 ||
-                controller_state.input.rx!=128 || controller_state.input.ry!=128;
-            for (int key=1;key<256;++key) if (GetAsyncKeyState(key)&0x8000) held=true;
-            if (!held) menu_back_reports=2;
-            return 1;
-        }
-        input->buttons=CELL_PAD_CTRL_CIRCLE; --menu_back_reports; return 1;
+        return 1; // Host polls cannot acknowledge delivery to the guest GUI.
     }
     auto finish=[&] {
         // A stale neutral controller snapshot from focus loss must not release
@@ -502,7 +494,7 @@ bool haze_input_take_mouse(double& x, double& y, double& speed, bool& invert) {
     std::lock_guard<std::mutex> lock(settings_mutex);
     mouse_motion.take(x,y);
     speed=sensitivity; invert=invert_y;
-    return enabled && captured && !haze_menu_active() && !menu_back_reports &&
+    return enabled && captured && !haze_menu_active() && !menu_return_pending &&
         !menu_active && !pause_requested && GetForegroundWindow()==window.load();
 }
 void haze_input_update() {
@@ -571,6 +563,7 @@ void haze_input_update() {
 }
 void haze_input_menu_state(bool active) {
     if (active) pause_requested=false;
+    else menu_return_pending=false; // The guest already left its menu stack.
     if (menu_active.exchange(active)==active) return;
     mouse_motion.clear();
     InterlockedExchange(&wheel,0);
@@ -584,7 +577,23 @@ void haze_input_menu_state(bool active) {
     menu_pointer.scroll=0;
 }
 HazeMenuPointer haze_input_take_pointer() {
-    std::lock_guard lock(pointer_mutex);
+    std::scoped_lock lock(settings_mutex,pointer_mutex);
+    if (haze_menu_active() || menu_return_pending) {
+        // This consumer runs after the guest's normal GUI input update, unlike
+        // host pad polls (which GetInfo can consume before GetData is used).
+        // Discard queued pointer clicks as well as pad input while the PC page
+        // owns focus, then deliver exactly one Back through the GUI's packet.
+        menu_pointer={}; menu_delivered={}; menu_right_held=false;
+        if (haze_menu_active() || GetForegroundWindow()!=window.load() ||
+            (gamepad_initialized && !controller_sample_focused)) return {};
+        bool held=controller_state.input.buttons || controller_state.input.lx!=128 || controller_state.input.ly!=128 ||
+            controller_state.input.rx!=128 || controller_state.input.ry!=128;
+        for (int key=1;key<256;++key) if (GetAsyncKeyState(key)&0x8000) held=true;
+        if (held) return {};
+        menu_return_pending=false;
+        HazeMenuPointer back; back.active=true; back.back=true;
+        return back;
+    }
     auto result=menu_pointer;
     result.active=(result.active || menu_pointer.scroll!=0) && enabled && menu_active &&
         GetForegroundWindow()==window.load();
@@ -614,7 +623,7 @@ HazeMenuPointer haze_input_take_pointer() {
     return result;
 }
 HazeInputFamily haze_input_family() { return last_family.load(); }
-void haze_input_menu_return() { menu_back_reports=3; }
+void haze_input_menu_return() { menu_return_pending=true; }
 unsigned haze_input_menu_button(int virtual_key) {
     std::lock_guard<std::mutex> lock(settings_mutex);
     last_family=HazeInputFamily::Keyboard;

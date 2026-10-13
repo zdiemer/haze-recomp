@@ -104,12 +104,23 @@ int main() {
     native_menu_active=true; keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=true;
     auto blocked=sample(); assert(!blocked.buttons && blocked.lx==128 && blocked.ly==128);
     native_menu_active=false; haze_input_menu_return();
-    assert(!sample().buttons && menu_back_reports==3);
+    assert(!sample().buttons && menu_return_pending);
+    assert(!haze_input_take_pointer().back); // Closing keys must be released.
     keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=false;
-    assert(!sample().buttons && menu_back_reports==2);
-    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
-    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
-    assert(!sample().buttons && !menu_back_reports);
+    for (int i=0;i<100;++i) assert(!sample().buttons);
+    assert(menu_return_pending); // Arbitrary GetInfo/backend polls cannot lose Back.
+    focused=false;
+    assert(!haze_input_take_pointer().back && menu_return_pending);
+    focused=true; gamepad_initialized=true; controller_sample_focused=false;
+    assert(!haze_input_take_pointer().back && menu_return_pending);
+    controller_sample_focused=true;
+    auto back=haze_input_take_pointer();
+    assert(back.active && back.back && !back.pressed && !back.held && !back.released);
+    assert(!menu_return_pending && !haze_input_take_pointer().back);
+    gamepad_initialized=false;
+    haze_input_menu_return(); haze_input_menu_state(false);
+    assert(!menu_return_pending && !haze_input_take_pointer().back);
+    assert(!sample().buttons);
     keys['W']=keys['D']=keys[VK_SPACE]=true;
     auto p=sample(); assert(p.lx==255 && p.ly==1 && (p.buttons&CELL_PAD_CTRL_CROSS));
     keys['S']=keys['A']=true;

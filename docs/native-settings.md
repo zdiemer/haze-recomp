@@ -244,3 +244,23 @@ power loss. Broader save recovery belongs to #48.
   route, but do not replace running that route.
 
 Quit to Desktop (#57) and Add to Steam (#47) remain separate features/PRs.
+# Current-main integration and Back delivery (2026-10-13)
+
+The settings branch now includes main efc7db9 and its SDK revision
+3cd8e810caade4907e583bd38febfc684dd472cf. The retail mouse-menu bridge lives in
+`haze_menu_pointer.cpp`; the native settings provider remains in `haze_menu.cpp`.
+Their guarded generated-code patches are chained, and composition is tested.
+
+Back no longer expires after two host pad polls. Pending returns suppress host
+input until the guest GUI consumes its input packet. That consumer waits for
+focus, a current controller sample, and released keys/buttons before delivering
+one Back event through the existing retail pointer bridge. Queued pointer events
+are discarded while the native page owns input. Leaving the guest menu stack
+cancels a pending return.
+
+The complete input/menu/audio regression suite passes against the current SDK,
+including repeated host polls before guest consumption, focus/sample gating,
+single Back delivery, and cancellation after the guest leaves its menus.
+Native Back/reopen verification remains pending; the earlier reproduced failure
+must not be considered resolved by these tests alone.
+
