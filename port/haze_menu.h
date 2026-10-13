@@ -48,6 +48,7 @@ void haze_menu_register(HazeMenuPage page,HazeMenuProvider provider);
 bool haze_menu_request(HazeMenuPage page);
 bool haze_menu_active();
 bool haze_menu_has_focus();
+void* haze_menu_owner();
 void haze_menu_update(void* owner,const HazeGamepadState& pad);
 void haze_menu_shutdown();
 void haze_menu_retail();
