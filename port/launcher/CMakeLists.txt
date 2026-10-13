@@ -25,6 +25,8 @@ get_filename_component(HAZE_LAUNCH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSO
 if(NOT DEFINED HAZE_SHARED_ROOT)
     set(HAZE_SHARED_ROOT "${HAZE_LAUNCH_ROOT}")
 endif()
+include(../windows-icon.cmake)
+haze_local_icon(HazeLauncher)
 if(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
     set(HAZE_LAUNCH_OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 else()

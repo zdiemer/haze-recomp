@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include "haze_window_icon.h"
 #include "cellPad.h"
 #include "cellSail.h"
 #include "haze_startup.h"
@@ -124,6 +125,7 @@ void capture(bool on) {
 }
 LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+    case WM_DPICHANGED: haze_window_icon(hwnd,LOWORD(wp)); break;
     case WM_SETTEXT:
         if (lp && std::strstr((const char*)lp," | FPS:")) {
             char caption[512];
@@ -318,6 +320,7 @@ void haze_input_initialize() {
 void haze_input_attach(void* hwnd) {
     if (!hwnd) return;
     window=(HWND)hwnd;
+    haze_window_icon(window);
     if (controller_enabled) gamepad_initialized=haze_gamepad_initialize(config_path);
     RAWINPUTDEVICE device{0x01,0x02,0,window};
     if (!RegisterRawInputDevices(&device,1,sizeof(device))) {

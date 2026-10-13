@@ -1,4 +1,5 @@
 #include "launch.h"
+#include "../haze_window_icon.h"
 #include <commctrl.h>
 #include <shobjidl.h>
 #include <shellapi.h>
@@ -9,11 +10,16 @@
 
 namespace {
 using namespace haze_launch;
+HRESULT CALLBACK dialog_icon(HWND window,UINT notification,WPARAM,LPARAM,LONG_PTR) {
+    if (notification==TDN_CREATED) haze_window_icon(window);
+    return S_OK;
+}
 int failure(const std::wstring& message,const std::wstring& repair,const fs::path& logs) {
     std::vector<TASKDIALOG_BUTTON> buttons;
     if (!repair.empty()) buttons.push_back({100,L"Choose location..."});
     if (!logs.empty()) buttons.push_back({101,L"Open session logs"});
     TASKDIALOGCONFIG dialog{}; dialog.cbSize=sizeof(dialog); dialog.dwFlags=TDF_SIZE_TO_CONTENT|TDF_ALLOW_DIALOG_CANCELLATION;
+    dialog.pfCallback=dialog_icon;
     dialog.pszWindowTitle=L"Haze Recomp"; dialog.pszMainInstruction=L"Haze needs your attention";
     const auto content=message+(logs.empty() ? L"" : L"\n\nSession: "+logs.wstring());
     dialog.pszContent=content.c_str(); dialog.pszMainIcon=TD_ERROR_ICON;
