@@ -18,6 +18,7 @@ unsigned previous=0;
 bool neutral=false;
 uint64_t generation=0;
 HazeQuitPhase phase=HazeQuitPhase::Idle;
+bool (*main_action)()=nullptr;
 RECT choice_rect(int index) { const int span=(width-unit*3)/2; return {unit+index*(span+unit),height-unit*3,unit+index*(span+unit)+span,height-unit}; }
 void fill(HDC dc,RECT rect,COLORREF color) { auto brush=CreateSolidBrush(color); FillRect(dc,&rect,brush); DeleteObject(brush); }
 void text(HDC dc,const std::string& value,RECT rect,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE) {
@@ -39,6 +40,7 @@ void choose() {
 bool open() {
     const auto offer=haze_quit_offer();
     if (!owner || !focused() || haze_menu_active() || !offer.available) return false;
+    if (!offer.gameplay && main_action) return main_action();
     if (!haze_quit_request(offer.gameplay,offer.generation)) return false;
     selected=0; neutral=false; previous=0;
     return true;
@@ -49,7 +51,7 @@ void paint(HWND window,HDC dc) {
     auto old=SelectObject(dc,font);
     if (window==button) {
         haze_prompts_draw_icon(dc,7,unit/2,unit/4,unit);
-        text(dc,"Quit to Desktop",{unit*2,0,bounds.right-unit/2,bounds.bottom});
+        text(dc,main_action && !haze_quit_offer().gameplay ? "Quit to Desktop / Add to Steam" : "Quit to Desktop",{unit*2,0,bounds.right-unit/2,bounds.bottom});
     } else {
         const auto snapshot=haze_quit_state();
         text(dc,"QUIT TO DESKTOP",{unit,unit/2,width-unit,unit*2});
@@ -97,6 +99,7 @@ LRESULT CALLBACK procedure(HWND window,UINT msg,WPARAM wp,LPARAM lp) {
 }
 }
 bool haze_quit_menu_active() { return haze_quit_state().phase!=HazeQuitPhase::Idle; }
+void haze_quit_menu_main_action(bool (*open)()) { quit_ui::main_action=open; }
 bool haze_quit_menu_has_focus() { return quit_ui::dialog && GetForegroundWindow()==quit_ui::dialog; }
 bool haze_quit_menu_key(int key,bool repeated) {
     const auto offer=haze_quit_offer();
@@ -123,7 +126,8 @@ void haze_quit_menu_update(void* window,const HazeGamepadState& pad) {
         font=CreateFontA(-unit,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
     }
     width=std::min(int(bounds.right)-unit*2,unit*30); height=unit*11;
-    SetWindowPos(button,HWND_TOP,origin.x+bounds.right-unit*13,origin.y+bounds.bottom-unit*3,unit*12,unit*2,SWP_NOACTIVATE);
+    const int action_width=unit*(main_action && !offer.gameplay ? 23 : 12);
+    SetWindowPos(button,HWND_TOP,origin.x+bounds.right-action_width-unit,origin.y+bounds.bottom-unit*3,action_width,unit*2,SWP_NOACTIVATE);
     SetWindowPos(dialog,HWND_TOP,origin.x+(bounds.right-width)/2,origin.y+(bounds.bottom-height)/2,width,height,SWP_NOACTIVATE);
     const bool is_focused=focused() && !IsIconic(owner);
     if (snapshot.generation!=generation || snapshot.phase!=phase) {
@@ -157,7 +161,7 @@ void haze_quit_menu_update(void* window,const HazeGamepadState& pad) {
 void haze_quit_menu_shutdown() {
     using namespace quit_ui;
     if (dialog) DestroyWindow(dialog); if (button) DestroyWindow(button);
-    dialog=button=owner=nullptr; if (font) DeleteObject(font); font=nullptr;
+    dialog=button=owner=nullptr; main_action=nullptr; if (font) DeleteObject(font); font=nullptr;
 }
 #else
 void haze_quit_menu_update(void*,const HazeGamepadState&) {}
@@ -165,4 +169,5 @@ bool haze_quit_menu_key(int,bool) { return false; }
 bool haze_quit_menu_active() { return false; }
 bool haze_quit_menu_has_focus() { return false; }
 void haze_quit_menu_shutdown() {}
+void haze_quit_menu_main_action(bool (*)()) {}
 #endif

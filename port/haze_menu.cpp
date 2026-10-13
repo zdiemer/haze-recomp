@@ -13,8 +13,8 @@
 #include <windowsx.h>
 
 namespace {
-std::array<HazeMenuProvider,4> providers;
-std::array<std::atomic<bool>,4> available{};
+std::array<HazeMenuProvider,5> providers;
+std::array<std::atomic<bool>,5> available{};
 std::atomic<int> requested{0};
 std::atomic<bool> active{false};
 HWND panel,owner_window;
@@ -36,6 +36,7 @@ HazeInputFamily menu_family=HazeInputFamily::Xbox;
 void clear_notice() { notice.clear(); notice_error=false; }
 HazeMenuProvider& provider() { return providers[size_t(current)]; }
 HazeMenuModal modal() { return provider().modal ? provider().modal() : HazeMenuModal{}; }
+int cancel_choice(const HazeMenuModal& dialog) { return dialog.cancel_choice>=0 && dialog.cancel_choice<int(dialog.choices.size()) ? dialog.cancel_choice : int(dialog.choices.size())-1; }
 RECT modal_rect() { return {unit*3,height/4,width-unit*3,height*3/4}; }
 RECT modal_action_rect(int index,int count) {
     const auto box=modal_rect(); const int span=(box.right-box.left-unit*2)/std::max(1,count);
@@ -58,6 +59,7 @@ void refresh() {
 }
 void close_page(bool back=true) {
     if (!panel || applying) return;
+    back=back && provider().guest_back;
     if (GetCapture()==panel) ReleaseCapture();
     ShowWindow(panel,SW_HIDE); dropdown=dragging=-1;
     current=HazeMenuPage::None; active=false;
@@ -88,7 +90,7 @@ void activate() {
             pad_neutral=false; previous_buttons=0;
             break;
         }
-        case 1: provider().defaults(); notice="Defaults selected. Apply to save."; notice_error=false; break;
+        case 1: provider().defaults(); notice=provider().defaults_notice; notice_error=false; break;
         case 2: close_page(); return;
     }
     refresh();
@@ -128,7 +130,12 @@ void slider_at(int x) {
 }
 void fill(HDC dc,RECT rect,COLORREF color) { HBRUSH brush=CreateSolidBrush(color); FillRect(dc,&rect,brush); DeleteObject(brush); }
 void label(HDC dc,const std::string& text,RECT rect,COLORREF color,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE) {
-    SetTextColor(dc,color); DrawTextA(dc,text.c_str(),-1,&rect,flags|DT_NOPREFIX|DT_END_ELLIPSIS);
+    SetTextColor(dc,color);
+    const int count=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,text.data(),int(text.size()),nullptr,0);
+    if (count>0) {
+        std::wstring wide(size_t(count),L'\0'); MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,text.data(),int(text.size()),wide.data(),count);
+        DrawTextW(dc,wide.c_str(),count,&rect,flags|DT_NOPREFIX|DT_END_ELLIPSIS);
+    } else DrawTextA(dc,text.c_str(),-1,&rect,flags|DT_NOPREFIX|DT_END_ELLIPSIS);
 }
 RECT dropdown_rect() {
     const int count=std::min(8,int(items[dropdown].choices.size())-drop_scroll);
@@ -168,16 +175,16 @@ void paint(HDC target) {
         label(dc,value,right,RGB(242,221,0),DT_RIGHT|DT_VCENTER|DT_SINGLELINE);
     }
     const std::string hint=!notice.empty() ? notice : selected<int(items.size()) ? items[selected].hint :
-        "Apply saves changes. Back discards edits made since the last Apply.";
+        provider().footer_hint;
     label(dc,hint,{unit*2,height-unit*8,width-unit*2,height-unit*5-unit/3},
         notice_error ? RGB(255,155,135) : RGB(195,200,190),DT_LEFT|DT_WORDBREAK);
-    const char* actions[]={"Apply","Defaults","Back"};
+    const auto& actions=provider().actions;
     for (int i=0;i<3;++i) {
         RECT rect=action_rect(i); fill(dc,rect,!applying && selected==int(items.size())+i ? RGB(105,100,20) : RGB(45,48,43));
         label(dc,applying && i==0 ? "Saving..." : actions[i],rect,applying ? RGB(140,145,130) : RGB(245,240,210),DT_CENTER|DT_VCENTER|DT_SINGLELINE);
     }
     const int footer=height-unit*3,icon_size=unit*2;
-    const int slots[]={12,14,13}; const char* hints[]={"Select","Back","Defaults"};
+    const int slots[]={12,14,13}; const std::string hints[]={"Select","Back",actions[1]};
     const unsigned masks[]={CELL_PAD_CTRL_CROSS,CELL_PAD_CTRL_CIRCLE,CELL_PAD_CTRL_SQUARE};
     const char* recovery[]={"south","east","west"};
     for (int i=0;i<3;++i) {
@@ -223,7 +230,7 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
         if (dialog.revision && !dialog.choices.empty()) {
             if (message==WM_KEYDOWN || message==WM_SYSKEYDOWN) {
                 if (lp&(1ll<<30)) return 0;
-                if (wp==VK_ESCAPE) modal_choose(int(dialog.choices.size())-1);
+                if (wp==VK_ESCAPE) modal_choose(cancel_choice(dialog));
                 else if (dialog.capturing) { if (provider().modal_key) provider().modal_key(int(wp)); }
                 else {
                     const unsigned button=haze_input_menu_button(int(wp));
@@ -232,7 +239,7 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
                     else if (wp==VK_RIGHT || wp==VK_DOWN || wp==VK_TAB || (button&(CELL_PAD_CTRL_RIGHT|CELL_PAD_CTRL_DOWN)))
                         modal_selected=(modal_selected+1)%int(dialog.choices.size());
                     else if (wp==VK_RETURN || (button&CELL_PAD_CTRL_CROSS)) modal_choose(modal_selected);
-                    else if (button&CELL_PAD_CTRL_CIRCLE) modal_choose(int(dialog.choices.size())-1);
+                    else if (button&CELL_PAD_CTRL_CIRCLE) modal_choose(cancel_choice(dialog));
                 }
                 InvalidateRect(hwnd,nullptr,FALSE); return 0;
             }
@@ -246,7 +253,7 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
                     message==WM_RBUTTONDOWN ? VK_RBUTTON : message==WM_MBUTTONDOWN ? VK_MBUTTON : HIWORD(wp)==XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2);
                 return 0;
             }
-            if (message==WM_CLOSE) { modal_choose(int(dialog.choices.size())-1); return 0; }
+            if (message==WM_CLOSE) { modal_choose(cancel_choice(dialog)); return 0; }
             if (message==WM_MOUSEWHEEL || message==WM_MOUSEMOVE) return 0;
         }
     }
@@ -264,7 +271,7 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
         else if (wp==VK_LEFT || (button&CELL_PAD_CTRL_LEFT)) change(-1);
         else if (wp==VK_RIGHT || (button&CELL_PAD_CTRL_RIGHT)) change(1);
         else if ((wp==VK_RETURN || (button&CELL_PAD_CTRL_CROSS)) && !(lp&(1ll<<30))) activate();
-        else if ((button&CELL_PAD_CTRL_SQUARE) && !(lp&(1ll<<30))) { provider().defaults(); dropdown=-1; notice="Defaults selected. Apply to save."; notice_error=false; refresh(); }
+        else if ((button&CELL_PAD_CTRL_SQUARE) && !(lp&(1ll<<30))) { provider().defaults(); dropdown=-1; notice=provider().defaults_notice; notice_error=false; refresh(); }
         return 0;
     }
     case WM_MOUSEWHEEL:
@@ -384,14 +391,14 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
             if (presses&(CELL_PAD_CTRL_LEFT|CELL_PAD_CTRL_UP)) modal_selected=(modal_selected+int(dialog.choices.size())-1)%int(dialog.choices.size());
             if (presses&(CELL_PAD_CTRL_RIGHT|CELL_PAD_CTRL_DOWN)) modal_selected=(modal_selected+1)%int(dialog.choices.size());
             if (presses&CELL_PAD_CTRL_CROSS) modal_choose(modal_selected);
-            else if (presses&CELL_PAD_CTRL_CIRCLE) modal_choose(int(dialog.choices.size())-1);
+            else if (presses&CELL_PAD_CTRL_CIRCLE) modal_choose(cancel_choice(dialog));
         }
         InvalidateRect(panel,nullptr,FALSE); return;
     }
     if (presses&CELL_PAD_CTRL_CIRCLE) {
         if (dropdown>=0) { dropdown=-1; refresh(); } else close_page(); return;
     }
-    if (presses&CELL_PAD_CTRL_SQUARE) { provider().defaults(); dropdown=-1; notice="Defaults selected. Apply to save."; notice_error=false; refresh(); }
+    if (presses&CELL_PAD_CTRL_SQUARE) { provider().defaults(); dropdown=-1; notice=provider().defaults_notice; notice_error=false; refresh(); }
     if (presses&CELL_PAD_CTRL_UP) move(-1); if (presses&CELL_PAD_CTRL_DOWN) move(1);
     if (presses&CELL_PAD_CTRL_LEFT) change(-1); if (presses&CELL_PAD_CTRL_RIGHT) change(1);
     if (presses&CELL_PAD_CTRL_CROSS) activate();

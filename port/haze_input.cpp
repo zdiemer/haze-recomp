@@ -345,6 +345,7 @@ void haze_input_attach(void* hwnd) {
     haze_video_menu_register();
     haze_audio_menu_register();
     haze_controls_menu_register();
+    haze_steam_menu_register();
     if (controller_enabled) gamepad_initialized=haze_gamepad_initialize(config_path);
     RAWINPUTDEVICE device{0x01,0x02,0,window};
     if (!RegisterRawInputDevices(&device,1,sizeof(device))) {

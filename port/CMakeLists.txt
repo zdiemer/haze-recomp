@@ -375,7 +375,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 if(WIN32)
     include(controller-dependency.cmake)
     target_sources(${PROJECT_NAME} PRIVATE haze_gamepad.cpp haze_prompts.cpp haze_controls_settings.cpp haze_controls_menu.cpp)
-    target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3 windowscodecs ole32 comdlg32)
+    target_sources(${PROJECT_NAME} PRIVATE haze_steam_vdf.cpp haze_steam_win32.cpp haze_steam_art.cpp haze_steam_menu.cpp)
+    target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3 windowscodecs ole32 comdlg32 advapi32)
     if(TARGET SDL3::SDL3-shared)
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different

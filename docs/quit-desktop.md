@@ -1,8 +1,10 @@
 # Quit to Desktop: implementation status
 
 Work in progress for #57, based on the shared settings and input infrastructure
-in #67. A **Quit to Desktop** action appears at the lower right of the native
-main and pause menus. Click it, press the current Select binding (Tab by
+in #67. On the Steam integration branch, the main-menu footer is **Quit to
+Desktop / Add to Steam** and opens Desktop Options; its first row opens the
+normal Quit confirmation. The pause menu still has a direct **Quit to Desktop**
+action at the lower right. Click the footer, press the current Select binding (Tab by
 default), or press Tab as a keyboard fallback. The controller uses its mapped
 Select button, with the current Kenney glyph beside the action.
 

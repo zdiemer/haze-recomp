@@ -343,7 +343,14 @@ the current bindings. PNG edits and INI saves reload within half a second.
 `HAZE_INPUT_CONFIG` selects another configuration file. SDL supports hotplug and custom device mappings; controller
 buttons, axes, deadzones, trigger threshold and look inversion also live in the
 INI. See [controls implementation and verification](docs/controls.md).
-The main and pause menus offer **Quit to Desktop**. Click the action or use
+The main menu offers **Quit to Desktop / Add to Steam**. Click the footer or use
+the current Select binding (Tab by default) to open Desktop Options. Steam
+registration requires selecting a local account and confirming the launcher;
+exit Steam first. The executable launcher and its embedded icon are still
+dependencies tracked in #42 and #41. See [Steam integration](docs/steam-integration.md)
+for setup, local artwork, checks and remaining acceptance.
+
+The pause menu offers **Quit to Desktop** directly. Click the action or use
 Select (Tab by default); its confirmation defaults to Cancel. Quit waits for
 active saves/settings before stopping native output. Ordinary window-close
 requests use the same coordination once the guest frame loop is running.

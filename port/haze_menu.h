@@ -2,9 +2,10 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <array>
 #include "haze_gamepad.h"
 
-enum class HazeMenuPage { None, Video, Audio, Controls };
+enum class HazeMenuPage { None, Video, Audio, Controls, Desktop };
 enum class HazeMenuApply { Applied, Pending, Failed };
 struct HazeMenuChoice { std::string value,label; };
 struct HazeMenuRow {
@@ -21,6 +22,7 @@ struct HazeMenuModal {
     std::string title,message;
     std::vector<std::string> choices;
     bool capturing=false;
+    int cancel_choice=-1; // -1 keeps the existing convention: last choice cancels
 };
 struct HazeMenuProvider {
     std::string title;
@@ -35,6 +37,10 @@ struct HazeMenuProvider {
     std::function<void(bool)> update;
     std::function<HazeMenuModal()> modal;
     std::function<void(int)> modal_key,modal_choose;
+    std::array<std::string,3> actions={"Apply","Defaults","Back"};
+    std::string footer_hint="Apply saves changes. Back discards edits made since the last Apply.";
+    std::string defaults_notice="Defaults selected. Apply to save.";
+    bool guest_back=true;
 };
 // Register on the window thread before dispatching guest menu events.
 void haze_menu_register(HazeMenuPage page,HazeMenuProvider provider);
@@ -47,3 +53,4 @@ void haze_menu_shutdown();
 void haze_menu_retail();
 void haze_video_menu_register();
 void haze_controls_menu_register();
+void haze_steam_menu_register();
