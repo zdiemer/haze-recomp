@@ -114,7 +114,8 @@ int main() {
     assert(sample().lx==128);
     native_menu_active=true; keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=true;
     auto blocked=sample(); assert(!blocked.buttons && blocked.lx==128 && blocked.ly==128);
-    native_menu_active=false; haze_input_menu_return();
+    native_menu_active=false; keys[VK_NUMLOCK]=keys[VK_CAPITAL]=keys[VK_SCROLL]=true;
+    haze_input_menu_return();
     assert(!sample().buttons && menu_return_pending);
     assert(!haze_input_take_pointer().back); // Closing keys must be released.
     keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=false;
@@ -128,6 +129,9 @@ int main() {
     auto back=haze_input_take_pointer();
     assert(back.active && back.back && !back.pressed && !back.held && !back.released);
     assert(!menu_return_pending && !haze_input_take_pointer().back);
+    // Lock keys are unrelated to the close action and must not strand Back.
+    assert(keys[VK_NUMLOCK] && keys[VK_CAPITAL] && keys[VK_SCROLL]);
+    keys[VK_NUMLOCK]=keys[VK_CAPITAL]=keys[VK_SCROLL]=false;
     gamepad_initialized=false;
     haze_input_menu_return(); haze_input_menu_state(false);
     assert(!menu_return_pending && !haze_input_take_pointer().back);
