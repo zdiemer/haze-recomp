@@ -61,6 +61,8 @@ int main(int argc,char** argv) {
         for (int i=0;i<24;i++) assert(!empty_slot(*published,i));
     }
     assert(pad_icon(HazeInputFamily::Switch,"south")=="switch_button_b");
+    assert(pad_icon(HazeInputFamily::Xbox,"start")=="xbox_button_menu");
+    assert(pad_icon(HazeInputFamily::Xbox,"back")=="xbox_button_view");
     assert(pad_icon(HazeInputFamily::PlayStation,"start")=="playstation3_button_start");
     assert(pad_icon(HazeInputFamily::Xbox,"raw:garbage").empty());
     // Native binding previews use actual PNGs without changing gameplay glyphs.
