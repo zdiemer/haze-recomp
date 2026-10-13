@@ -2,10 +2,37 @@
 #include <cstdio>
 #include <map>
 #include <string>
+#include <crtdbg.h>
+#include <thread>
 #include "../port/haze_frame_pacer_settings.h"
 #include "../port/haze_display.cpp"
+static ULONGLONG test_time=1000;
+static HWND test_focus;
+static ULONGLONG preview_clock() { return test_time; }
+static HWND preview_focus() { return test_focus; }
+#define GetTickCount64 preview_clock
+#define GetForegroundWindow preview_focus
 #include "../port/haze_graphics.cpp"
 #include "../port/haze_graphics_live.cpp"
+#undef GetTickCount64
+#undef GetForegroundWindow
+static bool display_active,display_begin_fail,display_restore_fail,display_partial_fail;
+static unsigned display_keeps,display_reverts;
+bool haze_display_pending() { return display_active; }
+bool haze_display_can_keep() { return display_active && !display_partial_fail && !display_restore_fail; }
+bool haze_display_begin(void*,const char*,const char*,const char*,std::string& error) {
+    // Real Win32/DXGI calls can synchronously reenter read-only window caption
+    // code. It must not deadlock, and a second writer must be refused.
+    auto snapshot=haze_graphics_state(); (void)haze_graphics_notice(); std::string nested;
+    assert(!haze_graphics_apply(snapshot.configured,true,nested));
+    if (display_begin_fail) { error="Injected display failure"; display_active=display_partial_fail; return false; }
+    display_active=true; return true;
+}
+bool haze_display_finish(bool keep,std::string& error) {
+    if (!keep && display_restore_fail) { error="Injected restore failure"; return false; }
+    if (keep) ++display_keeps; else ++display_reverts;
+    display_active=false; return true;
+}
 static bool backend_fail;
 static unsigned commits,cancels;
 static haze_video_live active_video,pending_video;
@@ -24,6 +51,9 @@ static void config(const char* text) {
     std::fputs(text,f); std::fclose(f);
 }
 int main() {
+    _set_error_mode(_OUT_TO_STDERR); _set_abort_behavior(0,_CALL_REPORTFAULT|_WRITE_ABORT_MSG);
+    _CrtSetReportMode(_CRT_ASSERT,_CRTDBG_MODE_FILE); _CrtSetReportFile(_CRT_ASSERT,_CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR,_CRTDBG_MODE_FILE); _CrtSetReportFile(_CRT_ERROR,_CRTDBG_FILE_STDERR);
     clear_options(); _putenv_s("HAZE_GRAPHICS_CONFIG","local/test-graphics.ini");
     config("\xef\xbb\xbf[graphics]\r\nrender_resolution=1777x997\nanti_aliasing=fxaa\nanisotropic_filtering=16\nshadow_resolution=4096\nmip_lod_bias=-0.5\nsharpening=0.3\nexposure=0.5\nvsync=on\nframe_limit=60\n");
     _putenv_s("RSX_MAX_FPS","0"); assert(haze_graphics_initialize());
@@ -139,6 +169,73 @@ int main() {
     auto custom=now.configured; haze_video::preset(custom,"High"); custom["sharpening"]="0.150";
     assert(haze_video::preset_name(custom)=="High"); custom["sharpening"]="0.2";
     assert(haze_video::preset_name(custom)=="Custom");
-    std::remove("local/test-graphics.ini");
+    // Timed display transaction uses the actual settings persistence code;
+    // window/DXGI and the clock are injected separately from the state machine.
+    HWND window=CreateWindowExW(0,L"STATIC",L"Graphics preview owner",WS_OVERLAPPEDWINDOW,0,0,640,480,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    assert(window); test_focus=window;
+    const auto baseline=haze_graphics_state();
+    std::string baseline_file; assert(read_text(baseline.path,baseline_file));
+    auto staged=baseline.configured; staged["display_mode"]="windowed"; staged["window_size"]="960x540"; staged["frame_limit"]="60";
+    auto start_preview=[&] {
+        assert(haze_graphics_preview(window,staged,true,error));
+        const auto p=haze_graphics_state(); assert(p.display_preview && p.display_seconds==15 && !p.display_restore_failed);
+        assert(p.configured==baseline.configured && p.effective.at("window_size")=="960x540" && p.effective.at("frame_limit")==baseline.effective.at("frame_limit"));
+        std::string text; assert(read_text(baseline.path,text) && text==baseline_file); return p.display_preview;
+    };
+    unsigned revision=start_preview();
+    assert(!haze_graphics_preview(window,staged,true,error));
+    assert(!haze_graphics_apply(staged,true,error));
+    assert(!haze_graphics_confirm(revision+1,true,error) && display_active);
+    haze_graphics_request_reload(); haze_graphics_update(); assert(haze_graphics_state().display_preview==revision);
+    test_time+=14999; haze_graphics_update(); assert(haze_graphics_state().display_seconds==1);
+    ++test_time; haze_graphics_update(); assert(!haze_graphics_state().display_preview && !display_active);
+    assert(haze_graphics_state().effective==baseline.effective);
+    revision=start_preview(); test_time+=15000;
+    assert(!haze_graphics_confirm(revision,true,error) && !display_active); // Keep exactly at deadline loses
+    revision=start_preview(); test_focus=nullptr; haze_graphics_update(); assert(!display_active); test_focus=window;
+    revision=start_preview(); test_focus=nullptr;
+    assert(!haze_graphics_confirm(revision,true,error) && !display_active); test_focus=window;
+    revision=start_preview(); assert(haze_graphics_confirm(revision,false,error) && !display_active);
+    revision=start_preview();
+    bool wrong_thread_accepted=true;
+    std::thread wrong_thread([&] { std::string detail; wrong_thread_accepted=haze_graphics_confirm(revision,true,detail); }); wrong_thread.join();
+    assert(!wrong_thread_accepted && display_active);
+    locked=CreateFileA(baseline.path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr); assert(locked!=INVALID_HANDLE_VALUE);
+    assert(!haze_graphics_confirm(revision,true,error) && !display_active); CloseHandle(locked);
+    assert(haze_graphics_state().configured==baseline.configured && haze_graphics_state().effective==baseline.effective);
+    revision=start_preview(); config("[graphics]\nframe_limit=25\n");
+    assert(!haze_graphics_confirm(revision,true,error) && !display_active);
+    std::string changed_file; assert(read_text(baseline.path,changed_file) && changed_file.find("25")!=std::string::npos);
+    config(baseline_file.c_str());
+    revision=start_preview(); backend_fail=true;
+    assert(!haze_graphics_confirm(revision,true,error) && !display_active); backend_fail=false;
+    revision=start_preview(); display_restore_fail=true;
+    assert(!haze_graphics_confirm(revision,false,error));
+    assert(haze_graphics_state().display_restore_failed && haze_graphics_state().display_preview==revision);
+    assert(!haze_graphics_confirm(revision,true,error));
+    display_restore_fail=false; assert(haze_graphics_confirm(revision,false,error));
+    display_begin_fail=true;
+    assert(!haze_graphics_preview(window,staged,true,error) && !haze_graphics_state().display_preview);
+    display_partial_fail=true;
+    assert(!haze_graphics_preview(window,staged,true,error));
+    revision=haze_graphics_state().display_preview; assert(revision && haze_graphics_state().display_restore_failed);
+    assert(!haze_graphics_confirm(revision,true,error));
+    display_begin_fail=display_partial_fail=false; assert(haze_graphics_confirm(revision,false,error));
+    revision=start_preview(); const unsigned kept_before=display_keeps;
+    assert(haze_graphics_confirm(revision,true,error) && display_keeps==kept_before+1 && !display_active);
+    const auto committed=haze_graphics_state();
+    assert(!committed.display_preview && committed.configured==staged && committed.effective.at("window_size")=="960x540" && committed.effective.at("frame_limit")=="60");
+    assert(std::find(committed.restart.begin(),committed.restart.end(),"display_mode")==committed.restart.end());
+    assert(read_text(baseline.path,changed_file) && changed_file==haze_video::serialize(staged));
+    assert(!haze_graphics_confirm(revision,false,error)); // old callback cannot undo a committed change
+    auto quality_only=staged; quality_only["frame_limit"]="30";
+    assert(haze_graphics_preview(window,quality_only,true,error) && !haze_graphics_state().display_preview);
+    // An explicit launch override persists the requested preference but does
+    // not preview a display mode that cannot become effective this session.
+    clear_options(); config("[graphics]\n"); _putenv_s("RSX_WINDOW_MODE","windowed"); assert(haze_graphics_initialize());
+    auto overridden=haze_graphics_state().configured; overridden["display_mode"]="fullscreen";
+    assert(haze_graphics_preview(window,overridden,true,error));
+    assert(!haze_graphics_state().display_preview && haze_graphics_state().configured.at("display_mode")=="fullscreen" && haze_graphics_state().effective.at("display_mode")=="windowed");
+    DestroyWindow(window); std::remove("local/test-graphics.ini");
     std::puts("Graphics configuration: INI, automatic monitor defaults, missing optional file, overrides, BOM/CRLF and atomic rejection passed.");
 }

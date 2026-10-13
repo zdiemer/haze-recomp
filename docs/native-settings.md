@@ -28,8 +28,16 @@ failed writes and external file conflicts leave the last effective settings in
 place. See [live video settings](video-live-settings.md) for the transaction,
 override and rollback contracts.
 
-Display mode, monitor, window size, render resolution and shadow resolution are
-currently marked as requiring a restart. Live changes include frame limit,
+Display mode, monitor and window size now use a 15-second preview after Apply.
+The confirmation defaults to **Revert**; **Keep** saves the complete staged
+request. Until Keep, the file and quality settings remain unchanged. Escape,
+the mapped Back button, closing the confirmation, losing focus, minimizing or
+the deadline restore the previous settings. Keep arriving at or after the
+deadline cannot save. A failed save also restores the display; a failed
+restoration remains visible with a retry action rather than claiming success.
+The timer runs in the render loop independently of menu visibility.
+
+Render resolution and shadow resolution still require a restart. Other live changes include frame limit,
 VSync, FXAA, texture filtering, mip bias, sharpening and brightness. The page
 explains saved values that differ from active launch overrides. Monitor choices
 are currently numbered; unavailable displays fail validation on Apply.
@@ -53,6 +61,13 @@ evidence of gameplay input isolation.
   error recovery, capture release, controller neutral gating and rendering at
   960x540, 1280x720, 1920x1080, 2560x1440, 3440x1440 and 3840x2160 owner sizes.
   These tests do not establish physical-device behavior or DPI acceptance.
+- The actual Video provider and Win32 confirmation procedure cover default
+  Revert, explicit mouse/keyboard/controller Keep, mapped Back, Escape, window
+  close, held controller input, focus loss, timeout result handling, failed save
+  and retry after failed restoration. The countdown and buttons were inspected
+  in the 960x540 rendering fixture. Backend clock and display boundaries are
+  tested separately with real INI writes, including stale/locked files and
+  deadline races. Actual GPU fullscreen transitions remain unverified.
 - An isolated native 2560x1440 run navigated the retail main menu into Video
   Setup using diagnostic pad input. The guest hook opened the PC provider.
   Posted window messages selected/applied Low, then selected/applied a 60 FPS
@@ -66,7 +81,9 @@ evidence of gameplay input isolation.
   normal return gate correctly waited for foreground focus.
 
 Local evidence is under `local/runs/settings-native-2`, `local/menu-test.log`
-and `local/video-page-test.png`; disc assets, runtime captures and generated
+and `local/video-page-test.png`. Timed-confirmation evidence is in
+`local/video-confirm-menu-tests2.log` and `local/video-display-confirm-540p.png`;
+disc assets, runtime captures and generated
 game code are not committed.
 
 ## Pending saves and Audio integration
@@ -174,8 +191,10 @@ persistence remains required before claiming all failed writes preserve saves.
   work; coordinate device recovery with #49.
 - Validate the separate Controls provider from #23 through its remaining
   physical-device and gameplay acceptance checks.
-- Implement and verify timed keep/revert for display changes. A restart marker
-  alone does not satisfy this requirement.
+- Verify timed keep/revert and save-on-Keep in the native game, including
+  exclusive fullscreen, focus loss, monitor changes and restart persistence.
+  The automated UI/DXGI seams do not establish that the owned popup remains
+  visible or that exclusive entry succeeds while the settings window has focus.
 - Verify physical keyboard/mouse/controller interaction in both main and pause
   menus, focus/Alt-Tab behavior, gameplay input isolation, DPI/readability,
   failed persistence and restart persistence in the full game.

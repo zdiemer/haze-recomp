@@ -36,6 +36,12 @@ HazeInputFamily menu_family=HazeInputFamily::Xbox;
 void clear_notice() { notice.clear(); notice_error=false; }
 HazeMenuProvider& provider() { return providers[size_t(current)]; }
 HazeMenuModal modal() { return provider().modal ? provider().modal() : HazeMenuModal{}; }
+int cancel_choice(const HazeMenuModal& dialog) { return dialog.cancel_choice>=0 && dialog.cancel_choice<int(dialog.choices.size()) ? dialog.cancel_choice : int(dialog.choices.size())-1; }
+HazeMenuModal sync_modal() {
+    auto dialog=modal();
+    if (dialog.revision!=modal_revision) { modal_revision=dialog.revision; modal_selected=0; pad_neutral=false; previous_buttons=0; }
+    return dialog;
+}
 RECT modal_rect() { return {unit*3,height/4,width-unit*3,height*3/4}; }
 RECT modal_action_rect(int index,int count) {
     const auto box=modal_rect(); const int span=(box.right-box.left-unit*2)/std::max(1,count);
@@ -58,6 +64,7 @@ void refresh() {
 }
 void close_page(bool back=true) {
     if (!panel || applying) return;
+    if (provider().update) provider().update(false);
     if (GetCapture()==panel) ReleaseCapture();
     ShowWindow(panel,SW_HIDE); dropdown=dragging=-1;
     current=HazeMenuPage::None; active=false;
@@ -215,40 +222,36 @@ void paint(HDC target) {
     SelectObject(dc,old_font); SelectObject(dc,old_bitmap); DeleteObject(bitmap); DeleteDC(dc);
 }
 LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
-    // Key messages already queued for the child may arrive after Back moved
-    // focus to the owner. They no longer belong to a settings provider.
     if (current==HazeMenuPage::None) return DefWindowProc(hwnd,message,wp,lp);
-    if (current!=HazeMenuPage::None) {
-        const auto dialog=modal();
-        if (dialog.revision && !dialog.choices.empty()) {
-            if (message==WM_KEYDOWN || message==WM_SYSKEYDOWN) {
-                if (lp&(1ll<<30)) return 0;
-                if (wp==VK_ESCAPE) modal_choose(int(dialog.choices.size())-1);
-                else if (dialog.capturing) { if (provider().modal_key) provider().modal_key(int(wp)); }
-                else {
-                    const unsigned button=haze_input_menu_button(int(wp));
-                    if (wp==VK_LEFT || wp==VK_UP || (button&(CELL_PAD_CTRL_LEFT|CELL_PAD_CTRL_UP)))
-                        modal_selected=(modal_selected+int(dialog.choices.size())-1)%int(dialog.choices.size());
-                    else if (wp==VK_RIGHT || wp==VK_DOWN || wp==VK_TAB || (button&(CELL_PAD_CTRL_RIGHT|CELL_PAD_CTRL_DOWN)))
-                        modal_selected=(modal_selected+1)%int(dialog.choices.size());
-                    else if (wp==VK_RETURN || (button&CELL_PAD_CTRL_CROSS)) modal_choose(modal_selected);
-                    else if (button&CELL_PAD_CTRL_CIRCLE) modal_choose(int(dialog.choices.size())-1);
-                }
-                InvalidateRect(hwnd,nullptr,FALSE); return 0;
+    const auto dialog=sync_modal();
+    if (dialog.revision && !dialog.choices.empty()) {
+        if (message==WM_KEYDOWN || message==WM_SYSKEYDOWN) {
+            if (lp&(1ll<<30)) return 0;
+            if (wp==VK_ESCAPE) modal_choose(cancel_choice(dialog));
+            else if (dialog.capturing) { if (provider().modal_key) provider().modal_key(int(wp)); }
+            else {
+                const unsigned button=haze_input_menu_button(int(wp));
+                if (wp==VK_LEFT || wp==VK_UP || (button&(CELL_PAD_CTRL_LEFT|CELL_PAD_CTRL_UP)))
+                    modal_selected=(modal_selected+int(dialog.choices.size())-1)%int(dialog.choices.size());
+                else if (wp==VK_RIGHT || wp==VK_DOWN || wp==VK_TAB || (button&(CELL_PAD_CTRL_RIGHT|CELL_PAD_CTRL_DOWN)))
+                    modal_selected=(modal_selected+1)%int(dialog.choices.size());
+                else if (wp==VK_RETURN || (button&CELL_PAD_CTRL_CROSS)) modal_choose(modal_selected);
+                else if (button&CELL_PAD_CTRL_CIRCLE) modal_choose(cancel_choice(dialog));
             }
-            if (message==WM_LBUTTONDOWN || message==WM_RBUTTONDOWN || message==WM_MBUTTONDOWN || message==WM_XBUTTONDOWN) {
-                POINT point{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
-                if (message==WM_LBUTTONDOWN) for (int i=0;i<int(dialog.choices.size());++i) {
-                    auto rect=modal_action_rect(i,int(dialog.choices.size()));
-                    if (PtInRect(&rect,point)) { modal_choose(i); return 0; }
-                }
-                if (dialog.capturing && provider().modal_key) provider().modal_key(message==WM_LBUTTONDOWN ? VK_LBUTTON :
-                    message==WM_RBUTTONDOWN ? VK_RBUTTON : message==WM_MBUTTONDOWN ? VK_MBUTTON : HIWORD(wp)==XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2);
-                return 0;
-            }
-            if (message==WM_CLOSE) { modal_choose(int(dialog.choices.size())-1); return 0; }
-            if (message==WM_MOUSEWHEEL || message==WM_MOUSEMOVE) return 0;
+            InvalidateRect(hwnd,nullptr,FALSE); return 0;
         }
+        if (message==WM_LBUTTONDOWN || message==WM_RBUTTONDOWN || message==WM_MBUTTONDOWN || message==WM_XBUTTONDOWN) {
+            POINT point{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+            if (message==WM_LBUTTONDOWN) for (int i=0;i<int(dialog.choices.size());++i) {
+                auto rect=modal_action_rect(i,int(dialog.choices.size()));
+                if (PtInRect(&rect,point)) { modal_choose(i); return 0; }
+            }
+            if (dialog.capturing && provider().modal_key) provider().modal_key(message==WM_LBUTTONDOWN ? VK_LBUTTON :
+                message==WM_RBUTTONDOWN ? VK_RBUTTON : message==WM_MBUTTONDOWN ? VK_MBUTTON : HIWORD(wp)==XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2);
+            return 0;
+        }
+        if (message==WM_CLOSE) { modal_choose(cancel_choice(dialog)); return 0; }
+        if (message==WM_MOUSEWHEEL || message==WM_MOUSEMOVE) return 0;
     }
     switch (message) {
     case WM_ERASEBKGND: return 1;
@@ -327,10 +330,12 @@ bool haze_menu_request(HazeMenuPage page) {
 }
 bool haze_menu_active() { return active.load(); }
 bool haze_menu_has_focus() { return panel && active && GetForegroundWindow()==panel; }
+void* haze_menu_owner() { return owner_window; }
 void haze_menu_update(void* owner,const HazeGamepadState& pad) {
     owner_window=(HWND)owner;
     menu_recovery=pad.menu_recovery; menu_family=pad.family; menu_recovery_raw=pad.menu_recovery_raw;
-    const int next=applying ? 0 : requested.exchange(0);
+    const bool confirming=current!=HazeMenuPage::None && modal().revision!=0;
+    const int next=(applying || confirming) ? 0 : requested.exchange(0);
     if (next) {
         current=HazeMenuPage(next); provider().begin(); selected=scroll=0; dropdown=dragging=-1;
         clear_notice(); applying=false; pad_neutral=false; previous_buttons=0;
@@ -368,8 +373,7 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
     ShowWindow(panel,SW_SHOWNOACTIVATE);
     if (foreground==owner_window) SetFocus(panel);
     if (applying) { pad_neutral=false; return; }
-    const auto dialog=modal();
-    if (dialog.revision!=modal_revision) { modal_revision=dialog.revision; modal_selected=0; pad_neutral=false; previous_buttons=0; }
+    const auto dialog=sync_modal();
     const auto& navigation=pad.menu_input_valid ? pad.menu_input : pad.input;
     unsigned buttons=navigation.buttons;
     if (navigation.ly<64) buttons|=CELL_PAD_CTRL_UP; if (navigation.ly>192) buttons|=CELL_PAD_CTRL_DOWN;
@@ -384,7 +388,7 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
             if (presses&(CELL_PAD_CTRL_LEFT|CELL_PAD_CTRL_UP)) modal_selected=(modal_selected+int(dialog.choices.size())-1)%int(dialog.choices.size());
             if (presses&(CELL_PAD_CTRL_RIGHT|CELL_PAD_CTRL_DOWN)) modal_selected=(modal_selected+1)%int(dialog.choices.size());
             if (presses&CELL_PAD_CTRL_CROSS) modal_choose(modal_selected);
-            else if (presses&CELL_PAD_CTRL_CIRCLE) modal_choose(int(dialog.choices.size())-1);
+            else if (presses&CELL_PAD_CTRL_CIRCLE) modal_choose(cancel_choice(dialog));
         }
         InvalidateRect(panel,nullptr,FALSE); return;
     }
@@ -408,6 +412,7 @@ void haze_menu_register(HazeMenuPage,HazeMenuProvider) {}
 bool haze_menu_request(HazeMenuPage) { return false; }
 bool haze_menu_active() { return false; }
 bool haze_menu_has_focus() { return false; }
+void* haze_menu_owner() { return nullptr; }
 void haze_menu_update(void*,const HazeGamepadState&) {}
 void haze_menu_shutdown() {}
 void haze_menu_retail() {}

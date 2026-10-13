@@ -6,9 +6,42 @@
 namespace {
 haze_video::Values edited;
 HazeGraphicsState loaded;
+HazeMenuModal video_dialog;
+unsigned video_revision=0,preview_revision=0;
+void video_result(const std::string& error={}) {
+    loaded=haze_graphics_state(); edited=loaded.configured; preview_revision=0;
+    video_dialog={++video_revision,"Video settings",error.empty() ? loaded.notice : error,{"OK"},false,0};
+}
+void video_status() {
+    const auto current=haze_graphics_state();
+    if (!preview_revision) return;
+    if (current.display_preview!=preview_revision) { video_result(); return; }
+    video_dialog.title=current.display_restore_failed ? "Restore display" : "Keep display changes?";
+    video_dialog.message=current.display_restore_failed ? current.notice :
+        "Reverting in "+std::to_string(current.display_seconds)+" seconds.\n\nChoose Keep to save all changes, or Revert to restore the previous settings.";
+    auto choices=current.display_restore_failed ? std::vector<std::string>{"Retry revert"} : std::vector<std::string>{"Revert","Keep"};
+    if (choices!=video_dialog.choices) video_dialog.revision=++video_revision;
+    video_dialog.choices=std::move(choices);
+    video_dialog.cancel_choice=0;
+}
+void video_choose(int choice) {
+    if (!preview_revision) { video_dialog={}; return; }
+    const auto current=haze_graphics_state();
+    if (current.display_preview!=preview_revision) { video_result(); return; }
+    std::string error;
+    const bool keep=choice==1 && !current.display_restore_failed;
+    const bool ok=haze_graphics_confirm(preview_revision,keep,error);
+    if (haze_graphics_state().display_preview) { video_status(); return; }
+    video_result(ok ? std::string{} : error);
+}
+void video_update(bool focused) {
+    if (preview_revision && !focused && haze_graphics_state().display_preview==preview_revision) video_choose(0);
+    video_status();
+}
 HazeMenuRow choices(const char* key,const char* label,std::vector<HazeMenuChoice> values,const char* hint) {
     HazeMenuRow row{key,label,edited.at(key),hint,std::move(values)};
-    if (haze_video::restart_required(key)) row.hint+=" Restart required.";
+    if (std::string(key)=="render_resolution" || std::string(key)=="shadow_resolution") row.hint+=" Restart required.";
+    if (std::string(key)=="display_mode" || std::string(key)=="monitor" || std::string(key)=="window_size") row.hint+=" Apply previews this change for 15 seconds; Keep saves it.";
     if (loaded.overrides.count(key)) row.hint+=" Your launch options currently set this to "+loaded.effective.at(key)+".";
     else if (std::find(loaded.restart.begin(),loaded.restart.end(),key)!=loaded.restart.end())
         row.hint+=" Currently using "+loaded.effective.at(key)+".";
@@ -44,15 +77,29 @@ std::vector<HazeMenuRow> rows() {
 void haze_video_menu_register() {
     HazeMenuProvider provider;
     provider.title="VIDEO";
-    provider.begin=[] { loaded=haze_graphics_state(); edited=loaded.configured; };
+    provider.begin=[] {
+        loaded=haze_graphics_state(); edited=loaded.configured; video_dialog={}; preview_revision=loaded.display_preview;
+        if (preview_revision) { video_dialog.revision=++video_revision; video_status(); }
+    };
     provider.rows=rows;
     provider.change=[](const std::string& key,const std::string& value) {
+        if (video_dialog.revision) return;
         if (key=="quality") haze_video::preset(edited,value); else edited[key]=value;
     };
-    provider.defaults=[] { edited=haze_video::defaults(); };
+    provider.defaults=[] { if (!video_dialog.revision) edited=haze_video::defaults(); };
     provider.apply=[](std::string& message) {
-        if (!haze_graphics_apply(edited,true,message)) return HazeMenuApply::Failed;
+        const bool ok=haze_graphics_preview(haze_menu_owner(),edited,true,message);
+        const auto current=haze_graphics_state();
+        if (current.display_preview) {
+            preview_revision=current.display_preview; video_dialog.revision=++video_revision; video_status();
+            if (ok) message="Review the display preview. Revert is selected by default.";
+            return ok ? HazeMenuApply::Applied : HazeMenuApply::Failed;
+        }
+        if (!ok) return HazeMenuApply::Failed;
         loaded=haze_graphics_state(); message=loaded.notice+". Settings saved."; return HazeMenuApply::Applied;
     };
+    provider.update=video_update;
+    provider.modal=[] { return video_dialog; };
+    provider.modal_choose=video_choose;
     haze_menu_register(HazeMenuPage::Video,std::move(provider));
 }
