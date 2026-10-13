@@ -281,3 +281,25 @@ and `back-lock-key-build.log`). Temporary trace instrumentation was removed.
 Native Back/reopen verification of this final lock-key fix remains pending:
 the next visible launch was deferred because another user-owned game started.
 The earlier reproduced failure must not be considered resolved in-game yet.
+
+## Page initialization ordering (2026-10-13)
+
+The page activation hook previously notified the native provider before a
+tail-called guest initialization callback ran. It now drains that callback and
+any chained callbacks before notifying the provider, retaining the original
+page pointer. The original function hash guard and Audio restoration checks
+remain intact.
+
+A compiled regression executes the patched tail-return fragment with the
+generated trampoline macro. It fails with the old hook and passes with the new
+ordering, checking completion of chained callbacks, one notification, and the
+original page pointer even when initialization changes argument registers.
+The complete settings suite and native build pass (`page-tail-tests.log` and
+`page-tail-build.log`).
+
+This fixes a demonstrated ordering defect; it does not yet establish that the
+pause-menu Audio failure is resolved. In the prior combined f9d8aea build,
+opening Sound Setup after loading a campaign checkpoint failed the default
+profile restoration check and retained the retail page. The corrected build
+still needs that same native check. A diagnostic run of the old build exited
+normally with its copied profile unchanged, before reaching the pause page.
