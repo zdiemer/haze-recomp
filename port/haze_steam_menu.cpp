@@ -17,6 +17,12 @@ unsigned revision=0;
 uint64_t menu_generation=0;
 bool confirming=false;
 std::string utf8(const std::filesystem::path& path) { const auto u=path.u8string(); return {u.begin(),u.end()}; }
+std::string utf8_text(const std::wstring& text) {
+    if (text.empty()) return {};
+    const int size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);
+    if (!size) return {};
+    std::string result(size_t(size),'\0'); WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,text.data(),int(text.size()),result.data(),size,nullptr,nullptr); return result;
+}
 std::wstring environment(const wchar_t* name) {
     const DWORD size=GetEnvironmentVariableW(name,nullptr,0); if (!size || size>32768) return {};
     std::wstring value(size,L'\0'); const auto length=GetEnvironmentVariableW(name,value.data(),size);
@@ -31,6 +37,7 @@ void refresh() {
     if (!configured.empty()) target.launcher=configured;
     else if (length && length<32768) target.launcher=std::filesystem::path(executable).parent_path()/L"HazeLauncher.exe";
     target.working_directory=target.launcher.parent_path(); target.icon=target.launcher;
+    target.arguments=utf8_text(environment(L"HAZE_LAUNCHER_ARGUMENTS"));
     const auto disc=environment(L"PS3_VFS_ROOT");
     if (!disc.empty()) target.artwork_directory=std::filesystem::path(disc)/L"PS3_GAME";
 }

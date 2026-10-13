@@ -19,7 +19,10 @@ produces an actionable message and does not affect normal play.
 
 The target is `HazeLauncher.exe` beside the native game, or an absolute path in
 `HAZE_LAUNCHER_PATH`. The shortcut quotes that executable and its parent working
-directory and supplies no extra arguments. The launcher must resolve its saved
+directory. When the launcher exports `HAZE_LAUNCHER_ARGUMENTS`, those canonical
+arguments retain the resolved game/save/settings/cache paths and runtime mode,
+including paths selected through command-line or environment overrides. Without
+that export, the shortcut uses the launcher's saved defaults. The launcher must resolve its saved
 game-data/settings/cache configuration independently of Steam's working
 directory. Its embedded icon is also the shortcut icon. This is the integration
 contract for #42 and #41; **those dependencies are still open, and this branch

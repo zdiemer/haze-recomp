@@ -38,6 +38,7 @@ std::vector<HazeSteamProfile> haze_steam_profiles(std::string& message) {
 }
 HazeSteamResult haze_steam_install(const HazeSteamProfile& profile,const HazeSteamTarget& target) {
     ++installs; installed_account=profile.account_id; assert(target.launcher==target.icon);
+    assert(target.arguments=="--shared-root \"C:/Haze data\" --savedata \"C:/My saves\"");
     return {install_success,install_success,0x80000042u,{},install_success ? "Haze Recomp was added. Start Steam to see it in the selected library." : "Exit Steam using Steam > Exit, wait for it to close, then retry."};
 }
 static void frame(HWND owner,unsigned buttons=0) {
@@ -61,6 +62,7 @@ int main() {
     std::filesystem::create_directories(fixture); const auto launcher=fixture/L"Haze Launcher \u00e9.exe";
     { std::ofstream file(launcher); file<<"fixture"; }
     SetEnvironmentVariableW(L"HAZE_LAUNCHER_PATH",launcher.c_str());
+    SetEnvironmentVariableW(L"HAZE_LAUNCHER_ARGUMENTS",L"--shared-root \"C:/Haze data\" --savedata \"C:/My saves\"");
     auto owner=CreateWindowA("STATIC","Steam menu fixture",WS_POPUP,0,0,1920,1080,nullptr,nullptr,GetModuleHandle(nullptr),nullptr); assert(owner);
     foreground=owner; haze_steam_menu_register(); frame(owner);
     assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
