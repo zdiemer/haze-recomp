@@ -9,7 +9,6 @@
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
-#include "haze_input_key.h"
 
 namespace quit_ui {
 HWND owner=nullptr,button=nullptr,dialog=nullptr;
@@ -19,33 +18,6 @@ unsigned previous=0;
 bool neutral=false;
 uint64_t generation=0;
 HazeQuitPhase phase=HazeQuitPhase::Idle;
-std::string action_binding="Tab";
-HazeInputFamily prompt_family=HazeInputFamily::Keyboard;
-ULONGLONG next_prompt_check=0;
-void refresh_binding() {
-    const auto now=GetTickCount64(); const auto family=haze_input_family();
-    if (now<next_prompt_check && family==prompt_family) return;
-    next_prompt_check=now+500; prompt_family=family;
-    const bool keyboard=family==HazeInputFamily::Keyboard;
-    char value[128]{};
-    GetPrivateProfileStringA(keyboard ? "Bindings" : "ControllerBindings","Select",
-                           keyboard ? "Tab" : "back",value,sizeof(value),haze_input_config_path());
-    action_binding=value;
-    if (!*value || !_stricmp(value,"none")) { action_binding="Tab"; return; }
-    if (keyboard) {
-        const auto key=haze_key_code(value);
-        action_binding=key>0 ? haze_key_name(key) : "Tab";
-        if (action_binding!="Tab") action_binding+=" / Tab";
-        return;
-    }
-    const char* inputs[]={"south","east","west","north","start","back","leftshoulder","rightshoulder","leftstick","rightstick"};
-    const char* xbox[]={"A","B","X","Y","Menu","View","LB","RB","LS","RS"};
-    const char* ps[]={"Cross","Circle","Square","Triangle","Options","Share","L1","R1","L3","R3"};
-    const char* sw[]={"B","A","Y","X","+","-","L","R","LS","RS"};
-    for (int i=0;i<10;++i) if (!_stricmp(value,inputs[i]))
-        action_binding=family==HazeInputFamily::Xbox ? xbox[i] : family==HazeInputFamily::Switch ? sw[i] : ps[i];
-}
-std::string action_label() { return action_binding+" - Quit to Desktop"; }
 RECT choice_rect(int index) { const int span=(width-unit*3)/2; return {unit+index*(span+unit),height-unit*3,unit+index*(span+unit)+span,height-unit}; }
 void fill(HDC dc,RECT rect,COLORREF color) { auto brush=CreateSolidBrush(color); FillRect(dc,&rect,brush); DeleteObject(brush); }
 void text(HDC dc,const std::string& value,RECT rect,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE) {
@@ -79,8 +51,8 @@ void paint(HWND window,HDC dc) {
     fill(dc,bounds,RGB(25,28,25)); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,RGB(245,225,0));
     auto old=SelectObject(dc,font);
     if (window==button) {
-        haze_prompts_draw_icon(dc,7,unit/2,unit/4,unit);
-        text(dc,action_label(),{unit*2,0,bounds.right-unit/2,bounds.bottom},DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
+        haze_prompts_draw_icon(dc,7,0,0,unit*2);
+        text(dc,"Quit to Desktop",{unit*2,0,bounds.right-unit/2,bounds.bottom});
     } else {
         const auto snapshot=haze_quit_state();
         text(dc,"QUIT TO DESKTOP",{unit,unit/2,width-unit,unit*2});
@@ -157,11 +129,7 @@ void haze_quit_menu_update(void* window,const HazeGamepadState& pad) {
         font=CreateFontA(-unit,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
     }
     width=std::min(int(bounds.right)-unit*2,unit*30); height=unit*11;
-    refresh_binding();
-    HDC dc=GetDC(button); auto old_font=SelectObject(dc,font); SIZE extent{};
-    const auto label=action_label(); GetTextExtentPoint32A(dc,label.c_str(),int(label.size()),&extent);
-    SelectObject(dc,old_font); ReleaseDC(button,dc);
-    const int action_width=std::min(int(bounds.right)-unit*2,int(extent.cx)+unit*3);
+    const int action_width=unit*12;
     SetWindowPos(button,HWND_TOP,origin.x+bounds.right-action_width-unit,origin.y+bounds.bottom-unit*3,action_width,unit*2,SWP_NOACTIVATE);
     SetWindowPos(dialog,HWND_TOP,origin.x+(bounds.right-width)/2,origin.y+(bounds.bottom-height)/2,width,height,SWP_NOACTIVATE);
     const bool is_focused=focused() && !IsIconic(owner);
