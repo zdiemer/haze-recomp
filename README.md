@@ -211,7 +211,10 @@ than measured wall-clock sleep time.
 Diagnostic `run.ps1` sessions are **muted by default** while retaining mixing,
 device-clock pacing and game audio events. Add `-CaptureAudio` to save the original
 mix as `audio.f32le` (48 kHz stereo float32), or explicitly `-Audio` to hear a test.
-The ordinary gameplay launcher retains sound. All captures stay under ignored
+The ordinary gameplay launcher retains sound. On Windows/Clang, supported AVX-512
+CPUs use accelerated SPU arithmetic for the audio DSP; `SPU_FLOAT_NATIVE=0`
+selects the scalar reference path for comparison. See the
+[audio balance investigation](docs/audio-balance-2026-10-12.md). All captures stay under ignored
 `local/runs`. Rebuild without `-ProfileRenderer` for ordinary play.
 Native play defaults to a **30 FPS maximum**. Slow frames present when ready;
 the limiter does not try to catch up with bursts of faster frames. Diagnostics
@@ -329,16 +332,20 @@ PC input is configured in `config/input.ini`, which reloads while running.
 The launcher defaults to automatic keyboard/mouse and SDL gamepad input.
 WASD moves; arrows navigate;
 Space confirms/skips; Enter starts; Escape pauses and releases the mouse.
-Click inside the game or press F1 to capture the raw mouse; F1 also releases it.
-The initial capture click does not fire. Short keyboard and mouse-button taps are buffered for
+Foreground gameplay captures the raw mouse automatically. F1 releases it until
+another F1 or a gameplay capture click. Menus and focus loss release capture;
+left click selects menu widgets, right click goes back, and the wheel navigates lists.
+The capture click does not fire. Short keyboard and mouse-button taps are buffered for
 one host report so they survive slow frames without stretching releases. All sixteen controller buttons have configurable
-keyboard/mouse bindings. Mouse buttons affect the game only while captured,
+keyboard/mouse bindings. Mouse buttons affect gameplay only while captured,
 and focus loss releases capture and neutralizes all input.
 Raw device counts rotate the player yaw/pitch
 before the game builds its aim and camera matrices. Mouse motion does not drive
 the right stick, so it has no stick deadzone, acceleration, smoothing or
 turn-speed cap. Sensitivity is degrees per count (default `0.10`), and `InvertY`
 reverses vertical motion. Camera pitch still respects the game's limits.
+The camera checks live guest menu ownership before applying motion; menu clicks
+and F1 cannot enable camera movement. See [mouse/menu validation](docs/mouse-menus.md).
 Kenney prompts follow the last active keyboard/mouse or controller family and
 the current bindings. PNG edits and INI saves reload within half a second.
 `[Prompts]` selects the icon directory or restores original prompts.
