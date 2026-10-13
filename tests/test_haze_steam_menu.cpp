@@ -34,7 +34,7 @@ void haze_quit_resume_guest() {}
 std::vector<HazeSteamProfile> haze_steam_profiles(std::string& message) {
     message=steam_available ? "" : "Steam was not found. Install Steam and sign in once, then retry.";
     if (!steam_available) return {};
-    return {{L"C:/fixture",L"C:/fixture/userdata/42/config","42"},{L"C:/fixture",L"C:/fixture/userdata/7/config","7"}};
+    return {{L"C:/fixture",L"C:/fixture/userdata/42/config","42","Zo\xc3\xab"},{L"C:/fixture",L"C:/fixture/userdata/7/config","7","Zo\xc3\xab"}};
 }
 HazeSteamResult haze_steam_install(const HazeSteamProfile& profile,const HazeSteamTarget& target) {
     ++installs; installed_account=profile.account_id; assert(target.launcher==target.icon);
@@ -68,9 +68,15 @@ int main() {
     assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
     assert(haze_menu_active() && !haze_quit_menu_active() && current==HazeMenuPage::Desktop);
     assert(steam_menu::selected.empty()); action(0); assert(!installs && notice_error);
+    const auto accounts=steam_menu::rows()[1].choices;
+    assert(accounts[1].value=="42" && accounts[1].label=="Account 42 - Zo\xc3\xab");
+    assert(accounts[2].value=="7" && accounts[2].label=="Account 7 - Zo\xc3\xab");
+    auto unnamed=steam_menu::profiles[0]; unnamed.persona_name.clear();
+    assert(steam_menu::profile_label(unnamed)=="Account 42");
     screenshot("local/steam-desktop-options.bmp");
     key(VK_UP); key(VK_UP); key(VK_UP); key(VK_RIGHT); assert(steam_menu::selected=="42");
     action(0); frame(owner); assert(steam_menu::confirming && modal_selected==0);
+    assert(steam_menu::dialog.message.find("Account 42 - Zo\xc3\xab")!=std::string::npos);
     screenshot("local/steam-add-confirm.bmp");
     key(VK_ESCAPE); assert(!installs && !steam_menu::dialog.revision && haze_menu_active());
     action(0); frame(owner); key('K'); assert(!installs && !steam_menu::dialog.revision);

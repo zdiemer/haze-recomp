@@ -85,6 +85,23 @@ std::wstring registry(HKEY hive,const wchar_t* key,const wchar_t* name,REGSAM vi
     if (RegGetValueW(hive,key,name,RRF_RT_REG_SZ|view,nullptr,value,&size)!=ERROR_SUCCESS) return {};
     return value;
 }
+void profile_names(const fs::path& root,std::vector<HazeSteamProfile>& profiles) {
+    // Optional labels only. A missing, locked or malformed cache never changes
+    // profile identity, selection, or the ability to register by account ID.
+    try {
+        const auto path=root/L"config/loginusers.vdf";
+        if (!regular(path)) return;
+        plain_path(path);
+        Handle file(CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+        if (!file) return;
+        BY_HANDLE_FILE_INFORMATION info{}; LARGE_INTEGER size{};
+        if (!GetFileInformationByHandle(file.value,&info) || (info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)) ||
+            !GetFileSizeEx(file.value,&size) || size.QuadPart<1 || size.QuadPart>2*1024*1024) return;
+        std::string bytes(size_t(size.QuadPart),'\0'); DWORD got=0;
+        if (!ReadFile(file.value,bytes.data(),DWORD(bytes.size()),&got,nullptr) || got!=bytes.size()) return;
+        haze_steam_profile_names(bytes,profiles);
+    } catch (const std::exception&) { /* Cached names are not required. */ }
+}
 std::vector<HazeSteamProfile> profiles_at(const fs::path& root) {
     plain_path(root);
     if (!regular(root/L"steam.exe")) throw std::runtime_error("The Steam installation is missing steam.exe.");
@@ -95,9 +112,10 @@ std::vector<HazeSteamProfile> profiles_at(const fs::path& root) {
         uint32_t id=0; auto parsed=std::from_chars(name.data(),name.data()+name.size(),id);
         if (parsed.ec!=std::errc{} || parsed.ptr!=name.data()+name.size() || !id || std::to_string(id)!=name) continue;
         if (!directory(entry.path()) || !directory(entry.path()/L"config")) continue;
-        profiles.push_back({root,entry.path()/L"config",name});
+        profiles.push_back({root,entry.path()/L"config",name,{}});
     }
     std::sort(profiles.begin(),profiles.end(),[](const auto& a,const auto& b){return a.account_id<b.account_id;});
+    profile_names(root,profiles);
     return profiles;
 }
 void validate_profile(const HazeSteamProfile& profile) {

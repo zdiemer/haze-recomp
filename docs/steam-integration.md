@@ -37,8 +37,20 @@ from the network or checked into Git.
 
 Steam installation discovery uses its current-user registry key, then the
 32-bit and 64-bit machine install keys. Profiles are existing nonzero numeric
-`userdata/<account-id>/config` directories. The menu currently identifies them
-by account ID; friendly account names are a remaining usability improvement.
+`userdata/<account-id>/config` directories. The menu shows each account ID with
+its cached `PersonaName` from `config/loginusers.vdf`, when available, and repeats
+both in the confirmation. Names may be stale or shared by multiple accounts;
+the numeric ID remains the selection/write identity and is displayed first.
+No account is selected automatically, including the cached most-recent account.
+
+The optional name reader accepts bounded text KeyValues (2 MiB, 16 nested
+objects, 10,000 fields, 16 KiB tokens) and matches only public individual desktop
+Steam IDs to existing account directories. Duplicate identity/name fields or
+malformed metadata fall back to numeric IDs. Missing, locked and unreadable
+metadata also leave registration usable. Display names are limited to 64 Unicode
+code points, with control characters normalized and directional overrides
+removed; login names and other cached fields are never displayed or logged.
+The metadata is read without modification and includes are never followed.
 The chosen root/account/config relationship is revalidated at write time.
 Redirected paths (junctions/symlinks) are refused with an error rather than
 silently writing through a different account location.
@@ -125,9 +137,12 @@ exclusion; locked files, short staged/backup writes, failed rename and cleanup;
 artwork dimensions, alpha, proportions, custom/legacy preservation and missing
 sources; keyboard/mouse/controller menu events, held-input gating, Cancel-first
 confirmation, Escape/Back/window-close/focus cancellation, stale menu refusal,
-and main/pause Quit routing.
+and main/pause Quit routing. Profile-label checks cover identical names with
+different IDs, Unicode and escaped names, absent/locked/malformed metadata,
+wrong Steam ID classes, parser limits and confirmation of the selected account.
 
-The read-only live audit found two profiles and one 13-byte empty shortcuts
+The read-only live audit found two profiles (one with a cached display name)
+and one 13-byte empty shortcuts
 list. It round-tripped exactly but provides no populated-library coverage.
 Seven public Heroic fixtures at revision
 `fc249e021e5d988732f4b05e338fcc972f428f05` supplied that coverage: all nine existing
@@ -138,8 +153,8 @@ The Win32 menu test renders the actual page and confirmation with an accented
 launcher filename. Focus and glyph drawing are injected in that harness; it is
 not a physical-device or exclusive-fullscreen acceptance result.
 
-Still required before closing #47: executable launcher/icon dependencies;
-friendly profile identification; foreground main-menu access with physical
+Still required before closing #47: launcher integration (draft PR #70) and the
+program icon (#41); foreground main-menu access with physical
 keyboard/mouse/controller (including rebound/unbound Select), DPI and exclusive
 fullscreen; real-client registration/restart persistence and artwork display;
 Steam desktop and Big Picture launch with correct saves/settings/cache and
@@ -150,6 +165,8 @@ normal exit; and actual install relocation through the launcher.
 - [Valve's KeyValues reader/writer](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/tier1/KeyValues.cpp)
   informed the supported binary type framing; Steam shortcut-specific behavior
   still requires client acceptance.
+- [Valve's CSteamID definition](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/public/steam/steamclientpublic.h)
+  supplies the public individual account-ID layout used to match cached labels.
 - [Heroic shortcut implementation](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/fc249e021e5d988732f4b05e338fcc972f428f05/src/backend/shortcuts/nonesteamgame/nonesteamgame.ts)
   and [artwork/ID helper](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/fc249e021e5d988732f4b05e338fcc972f428f05/src/backend/shortcuts/nonesteamgame/steamhelper.ts)
   provide a primary implementation comparison. This branch does not enable

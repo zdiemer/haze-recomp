@@ -45,13 +45,16 @@ void message(const std::string& title,const std::string& text) {
     confirming=false; dialog={++revision,title,text,{"OK"},false};
 }
 bool current() { const auto offer=haze_quit_offer(); return offer.available && !offer.gameplay && offer.generation==menu_generation; }
+std::string profile_label(const HazeSteamProfile& profile) {
+    return "Account "+profile.account_id+(profile.persona_name.empty() ? "" : " - "+profile.persona_name);
+}
 std::vector<HazeMenuRow> rows() {
     HazeMenuRow quit; quit.key="quit"; quit.label="Quit to Desktop"; quit.action=true;
     quit.hint="Open the quit confirmation. Cancel keeps Haze open.";
     HazeMenuRow account; account.key="profile"; account.label="Steam profile"; account.value=selected;
     account.hint=discovery.empty() ? "Choose the local Steam account to update. No account is selected automatically." : discovery;
     account.choices.push_back({"","Choose a profile"});
-    for (const auto& profile:profiles) account.choices.push_back({profile.account_id,"Account "+profile.account_id});
+    for (const auto& profile:profiles) account.choices.push_back({profile.account_id,profile_label(profile)});
     HazeMenuRow launcher; launcher.key="launcher"; launcher.label="Launcher"; launcher.value=utf8(target.launcher.filename());
     launcher.hint="Target: "+utf8(target.launcher)+". The executable launcher must be installed before adding Haze.";
     HazeMenuRow artwork; artwork.key="artwork"; artwork.label="Library artwork"; artwork.value="From local disc";
@@ -61,13 +64,15 @@ std::vector<HazeMenuRow> rows() {
 HazeMenuApply apply(std::string& notice) {
     if (!current()) { notice="Return to the main menu and reopen this page."; return HazeMenuApply::Failed; }
     if (selected.empty()) { notice=discovery.empty() ? "Choose a Steam profile first." : discovery; return HazeMenuApply::Failed; }
+    const auto profile=std::find_if(profiles.begin(),profiles.end(),[](const auto& p){return p.account_id==selected;});
+    if (profile==profiles.end()) { notice="Refresh the Steam profiles and select an account again."; return HazeMenuApply::Failed; }
     std::error_code ec;
     if (!target.launcher.is_absolute() || !std::filesystem::is_regular_file(target.launcher,ec)) {
         notice="The executable launcher is missing. Install/build HazeLauncher.exe first, then use Refresh.";
         message("Launcher required",notice); return HazeMenuApply::Failed;
     }
     confirming=true;
-    dialog={++revision,"Add to Steam","Add or repair Haze Recomp for Steam account "+selected+"?\n\nLauncher: "+utf8(target.launcher)+
+    dialog={++revision,"Add to Steam","Add or repair Haze Recomp for this Steam profile?\n"+profile_label(*profile)+"\n\nLauncher: "+utf8(target.launcher)+
         "\n\nExit Steam first. Existing unrelated shortcuts and custom artwork will be retained.",{"Cancel","Add to Steam"},false,0};
     notice="Review the selected Steam account and launcher."; return HazeMenuApply::Applied;
 }

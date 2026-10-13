@@ -24,7 +24,11 @@ bool haze_steam_plan(const std::string& input,const HazeSteamTarget& target,
 struct HazeSteamProfile {
     std::filesystem::path steam_root,config_directory;
     std::string account_id;
+    std::string persona_name; // optional cached display name; never used as identity
 };
+// Optional, bounded loginusers.vdf metadata. Invalid data leaves all names empty;
+// only existing profiles with matching public individual Steam IDs gain labels.
+bool haze_steam_profile_names(const std::string& input,std::vector<HazeSteamProfile>& profiles);
 struct HazeSteamResult {
     bool success=false,changed=false;
     uint32_t appid=0;

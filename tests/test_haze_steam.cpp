@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <thread>
 #include "../port/haze_steam_vdf.cpp"
+#include "../port/haze_steam_names.cpp"
 #include "../port/haze_steam_art.cpp"
 static bool fail_replace=false,probe_client=false,client_blocked=false,fail_backup=false,fail_stage=false;
 static std::filesystem::path client_path;
@@ -62,8 +63,9 @@ int main(int argc,char** argv) {
         std::string message;
         const auto profiles=haze_steam_profiles(message);
         if (profiles.empty()) { std::fprintf(stderr,"Discovery failed: %s\n",message.c_str()); return 1; }
-        unsigned existing=0; size_t inspected=0;
+        unsigned existing=0,named=0; size_t inspected=0;
         for (const auto& profile:profiles) {
+            if (!profile.persona_name.empty()) ++named;
             const auto file=profile.config_directory/L"shortcuts.vdf";
             if (!fs::exists(file)) continue;
             const auto before=bytes(file);
@@ -87,7 +89,7 @@ int main(int argc,char** argv) {
                 if (bytes(file)!=before) { std::puts("The client changed a file during the read-only audit; retry when closed."); return 6; }
             } catch (const std::exception& e) { std::fprintf(stderr,"Audit failed: %s\n",e.what()); return 7; }
         }
-        std::printf("Read-only Steam audit: %zu profiles discovered; %u existing shortcut files, %zu bytes parsed and round-tripped exactly. No files written.\n",profiles.size(),existing,inspected);
+        std::printf("Read-only Steam audit: %zu profiles discovered, %u with cached display names; %u existing shortcut files, %zu bytes parsed and round-tripped exactly. No files written.\n",profiles.size(),named,existing,inspected);
         return 0;
     }
     if (argc==4 && std::string(argv[1])=="--hold") {
@@ -159,7 +161,56 @@ int main(int argc,char** argv) {
     auto bad=target; bad.launcher="relative.exe"; assert(!haze_steam_plan({},bad,plan,message));
     bad=target; bad.arguments=std::string("bad\0args",8); assert(!haze_steam_plan({},bad,plan,message));
 
-    const auto profiles=steam_windows::profiles_at(root); assert(profiles.size()==2 && profiles[0].account_id=="42" && profiles[1].account_id=="7");
+    auto profiles=steam_windows::profiles_at(root); assert(profiles.size()==2 && profiles[0].account_id=="42" && profiles[1].account_id=="7");
+    assert(profiles[0].persona_name.empty() && profiles[1].persona_name.empty());
+    const std::string login=std::string("\xef\xbb\xbf")+R"vdf(
+// Cached labels are advisory, even when MostRecent points to another account.
+"users" {
+    "76561197960265770" { "AccountName" "private-login" "PersonaName" "Zo)vdf"+"\xc3\xab"+R"vdf( \"Pilot\"" "MostRecent" "0" }
+    "76561197960265735" { PersonaName "Zo)vdf"+"\xc3\xab"+R"vdf( \"Pilot\"" MostRecent 1 Unknown { Nested "ignored" } }
+    "76561197960265827" { PersonaName "No userdata folder" }
+})vdf";
+    fs::create_directories(root/L"config"); const auto login_path=root/L"config/loginusers.vdf"; put(login_path,login);
+    profiles=steam_windows::profiles_at(root);
+    assert(profiles.size()==2 && profiles[0].persona_name=="Zo\xc3\xab \"Pilot\"" && profiles[1].persona_name==profiles[0].persona_name);
+    assert(bytes(login_path)==login);
+    {
+        steam_windows::Handle locked(CreateFileW(login_path.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr)); assert(locked);
+        const auto fallback=steam_windows::profiles_at(root); assert(fallback.size()==2 && fallback[0].persona_name.empty());
+    }
+    auto metadata=[&](const std::string& fields) { return "users { 76561197960265770 { "+fields+" } }"; };
+    auto labels=profiles;
+    assert(haze_steam_profile_names(metadata("PersonaName \"Line\\nTwo\\tName\""),labels));
+    assert(labels[0].persona_name=="Line Two Name" && labels[1].persona_name.empty());
+    assert(haze_steam_profile_names(metadata("PersonaName \"A\xe2\x80\xae" "B\""),labels) && labels[0].persona_name=="AB");
+    assert(haze_steam_profile_names(metadata("PersonaName \"\xff\""),labels) && labels[0].persona_name.empty());
+    std::string long_name; for (unsigned i=0;i<70;++i) long_name+="\xf0\x9f\x8e\xae";
+    assert(haze_steam_profile_names(metadata("PersonaName \""+long_name+"\""),labels));
+    assert(labels[0].persona_name==long_name.substr(0,64*4)+"...");
+    // Reject partial/ambiguous metadata as a whole; no names from an earlier
+    // valid account may leak through after a later parse failure.
+    const std::vector<std::string> invalid_names={
+        login.substr(0,login.size()-1),login+"}","users {", "users {} Users {}",
+        metadata("PersonaName A personaname B"),
+        "users { 76561197960265770 { PersonaName A } 76561197960265770 { PersonaName B } }",
+        "#include \"other.vdf\" users {}",metadata("PersonaName \"bad\\q\""),
+        metadata("PersonaName \""+std::string(16385,'x')+"\""),std::string(2*1024*1024+1,' '),
+        login+std::string(1,'\0')
+    };
+    for (const auto& malformed:invalid_names) {
+        labels=profiles; assert(!haze_steam_profile_names(malformed,labels));
+        assert(labels[0].persona_name.empty() && labels[1].persona_name.empty());
+    }
+    std::string deep; for (int i=0;i<18;++i) deep+="x {"; deep+=std::string(18,'}');
+    assert(!haze_steam_profile_names(deep,labels));
+    std::string many="users {"; for (int i=0;i<10001;++i) many+="x y "; many+="}";
+    assert(!haze_steam_profile_names(many,labels));
+    for (const auto& wrong_id:{"42","0","076561197960265770","18446744073709551616","-1","76561197960265728","103582791429521450"}) {
+        assert(haze_steam_profile_names("users { "+std::string(wrong_id)+" { PersonaName Wrong } }",labels));
+        assert(labels[0].persona_name.empty() && labels[1].persona_name.empty());
+    }
+    put(login_path,"malformed"); const auto fallback=steam_windows::profiles_at(root);
+    assert(fallback.size()==2 && fallback[0].persona_name.empty()); put(login_path,login);
     const auto profile=profiles[0]; const auto file=profile.config_directory/L"shortcuts.vdf";
     put(file,customized);
     probe_client=true;
