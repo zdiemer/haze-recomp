@@ -236,15 +236,16 @@ power loss. Broader save recovery belongs to #48.
   failed persistence and restart persistence in the full game.
 - Correct and retest Back navigation: in `video-native-1`, Escape closed the
   native Controls panel but left the retail Control Setup page underneath.
-  An explicit guest Circle pulse then returned normally. The current synthetic
-  Back lasts only two backend polls; the SDK polls at 4 ms intervals from both
+  An explicit guest Circle pulse then returned normally. The previous synthetic
+  Back lasted only two backend polls; the SDK polls at 4 ms intervals from both
   data and information calls, so those polls do not prove guest consumption.
 - Verify repeated graphics apply/reset under sustained gameplay and finish the
   GPU acceptance checks in #10. Shared retail page IDs prove the intended pause
   route, but do not replace running that route.
 
 Quit to Desktop (#57) and Add to Steam (#47) remain separate features/PRs.
-# Current-main integration and Back delivery (2026-10-13)
+
+## Current-main integration and Back delivery (2026-10-13)
 
 The settings branch now includes main efc7db9 and its SDK revision
 3cd8e810caade4907e583bd38febfc684dd472cf. The retail mouse-menu bridge lives in
@@ -261,6 +262,8 @@ cancels a pending return.
 The complete input/menu/audio regression suite passes against the current SDK,
 including repeated host polls before guest consumption, focus/sample gating,
 single Back delivery, and cancellation after the guest leaves its menus.
-Native Back/reopen verification remains pending; the earlier reproduced failure
+The full native FMA build also passes (`local/back-consumption-build.log`), with
+executable SHA256 `bfe9be237fb77e2f3bfc2106313b2c07474b38cadd5a29b3a3072f755ee5dd2e`.
+Native Back/reopen verification remains pending: a visible test was deferred
+because a separate user-owned game was running. The earlier reproduced failure
 must not be considered resolved by these tests alone.
-
