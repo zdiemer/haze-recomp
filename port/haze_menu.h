@@ -5,6 +5,7 @@
 #include "haze_gamepad.h"
 
 enum class HazeMenuPage { None, Video, Audio, Controls };
+enum class HazeMenuApply { Applied, Pending, Failed };
 struct HazeMenuChoice { std::string value,label; };
 struct HazeMenuRow {
     std::string key,label,value,hint;
@@ -17,7 +18,10 @@ struct HazeMenuProvider {
     std::function<void()> begin,defaults;
     std::function<std::vector<HazeMenuRow>()> rows;
     std::function<void(const std::string&,const std::string&)> change;
-    std::function<bool(std::string&)> apply;
+    std::function<HazeMenuApply(std::string&)> apply;
+    // Called on the window thread while Apply is pending. Providers publish
+    // completion from their owning thread; polling must never block rendering.
+    std::function<HazeMenuApply(std::string&)> poll;
 };
 // Register on the window thread before dispatching guest menu events.
 void haze_menu_register(HazeMenuPage page,HazeMenuProvider provider);

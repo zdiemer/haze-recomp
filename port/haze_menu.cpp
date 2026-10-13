@@ -27,6 +27,7 @@ int width=0,height=0,unit=24,row_height=48,top=100,visible_rows=8;
 unsigned previous_buttons=0;
 ULONGLONG repeat_at=0;
 bool pad_neutral=false,notice_error=false;
+bool applying=false;
 void clear_notice() { notice.clear(); notice_error=false; }
 HazeMenuProvider& provider() { return providers[size_t(current)]; }
 RECT row_rect(int index) { return {unit*2,top+(index-scroll)*row_height,width-unit*2,top+(index-scroll+1)*row_height}; }
@@ -41,7 +42,7 @@ void refresh() {
     InvalidateRect(panel,nullptr,FALSE);
 }
 void close_page() {
-    if (!panel) return;
+    if (!panel || applying) return;
     if (GetCapture()==panel) ReleaseCapture();
     ShowWindow(panel,SW_HIDE); dropdown=dragging=-1;
     current=HazeMenuPage::None; active=false;
@@ -49,6 +50,7 @@ void close_page() {
     SetForegroundWindow(owner_window); SetFocus(owner_window);
 }
 void activate() {
+    if (applying) return;
     if (dropdown>=0) {
         const auto row=items[dropdown]; provider().change(row.key,row.choices[drop_selected].value);
         dropdown=-1; clear_notice(); refresh(); return;
@@ -61,7 +63,12 @@ void activate() {
                 { drop_selected=int(i); drop_scroll=std::max(0,int(i)-3); }
         }
     } else switch (selected-int(items.size())) {
-        case 0: notice_error=!provider().apply(notice); break;
+        case 0: {
+            const auto result=provider().apply(notice);
+            applying=result==HazeMenuApply::Pending;
+            notice_error=result==HazeMenuApply::Failed;
+            break;
+        }
         case 1: provider().defaults(); notice="Defaults selected. Apply to save."; notice_error=false; break;
         case 2: close_page(); return;
     }
@@ -143,8 +150,8 @@ void paint(HDC target) {
         notice_error ? RGB(255,155,135) : RGB(195,200,190),DT_LEFT|DT_WORDBREAK);
     const char* actions[]={"Apply","Defaults","Back"};
     for (int i=0;i<3;++i) {
-        RECT rect=action_rect(i); fill(dc,rect,selected==int(items.size())+i ? RGB(105,100,20) : RGB(45,48,43));
-        label(dc,actions[i],rect,RGB(245,240,210),DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+        RECT rect=action_rect(i); fill(dc,rect,!applying && selected==int(items.size())+i ? RGB(105,100,20) : RGB(45,48,43));
+        label(dc,applying && i==0 ? "Saving..." : actions[i],rect,applying ? RGB(140,145,130) : RGB(245,240,210),DT_CENTER|DT_VCENTER|DT_SINGLELINE);
     }
     const int footer=height-unit*3,icon_size=unit*2;
     const int slots[]={12,14,13}; const char* hints[]={"Select","Back","Defaults"};
@@ -172,6 +179,7 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
     case WM_PRINTCLIENT: if (current!=HazeMenuPage::None) paint((HDC)wp); return 0;
     case WM_CLOSE: close_page(); return 0;
     case WM_KEYDOWN: {
+        if (applying) return 0;
         const unsigned button=haze_input_menu_button(int(wp));
         if (wp==VK_ESCAPE || (button&CELL_PAD_CTRL_CIRCLE)) { if (dropdown>=0) { dropdown=-1; refresh(); } else close_page(); }
         else if (wp==VK_UP || (button&CELL_PAD_CTRL_UP)) move(-1);
@@ -183,10 +191,12 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
         return 0;
     }
     case WM_MOUSEWHEEL:
+        if (applying) return 0;
         if (dropdown>=0) drop_scroll=std::clamp(drop_scroll+(GET_WHEEL_DELTA_WPARAM(wp)>0 ? -1 : 1),0,std::max(0,int(items[dropdown].choices.size())-8));
         else scroll=std::clamp(scroll+(GET_WHEEL_DELTA_WPARAM(wp)>0 ? -2 : 2),0,std::max(0,int(items.size())-visible_rows));
         InvalidateRect(hwnd,nullptr,FALSE); return 0;
     case WM_LBUTTONDOWN: {
+        if (applying) return 0;
         haze_input_menu_button(0);
         POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
         if (dropdown>=0) {
@@ -208,7 +218,7 @@ LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
         }
         return 0;
     }
-    case WM_MOUSEMOVE: if (dragging>=0) slider_at(GET_X_LPARAM(lp)); return 0;
+    case WM_MOUSEMOVE: if (!applying && dragging>=0) slider_at(GET_X_LPARAM(lp)); return 0;
     case WM_LBUTTONUP: dragging=-1; if (GetCapture()==hwnd) ReleaseCapture(); return 0;
     case WM_KILLFOCUS: case WM_CANCELMODE:
         dragging=-1; dropdown=-1; pad_neutral=false; previous_buttons=0;
@@ -242,10 +252,10 @@ bool haze_menu_active() { return active.load(); }
 bool haze_menu_has_focus() { return panel && active && GetForegroundWindow()==panel; }
 void haze_menu_update(void* owner,const HazeGamepadState& pad) {
     owner_window=(HWND)owner;
-    const int next=requested.exchange(0);
+    const int next=applying ? 0 : requested.exchange(0);
     if (next) {
         current=HazeMenuPage(next); provider().begin(); selected=scroll=0; dropdown=dragging=-1;
-        clear_notice(); pad_neutral=false; previous_buttons=0;
+        clear_notice(); applying=false; pad_neutral=false; previous_buttons=0;
         if (!panel) {
             WNDCLASSA cls{}; cls.lpfnWndProc=procedure; cls.hInstance=GetModuleHandle(nullptr);
             cls.lpszClassName="HazePCSettings"; cls.hCursor=LoadCursor(nullptr,IDC_ARROW); RegisterClassA(&cls);
@@ -261,6 +271,15 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
         std::fprintf(stderr,"[menu] Opened PC %s page\n",provider().title.c_str());
     }
     if (!active || !panel || current==HazeMenuPage::None) return;
+    if (applying) {
+        // Saving continues across focus loss. Keep the exact staged request
+        // locked until its owning thread reports a terminal result.
+        const auto result=provider().poll ? provider().poll(notice) : HazeMenuApply::Failed;
+        if (!provider().poll) notice="The settings provider cannot report save completion.";
+        applying=result==HazeMenuApply::Pending;
+        notice_error=result==HazeMenuApply::Failed;
+        if (!applying) { pad_neutral=false; previous_buttons=0; refresh(); }
+    }
     position();
     const HWND foreground=GetForegroundWindow();
     if (IsIconic(owner_window) || (foreground!=owner_window && foreground!=panel)) {
@@ -268,6 +287,7 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
     }
     ShowWindow(panel,SW_SHOWNOACTIVATE);
     if (foreground==owner_window) SetFocus(panel);
+    if (applying) { pad_neutral=false; return; }
     unsigned buttons=pad.input.buttons;
     if (pad.input.ly<64) buttons|=CELL_PAD_CTRL_UP; if (pad.input.ly>192) buttons|=CELL_PAD_CTRL_DOWN;
     if (pad.input.lx<64) buttons|=CELL_PAD_CTRL_LEFT; if (pad.input.lx>192) buttons|=CELL_PAD_CTRL_RIGHT;
@@ -287,7 +307,7 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad) {
 void haze_menu_shutdown() {
     if (panel) DestroyWindow(panel); panel=nullptr;
     if (font) DeleteObject(font); if (heading) DeleteObject(heading); font=heading=nullptr;
-    active=false; requested=0; current=HazeMenuPage::None; width=height=0;
+    active=false; requested=0; current=HazeMenuPage::None; applying=false; width=height=0;
 }
 #else
 void haze_menu_register(HazeMenuPage,HazeMenuProvider) {}

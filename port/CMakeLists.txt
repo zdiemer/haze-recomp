@@ -79,6 +79,16 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PACER_SOURCE}")
     list(APPEND RECOMP_SOURCES "${HAZE_PACER_PATCHED}")
     set_property(SOURCE "${HAZE_PACER_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+    # Compose with the pacing patch; compile one copy of this translation unit.
+    set(HAZE_SAVE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_save/ppu_recomp_003.cpp")
+    add_custom_command(OUTPUT "${HAZE_SAVE_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
+            "${HAZE_PACER_PATCHED}" "${HAZE_SAVE_PATCHED}"
+        DEPENDS "${HAZE_PACER_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
+        VERBATIM)
+    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PACER_PATCHED}")
+    list(APPEND RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
+    set_property(SOURCE "${HAZE_SAVE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -267,6 +277,7 @@ add_executable(${PROJECT_NAME}
     haze_graphics_live.cpp
     haze_menu.cpp
     haze_video_menu.cpp
+    haze_save_status.cpp
     haze_display.cpp
     haze_spu_idle.c
     ${PS3RECOMP_SCAFFOLD}

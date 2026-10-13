@@ -113,6 +113,29 @@ int main(int argc,char** argv) {
         for (int i=0;i<13;++i) key(VK_DOWN);
         assert(selected==13); render(nullptr); key(VK_ESCAPE);
     }
+    unsigned queued=0,changes=0,defaults_count=0,polls=0;
+    auto completion=HazeMenuApply::Pending;
+    HazeMenuProvider audio;
+    audio.title="AUDIO"; audio.begin=[] {};
+    audio.defaults=[&] { ++defaults_count; };
+    audio.rows=[] { return std::vector<HazeMenuRow>{{"music","Music","100","Music volume",{},true,0,100,5}}; };
+    audio.change=[&](const std::string&,const std::string&) { ++changes; };
+    audio.apply=[&](std::string& message) { ++queued; message="Saving audio settings..."; return HazeMenuApply::Pending; };
+    audio.poll=[&](std::string& message) { ++polls; message=completion==HazeMenuApply::Failed ? "Profile save failed." : "Audio settings saved."; return completion; };
+    haze_menu_register(HazeMenuPage::Audio,std::move(audio));
+    assert(haze_menu_request(HazeMenuPage::Audio)); haze_menu_update(owner,{});
+    action(0); assert(applying && queued==1);
+    auto returned=returns;
+    key(VK_ESCAPE); key('L'); key(VK_RIGHT); action(0); action(1); action(2);
+    assert(applying && returns==returned && queued==1 && changes==0 && defaults_count==0);
+    foreground=nullptr; haze_menu_update(owner,{}); assert(applying && polls==1);
+    completion=HazeMenuApply::Failed; haze_menu_update(owner,{});
+    assert(!applying && notice_error && notice=="Profile save failed.");
+    key(VK_ESCAPE); assert(returns==returned+1);
+    assert(haze_menu_request(HazeMenuPage::Audio)); haze_menu_update(owner,{});
+    action(0); completion=HazeMenuApply::Applied; haze_menu_update(owner,{});
+    assert(!applying && !notice_error && notice=="Audio settings saved." && queued==2);
+    key(VK_ESCAPE);
     haze_menu_shutdown(); DestroyWindow(owner);
     std::puts("Native page navigation, staging, failure recovery, rendering and input tests passed.");
 }

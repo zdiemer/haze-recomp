@@ -69,6 +69,53 @@ Local evidence is under `local/runs/settings-native-2`, `local/menu-test.log`
 and `local/video-page-test.png`; disc assets, runtime captures and generated
 game code are not committed.
 
+## Pending saves and Audio integration
+
+The shared provider protocol distinguishes Applied, Pending and Failed. While
+an Apply is pending, the page keeps rendering and polls for a result even if
+Haze loses focus. It locks further edits, duplicate Apply, Defaults and Back
+until that request finishes. A queued save is displayed as Saving, not as a
+successful write. Tests cover delayed success/failure and input suppression
+during the pending state. The Audio provider itself is not registered yet.
+
+The port now observes the original save-worker launcher and completion through
+guarded build-local patches, composed with the existing pacing patch. It does
+not replace serialization, file operations, callbacks or the worker's exit.
+Only the audited save-worker descriptor is tracked; load workers are ignored.
+Each observed operation receives a ticket so a stale result cannot complete a
+later request. A successful thread launch remains pending. A failed launch is
+terminal; otherwise the result comes from the guest's processed save-data
+return code immediately before worker exit. A worker that skips that result
+path reports an unknown failure instead of reusing an earlier success.
+
+Native validation in `local/runs/audio-save-2` used the retail Sound Setup page
+and an isolated copied profile. Changing music and accepting the save produced
+ticket 1/result 0, a changed `_PROFILE.DAT`, and the original return to Settings.
+A second attempt held that profile file open with exclusive sharing: ticket 2
+reported `0x8002b402`, the profile hash remained unchanged, and the process later
+closed normally with code 0. This validates observation of real success/failure;
+it does not yet validate a PC Audio provider, audible output or restart recovery.
+The native build and full test runner passed (`local/audio-prep-build.log` and
+`local/audio-prep-tests.log`).
+
+The current BLUS30094 Audio audit establishes this path:
+
+| Function | Role |
+| --- | --- |
+| `0x000FFF20` | Finds a named slider, sets its value and marks the widget tree dirty. |
+| `0x00100300` | Copies music/effects/speech/headset and related subtitle/voice preferences into the selected profile, applies the live values and requests persistence. |
+| `0x004D2F90` | Applies active-profile mix values; music/effects/dialogue use mixer groups 2/0/1. |
+| `0x004E9B80` | Starts profile serialization and dispatch; its return alone does not establish a completed disk write. |
+| `0x00721F48` | Starts the serialized save worker and reports thread-creation failure. |
+| `0x007222B0` | Executes save-data work, processes its result, clears busy state and exits. |
+
+Audio Apply must run through the guest's menu-owning thread, preserve the other
+profile preferences, correlate its request with the observed save ticket, and
+restore its prior live values if saving fails. Those connections and the native
+failure/restart acceptance checks remain to be implemented. The observer alone
+does not provide atomic disk rollback, master volume, device selection, or
+mute-on-focus-loss.
+
 ## Work still required before #58 can close
 
 - Integrate working Audio controls through the game's existing profile/save

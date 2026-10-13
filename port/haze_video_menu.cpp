@@ -51,8 +51,8 @@ void haze_video_menu_register() {
     };
     provider.defaults=[] { edited=haze_video::defaults(); };
     provider.apply=[](std::string& message) {
-        if (!haze_graphics_apply(edited,true,message)) return false;
-        loaded=haze_graphics_state(); message=loaded.notice+". Settings saved."; return true;
+        if (!haze_graphics_apply(edited,true,message)) return HazeMenuApply::Failed;
+        loaded=haze_graphics_state(); message=loaded.notice+". Settings saved."; return HazeMenuApply::Applied;
     };
     haze_menu_register(HazeMenuPage::Video,std::move(provider));
 }
