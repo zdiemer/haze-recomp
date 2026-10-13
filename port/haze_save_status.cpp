@@ -1,19 +1,28 @@
 #include "haze_save_status.h"
 #include <mutex>
 #include <cstdio>
+#include <deque>
 
 namespace {
 std::mutex mutex;
 HazeSaveStatus status;
+std::deque<HazeSaveStatus> history;
 }
 HazeSaveStatus haze_save_status() {
     std::lock_guard lock(mutex); return status;
+}
+HazeSaveStatus haze_save_status(uint64_t ticket) {
+    std::lock_guard lock(mutex);
+    if (ticket && status.ticket==ticket) return status;
+    for (const auto& previous:history) if (previous.ticket==ticket) return previous;
+    return {};
 }
 uint64_t haze_save_begin(uint32_t worker) {
     // The common launcher also starts load workers. Only observe the audited
     // save worker descriptor; do not reinterpret load completion as a save.
     if (worker!=0xe71ac8) return 0;
     std::lock_guard lock(mutex);
+    if (status.ticket) { history.push_back(status); if (history.size()>16) history.pop_front(); }
     ++status.ticket; status.busy=true; status.completed=false; status.result=0;
     std::fprintf(stderr,"[settings-save] Started save %llu\n",(unsigned long long)status.ticket);
     return status.ticket;

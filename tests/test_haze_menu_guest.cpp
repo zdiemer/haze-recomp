@@ -5,6 +5,7 @@
 std::vector<uint8_t> memory(0x320000);
 HazeMenuPage received=HazeMenuPage::None;
 unsigned requests;
+bool haze_audio_guest_open(ppu_context*) { return true; }
 uint8_t vm_read8(uint64_t p) { return memory.at(size_t(p)); }
 uint32_t vm_read32(uint64_t p) {
     return uint32_t(vm_read8(p))<<24 | uint32_t(vm_read8(p+1))<<16 | uint32_t(vm_read8(p+2))<<8 | vm_read8(p+3);
@@ -15,12 +16,12 @@ int main() {
     for (unsigned i=0;i<8;++i) for (unsigned j=0;j<4;++j) memory[0x319c68+i*4+j]=uint8_t(code[i]>>(24-j*8));
     for (auto [name,page]:{std::pair{"sett_DC_page10",HazeMenuPage::Video},std::pair{"sett_DC_page3",HazeMenuPage::Audio},std::pair{"sett_DC_page2",HazeMenuPage::Controls}}) {
         std::fill_n(memory.begin()+0x1018,16,0); std::memcpy(memory.data()+0x1018,name,std::strlen(name));
-        haze_menu_page_loaded(0x1000); assert(received==page);
+        haze_menu_page_loaded(nullptr,0x1000); assert(received==page);
     }
     assert(requests==3);
-    std::memcpy(memory.data()+0x1018,"sett_DC_page20",14); haze_menu_page_loaded(0x1000); assert(requests==3);
-    haze_menu_page_loaded(0); haze_menu_page_loaded(UINT32_MAX); assert(requests==3);
+    std::memcpy(memory.data()+0x1018,"sett_DC_page20",14); haze_menu_page_loaded(nullptr,0x1000); assert(requests==3);
+    haze_menu_page_loaded(nullptr,0); haze_menu_page_loaded(nullptr,UINT32_MAX); assert(requests==3);
     std::memcpy(memory.data()+0x1018,"sett_DC_page10",14); memory[0x319c68]=0;
-    haze_menu_page_loaded(0x1000); assert(requests==3);
+    haze_menu_page_loaded(nullptr,0x1000); assert(requests==3);
     puts("Menu page hook: exact page identity, supported guest code and bounds passed.");
 }

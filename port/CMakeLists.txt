@@ -84,7 +84,10 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
     add_custom_command(OUTPUT "${HAZE_SAVE_PATCHED}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
             "${HAZE_PACER_PATCHED}" "${HAZE_SAVE_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_audio_tick.py"
+            "${HAZE_SAVE_PATCHED}" "${HAZE_SAVE_PATCHED}"
         DEPENDS "${HAZE_PACER_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_audio_tick.py"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PACER_PATCHED}")
     list(APPEND RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
@@ -104,7 +107,8 @@ if(EXISTS "${HAZE_MENU_SOURCE}")
         DEPENDS "${HAZE_MENU_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_pages.py"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_MENU_SOURCE}")
-    list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_menu_guest.cpp")
+    list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_menu_guest.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_guest.cpp")
     set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 
@@ -277,6 +281,7 @@ add_executable(${PROJECT_NAME}
     haze_graphics_live.cpp
     haze_menu.cpp
     haze_video_menu.cpp
+    haze_audio_menu.cpp
     haze_save_status.cpp
     haze_display.cpp
     haze_spu_idle.c

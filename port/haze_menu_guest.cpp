@@ -1,9 +1,10 @@
 #include "ppu_recomp.h"
 #include "haze_menu.h"
+#include "haze_audio_settings.h"
 #include <cstring>
 #include <cstdio>
 
-void haze_menu_page_loaded(uint32_t page) {
+void haze_menu_page_loaded(ppu_context* ctx,uint32_t page) {
     if (!page || page>UINT32_MAX-0x28) return;
     // Supported BLUS30094 page activator. Page IDs are fixed 16-byte strings,
     // copied by the guest's ID constructor at 0x7555b0, not host pointers.
@@ -16,6 +17,9 @@ void haze_menu_page_loaded(uint32_t page) {
     if (!std::strcmp(name,"sett_DC_page10")) kind=HazeMenuPage::Video;
     if (!std::strcmp(name,"sett_DC_page3")) kind=HazeMenuPage::Audio;
     if (!std::strcmp(name,"sett_DC_page2")) kind=HazeMenuPage::Controls;
+    if (kind==HazeMenuPage::Audio && !haze_audio_guest_open(ctx)) {
+        std::fprintf(stderr,"[menu] Audio profile unavailable; retaining retail page\n"); return;
+    }
     if (kind!=HazeMenuPage::None)
         std::fprintf(stderr,"[menu] Guest page %s; PC provider=%s\n",name,haze_menu_request(kind) ? "yes":"no");
 }

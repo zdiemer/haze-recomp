@@ -1,9 +1,9 @@
 # Native settings pages
 
 Work in progress for #58, built on the live graphics backend from #10. This
-branch currently provides the native **Video** page and shared page/input
-infrastructure. Audio and Controls still use the retail pages until their PC
-providers are registered. Controls/rebinding belongs to the separate #23 PR.
+branch currently provides native **Video** and **Audio** pages and shared
+page/input infrastructure. Controls still uses the retail page; its provider
+and rebinding belong to the separate #23 PR.
 
 ## Navigation and persistence
 
@@ -76,7 +76,24 @@ an Apply is pending, the page keeps rendering and polls for a result even if
 Haze loses focus. It locks further edits, duplicate Apply, Defaults and Back
 until that request finishes. A queued save is displayed as Saving, not as a
 successful write. Tests cover delayed success/failure and input suppression
-during the pending state. The Audio provider itself is not registered yet.
+during the pending state.
+
+Sound Setup now opens the Audio provider with Music, Sound effects, Dialogue
+and Subtitles. It reads current values and defaults from the selected game
+profile through the original menu callbacks. Sliders use the original 0–100
+range and steps of five. Defaults and edits remain staged until Apply; Back
+discards them. The original headset and voice preferences are retained.
+
+Apply queues work to the guest thread that opened the page. A guarded hook at
+the common frame boundary consumes it, including in menus that skip the guest
+pacing branch. Guest calls preserve the full CPU context and trampoline and
+borrow space below that thread's stack, avoiding shared callback scratch space.
+The bridge validates the active page/profile and baseline values before writing,
+waits for existing saves, invokes the original live-apply/save callback, and
+tracks its completion ticket. On failure it restores the previous profile
+fields, widgets and live mix. If the profile or edited fields changed elsewhere
+during the save, it reports that conflict without overwriting the newer state.
+Failed page validation retains the retail page and invalidates the old session.
 
 The port now observes the original save-worker launcher and completion through
 guarded build-local patches, composed with the existing pacing patch. It does
@@ -87,41 +104,74 @@ later request. A successful thread launch remains pending. A failed launch is
 terminal; otherwise the result comes from the guest's processed save-data
 return code immediately before worker exit. A worker that skips that result
 path reports an unknown failure instead of reusing an earlier success.
+Recent ticket results remain available if another save starts before the menu
+thread observes completion.
 
 Native validation in `local/runs/audio-save-2` used the retail Sound Setup page
 and an isolated copied profile. Changing music and accepting the save produced
 ticket 1/result 0, a changed `_PROFILE.DAT`, and the original return to Settings.
 A second attempt held that profile file open with exclusive sharing: ticket 2
 reported `0x8002b402`, the profile hash remained unchanged, and the process later
-closed normally with code 0. This validates observation of real success/failure;
-it does not yet validate a PC Audio provider, audible output or restart recovery.
-The native build and full test runner passed (`local/audio-prep-build.log` and
-`local/audio-prep-tests.log`).
+closed normally with code 0. This established the save observer before adding
+the PC provider.
+
+The PC Audio run in `local/runs/audio-page-4` changed Music from 70 to 50 and
+then to zero through posted pointer messages. Both profile saves completed.
+The captured mixer output changed from nonzero audio (two-second RMS 0.0234)
+to exact silence at zero. Blocking the next profile write with an exclusive
+file lock produced `0x8002b402`, restored the prior silent mix, and retained the
+saved profile hash. Defaults followed by Back/reopen retained Music zero.
+After saving 50, a fresh process using the resulting copied profile opened
+Audio with 50 (`local/runs/audio-page-5`). Both processes exited with code 0.
+Device output was muted while capturing the actual pre-mute mix; this is a
+signal-level check, not a listening test. Effects/dialogue and subtitles still
+need gameplay effect checks. Native probes use diagnostic pad input and posted
+window messages; the foreground/input limitations above apply to Audio too.
+
+The subsequent native run `local/runs/audio-page-6` enabled Subtitles and saved
+successfully. An attempted disable with the profile file locked failed, retained
+the saved hash, and reopening Audio still reported Subtitles On. This validates
+the original toggle/save/rollback path; displaying dialogue subtitles during
+gameplay remains an acceptance check.
+
+The actual bridge/provider tests cover high-address guest heap allocations,
+context preservation, defaults, strict staging, subtitle rollback with unrelated
+flags preserved, thread ownership, nested calls, pending saves, launch failure,
+save failure, interleaved result observation, stale generations, external edits
+and unsupported code. The native build and complete test runner passed in
+`local/audio-subtitles-build.log` and `local/audio-subtitles-tests.log`.
+An earlier suite run hit the existing graphics persistence assertion at
+`test_haze_graphics.cpp:102`; the unchanged standalone rerun and two subsequent
+full suites passed. That intermittent failure has not been explained.
 
 The current BLUS30094 Audio audit establishes this path:
 
 | Function | Role |
 | --- | --- |
 | `0x000FFF20` | Finds a named slider, sets its value and marks the widget tree dirty. |
+| `0x00100230` | Selects the named toggle's value, used for Subtitles. |
 | `0x00100300` | Copies music/effects/speech/headset and related subtitle/voice preferences into the selected profile, applies the live values and requests persistence. |
 | `0x004D2F90` | Applies active-profile mix values; music/effects/dialogue use mixer groups 2/0/1. |
 | `0x004E9B80` | Starts profile serialization and dispatch; its return alone does not establish a completed disk write. |
 | `0x00721F48` | Starts the serialized save worker and reports thread-creation failure. |
 | `0x007222B0` | Executes save-data work, processes its result, clears busy state and exits. |
 
-Audio Apply must run through the guest's menu-owning thread, preserve the other
-profile preferences, correlate its request with the observed save ticket, and
-restore its prior live values if saving fails. Those connections and the native
-failure/restart acceptance checks remain to be implemented. The observer alone
-does not provide atomic disk rollback, master volume, device selection, or
-mute-on-focus-loss.
+The existing guest exposes separate music/effects/dialogue mixer groups, not a
+verified master control. The current native output backend selects the default
+device at startup; its diagnostic mute environment variable is cached and does
+not provide mute-on-focus-loss. Master volume, device selection and focus mute
+therefore need backend work and coordination with device recovery (#49).
+
+The pinned save-data backend writes profile files directly. The locked-file
+test proves failure before writing; it does not prove recovery from a short
+write, disk-full failure or interruption after truncation. Atomic profile-file
+persistence remains required before claiming all failed writes preserve saves.
 
 ## Work still required before #58 can close
 
-- Integrate working Audio controls through the game's existing profile/save
-  callbacks. Asset/callback audit identifies music, effects and speech sliders;
-  a working master control and output-device/focus-mute backend are not yet
-  established. Coordinate device recovery with #49.
+- Finish Audio gameplay effect checks, preserve saves through mid-write failure,
+  and assess headset/voice support. Master/device/focus-mute need new backend
+  work; coordinate device recovery with #49.
 - Integrate the separate Controls provider from #23.
 - Implement and verify timed keep/revert for display changes. A restart marker
   alone does not satisfy this requirement.

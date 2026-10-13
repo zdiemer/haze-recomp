@@ -53,6 +53,7 @@ bool haze_menu_has_focus() { return false; }
 void haze_menu_update(void*,const HazeGamepadState&) {}
 void haze_menu_shutdown() {}
 void haze_video_menu_register() {}
+void haze_audio_menu_register() {}
 static CellPadHostInput sample() {
     CellPadHostInput input{0,128,128,128,128,0,0};
     assert(poll(0,&input,nullptr)==1);

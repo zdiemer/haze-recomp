@@ -14,8 +14,8 @@ def patch(source):
     original = source[start:end]
     if hashlib.sha256(original.encode()).hexdigest() != DIGEST:
         raise ValueError('Menu page activation changed; audit the guest hook')
-    body = original.replace(ENTRY, ENTRY + '\n        const uint32_t haze_page = (uint32_t)ctx->gpr[4];\n        extern void haze_menu_page_loaded(uint32_t);', 1)
-    body = body.replace('return;', 'haze_menu_page_loaded(haze_page); return;')
+    body = original.replace(ENTRY, ENTRY + '\n        const uint32_t haze_page = (uint32_t)ctx->gpr[4];\n        extern void haze_menu_page_loaded(ppu_context*,uint32_t);', 1)
+    body = body.replace('return;', 'haze_menu_page_loaded(ctx,haze_page); return;')
     return source[:start] + body + source[end:]
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 #include "haze_input.h"
 #include "haze_graphics_reload.h"
 #include "haze_menu.h"
+#include "haze_audio_settings.h"
 #include "haze_mouse.h"
 #ifdef _WIN32
 #include "haze_prompts.h"
@@ -340,6 +341,7 @@ void haze_input_attach(void* hwnd) {
     if (!hwnd) return;
     window=(HWND)hwnd;
     haze_video_menu_register();
+    haze_audio_menu_register();
     if (controller_enabled) gamepad_initialized=haze_gamepad_initialize(config_path);
     RAWINPUTDEVICE device{0x01,0x02,0,window};
     if (!RegisterRawInputDevices(&device,1,sizeof(device))) {

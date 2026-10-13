@@ -34,4 +34,10 @@ foreach ($test in @('test_haze_input','test_haze_camera','test_haze_graphics','t
 if ($LASTEXITCODE -ne 0) { throw 'Menu page patch guard failed.' }
 & "$assets/.venv/Scripts/python.exe" "$root/tests/test_save_status_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Save status patch guard failed.' }
+& "$assets/.venv/Scripts/python.exe" "$root/tests/test_audio_tick_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
+if ($LASTEXITCODE -ne 0) { throw 'Audio tick patch guard failed.' }
+& $clang /nologo /W4 /O1 /std:c++20 "/I$assets/generated/ppu" "/I$sdk/include" "/I$sdk/libs/input" "/Fe$root/local/test_haze_audio.exe" "/Fo$root/local/test_haze_audio.obj" "$root/tests/test_haze_audio.cpp"
+if ($LASTEXITCODE -ne 0) { throw 'Audio bridge compilation failed.' }
+& "$root/local/test_haze_audio.exe"
+if ($LASTEXITCODE -ne 0) { throw 'Audio bridge tests failed.' }
 exit 0 # Native compiler warnings on stderr are not a failed test run.

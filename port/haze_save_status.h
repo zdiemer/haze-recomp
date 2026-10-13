@@ -10,6 +10,7 @@ struct HazeSaveStatus {
     int32_t result=0;
 };
 HazeSaveStatus haze_save_status();
+HazeSaveStatus haze_save_status(uint64_t ticket);
 uint64_t haze_save_begin(uint32_t worker);
 uint64_t haze_save_current();
 void haze_save_launched(uint64_t ticket,int32_t result);
