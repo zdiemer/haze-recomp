@@ -421,10 +421,10 @@ void playback(u32 player, const char* uri, int started, void*) {
 }
 bool startup_setting(const char* name) {
     char value[32];
-    GetPrivateProfileStringA("Startup",name,"1",value,sizeof(value),config_path);
-    if (!strcmp(value,"0")) return false;
-    if (strcmp(value,"1")) fprintf(stderr,"[startup] Invalid %s=%s; using 1\n",name,value);
-    return true;
+    GetPrivateProfileStringA("Startup",name,"0",value,sizeof(value),config_path);
+    if (!strcmp(value,"1")) return true;
+    if (strcmp(value,"0")) fprintf(stderr,"[startup] Invalid %s=%s; using 0\n",name,value);
+    return false;
 }
 void load_keyboard_config() {
     const char* path=config_path;
@@ -450,7 +450,7 @@ void load_keyboard_config() {
     invert_y=GetPrivateProfileIntA("Mouse","InvertY",0,path)!=0;
     const bool logos=startup_setting("AutoSkipLogos"), demo=startup_setting("AutoSkipAttract");
     startup_skip.configure(logos,demo);
-    fprintf(stderr,"[startup] Automatic logos=%s, idle demo=%s; movies are not decoded. Confirm skips manually.\n",
+    fprintf(stderr,"[startup] Automatic logos=%s, idle demo=%s. Confirm skips movies manually.\n",
             logos ? "on" : "off",demo ? "on" : "off");
     clear_keys(); mouse_motion.clear();
 }
@@ -570,7 +570,7 @@ void haze_input_update() {
                     label=family==HazeInputFamily::Xbox ? xbox[i] : family==HazeInputFamily::Switch ? sw[i] : ps[i];
             }
             skip_hint=!_stricmp(value,"none") ? "Skip is unbound. Enable automatic logo skipping in input.ini."
-                : std::string("Press ")+label+" to skip (movie playback unavailable)";
+                : std::string("Press ")+label+" to skip";
         }
     }
     startup_prompt.update(window.load(),startup_skip.showing(),skip_hint);
@@ -709,6 +709,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE void haze_wasm_mouse(int32_t x, int32_t y, int c
     if (captured) browser_mouse_motion.add(x,y);
 }
 void haze_input_initialize() {
+    // The browser still uses the SDK's lifecycle-only media backend.
+    browser_startup.configure(true,true);
     cellPad_set_host_input_callback(browser_poll, nullptr);
     cellSail_set_host_playback_callback(browser_playback, nullptr);
 }

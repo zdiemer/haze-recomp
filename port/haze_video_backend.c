@@ -1,7 +1,55 @@
 /* Compile the pinned SDK renderer once, extending it inside its owning TU so
  * cached descriptors and GPU resources never escape to the UI/config thread. */
-#include "rsx_live_draw.c"
+#include <stdint.h>
+static void haze_movie_capture_backbuffer(uint32_t backbuffer);
+#include "haze_rsx_live_draw.c"
 #include "haze_video_backend.h"
+
+/* Movie uploads and guest UI draws share the command list. The compositor's
+ * existing handoff lock waits for guest rendering before either transition. */
+void haze_movie_render_init(void) {
+    g_ld_movie_composite_ui=1;
+}
+static unsigned haze_movie_frames,haze_movie_sequence;
+void haze_movie_render_mode(int on) {
+    rsx_live_draw_set_movie_mode(on);
+    if(on) { haze_movie_frames=0; ++haze_movie_sequence; }
+    else { fprintf(stderr,"[movie] Renderer released after %u presented frames.\n",haze_movie_frames); fflush(stderr); }
+}
+void haze_movie_render_guest_flip(void) {
+    // Haze reports flips through cellGcm's external notification rather than
+    // the NV4097 flip method. Complete the compositor frame here too: it fences
+    // guest draws before recycling their constant/descriptor upload rings.
+    if(g.ready && g_ld_movie_mode) ld_movie_capture_overlay();
+}
+void haze_movie_render_frame(const uint8_t* rgba,uint32_t width,uint32_t height) {
+    if(!g.ready) return;
+    ++haze_movie_frames;
+    rsx_live_draw_present_rgba(rgba,width,height);
+    if(!g.ready) --haze_movie_frames;
+}
+static void haze_movie_capture_backbuffer(uint32_t backbuffer) {
+    // Opt-in GPU readback proves that decoded frames reached the swap chain.
+    // Disabled diagnostics perform no extra readback or file writes.
+    const char* directory=getenv("HAZE_MOVIE_CAPTURE");
+    if(directory && *directory && haze_movie_frames==60) {
+        surface_t surface={0};
+        surface.tex=g.backbuf[backbuffer]; surface.w=g_ld_resolution.host_w;
+        surface.h=g_ld_resolution.host_h; surface.fmt=DXGI_FORMAT_R8G8B8A8_UNORM;
+        D3D12_RESOURCE_BARRIER barrier={0}; barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource=surface.tex;
+        barrier.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore=D3D12_RESOURCE_STATE_PRESENT;
+        barrier.Transition.StateAfter=D3D12_RESOURCE_STATE_RENDER_TARGET;
+        g.list->lpVtbl->ResourceBarrier(g.list,1,&barrier);
+        char path[MAX_PATH*2]; snprintf(path,sizeof(path),"%s/movie_%u.ppm",directory,haze_movie_sequence);
+        const u64 nonblack=ld_dump_surface_ppm(path,&surface);
+        barrier.Transition.StateBefore=D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barrier.Transition.StateAfter=D3D12_RESOURCE_STATE_PRESENT;
+        g.list->lpVtbl->ResourceBarrier(g.list,1,&barrier); ld_flush(LD_FLUSH_READBACK);
+        fprintf(stderr,"[movie] GPU capture %s nonblack=%llu\n",path,(unsigned long long)nonblack); fflush(stderr);
+    }
+}
 
 static struct {
     int active, enable_postprocess;

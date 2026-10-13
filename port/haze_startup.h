@@ -9,7 +9,7 @@
 class HazeStartupSkip {
     std::mutex mutex;
     bool active = false, attract = false, draining = false;
-    bool auto_logos = true, auto_attract = true;
+    bool auto_logos = false, auto_attract = false;
     uint32_t owner = 0;
     uint64_t started = 0;
 public:

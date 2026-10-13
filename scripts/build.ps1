@@ -2,6 +2,7 @@ param(
     [string]$SharedRoot,
     [string]$SdkRoot,
     [string]$SDL3Root,
+    [string]$FFmpegRoot,
     [switch]$RuntimeOnly,
     [switch]$Test,
     [switch]$ProfileRenderer,
@@ -50,6 +51,7 @@ $ErrorActionPreference = 'Continue' # Windows PowerShell treats native stderr wa
 $exeOutput = if ($OutputDirectory) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory) } else { $build }
 $controllerArgs = @()
 if ($SDL3Root) { $controllerArgs += "-DFETCHCONTENT_SOURCE_DIR_SDL3=$((Resolve-Path -LiteralPath $SDL3Root).Path)" }
+if ($FFmpegRoot) { $controllerArgs += "-DHAZE_FFMPEG_ROOT=$((Resolve-Path -LiteralPath $FFmpegRoot).Path)" }
 & $cmake -S $source -B $build -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_C_COMPILER=$clang" "-DCMAKE_CXX_COMPILER=$clang" "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$exeOutput" "-DPython3_EXECUTABLE=$python" "-DPS3RECOMP_DIR=$sdk" "-DRECOMP_DIR=$assets/generated/ppu" "-DSPU_DIR=$assets/generated/spu" "-DHAZE_SHARED_ROOT=$assets" "-DHAZE_RSX_PROFILE=$([int][bool]$ProfileRenderer)" "-DHAZE_SPU_FMA=$([int][bool]$SpuFma)" "-DHAZE_SPU_BYTE_COMPARE=$([int][bool]$CompareSpuByteOps)" @controllerArgs
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 if (-not $RuntimeOnly) {
@@ -60,6 +62,22 @@ if (-not $RuntimeOnly) {
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
 if ($Test) {
     New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
+    if (-not $RuntimeOnly) {
+        & $python "$root/tests/test_movie_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
+        if ($LASTEXITCODE -ne 0) { throw 'Movie guest EOF patch regression failed.' }
+        & $cmake --build $build --target HazeMovieDecodeTest HazeMoviePlaybackTest HazeMovieSailTest HazeMoviePamfTest --parallel $Jobs
+        if ($LASTEXITCODE -ne 0) { throw 'Movie test compilation failed.' }
+        & "$exeOutput/HazeMovieSailTest.exe"
+        if ($LASTEXITCODE -ne 0) { throw 'Movie lifecycle regression failed.' }
+        & "$exeOutput/HazeMoviePamfTest.exe"
+        if ($LASTEXITCODE -ne 0) { throw 'PAMF parsing regression failed.' }
+        $movies = Get-ChildItem -LiteralPath "$assets/game/disc/PS3_GAME/USRDIR/assets/g5/pamf" -Filter '*.pam'
+        if (-not $movies) { throw 'Supported-disc movies are required for movie validation.' }
+        & "$exeOutput/HazeMovieDecodeTest.exe" @($movies.FullName)
+        if ($LASTEXITCODE -ne 0) { throw 'Supported-disc movie decoding failed.' }
+        & "$exeOutput/HazeMoviePlaybackTest.exe" "$assets/game/disc"
+        if ($LASTEXITCODE -ne 0) { throw 'Timed playback/skip/pause regression failed.' }
+    }
     & $python "$root/tests/test_memory_read_fastpaths.py" --compiler $clang --sdk $sdk --output-dir "$root/build/memory-read-fastpaths"
     if ($LASTEXITCODE -ne 0) { throw 'Native byte/halfword memory-read regression failed.' }
     $audioRingTest = Join-Path $root 'local/test_audio_ring.exe'

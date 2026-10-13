@@ -7,8 +7,8 @@ Experimental Windows port of **Haze** for PS3, built with
 Menus, opening-scene gameplay, audio output, and checkpoint saves have been
 tested. Keyboard/mouse and SDL controller support are implemented. Performance,
 rendering, and campaign compatibility are still in development. Full campaign
-completion is not validated; online co-op is not implemented. Movie decoding
-is unavailable, so opening logos skip automatically.
+completion is not validated; online co-op is not implemented. Native PAMF movies
+play with synchronized video and audio; the current confirm binding skips them.
 
 ## Build and run
 
@@ -122,6 +122,9 @@ translations, and game assets while keeping their own builds and logs:
 ```
 
 Use `-SdkRoot` on the build command to select a separate SDK checkout.
+The native build downloads a pinned shared LGPL FFmpeg package for movie
+decoding. `-FFmpegRoot` selects an unpacked development package for offline
+builds. See [movie playback](docs/movie-playback.md) for formats and validation.
 
 ## Experimental browser build
 
@@ -140,9 +143,13 @@ shared memory and about 8 GiB of addressable linear memory; the local server
 provides the required isolation headers. Click to enable sound and fullscreen;
 F1 releases the mouse. Add `?debug=1` for controls and logs. Browser saves use
 IndexedDB, separately from native saves. Browser network play is not implemented.
+Native FFmpeg movie playback is not part of the experimental browser build.
 
 ## License
 
 The port scaffold derives from ps3recomp's MIT-licensed template; see
 [LICENSE](LICENSE). Input prompt artwork is by Kenney; its license is included
 in [assets/input-prompts](assets/input-prompts).
+Native movie decoding dynamically links FFmpeg under LGPLv3. Its license and
+documentation are installed under `share/ffmpeg`; the matching shared libraries
+remain replaceable beside the executable.

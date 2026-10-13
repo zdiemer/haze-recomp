@@ -39,7 +39,7 @@ foreach ($key in $settings.Keys) {
     [Environment]::SetEnvironmentVariable($key, $settings[$key], 'Process')
 }
 try {
-    Write-Host 'Opening logos skip automatically by default (input.ini [Startup]). Movie playback is unavailable.'
+    Write-Host 'Movies play by default. Automatic logo/attract skipping is optional in input.ini [Startup].'
     Write-Host 'Current Cross/confirm binding skips manually. Default controls: Enter starts; Space confirms; arrows navigate.'
     Write-Host 'WASD moves. Gameplay captures the mouse automatically; F1 releases it.'
     Write-Host 'Escape pauses. Menus use the pointer: left click selects, right click goes back.'

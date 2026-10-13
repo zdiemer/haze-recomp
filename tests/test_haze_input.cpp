@@ -302,6 +302,7 @@ int main() {
     assert(!(sample().buttons&CELL_PAD_CTRL_R3));
     captured=0; invert_y=false;
     // Lifecycle-bounded skip survives unfocused boot, then cannot confirm a menu.
+    startup_skip.configure(true,true);
     const char* uri="x-cell-fs:///dev_bdvd/PS3_GAME/USRDIR/assets/g5/pamf/frd.pam";
     assert(startup_skip.playback(123,uri,true,ticks));
     focused=false; ticks+=400;
@@ -395,6 +396,10 @@ int main() {
     assert(!HazeStartupSkip::known_video(nullptr));
     assert(!HazeStartupSkip::known_video("frd.pam"));
     assert(!HazeStartupSkip::known_video("x-cell-fs:///dev_bdvd/PS3_GAME/USRDIR/assets/g5/pamf/story.pam"));
+    assert(isolated.playback(123,uri,true,100));
+    assert(!isolated.filter(500,0,true,cross)); // Playback is the default.
+    assert(isolated.filter(500,cross,true,cross)==cross);
+    isolated.configure(true,true);
     assert(isolated.playback(123,uri,true,100));
     assert(!isolated.filter(399,0,true,cross));
     assert(isolated.filter(400,0,true,cross)==cross);
