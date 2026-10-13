@@ -1,5 +1,6 @@
 #include "haze_input.h"
 #include "haze_graphics_reload.h"
+#include "haze_menu.h"
 #include "haze_mouse.h"
 #ifdef _WIN32
 #include "haze_prompts.h"
@@ -31,6 +32,7 @@ bool gamepad_initialized=false;
 std::mutex settings_mutex;
 HazeGamepadState controller_state;
 bool controller_sample_focused=false;
+std::atomic<int> menu_back_reports{0};
 std::atomic<HazeInputFamily> last_family{HazeInputFamily::Keyboard};
 char config_path[MAX_PATH]{};
 ULONGLONG next_input_update=0, next_config_check=0;
@@ -206,6 +208,22 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     ULONGLONG now = GetTickCount64();
     HWND foreground=GetForegroundWindow();
     const bool focused=foreground && foreground==window.load();
+    if (haze_menu_active()) {
+        *input=CellPadHostInput{0,128,128,128,128,0,0};
+        clear_keys(); mouse_motion.clear(); InterlockedExchange(&wheel,0); return 1;
+    }
+    if (menu_back_reports.load()) {
+        *input=CellPadHostInput{0,128,128,128,128,0,0}; clear_keys(); mouse_motion.clear();
+        if (!focused) return 1;
+        if (menu_back_reports==3) {
+            bool held=controller_state.input.buttons || controller_state.input.lx!=128 || controller_state.input.ly!=128 ||
+                controller_state.input.rx!=128 || controller_state.input.ry!=128;
+            for (int key=1;key<256;++key) if (GetAsyncKeyState(key)&0x8000) held=true;
+            if (!held) menu_back_reports=2;
+            return 1;
+        }
+        input->buttons=CELL_PAD_CTRL_CIRCLE; --menu_back_reports; return 1;
+    }
     auto finish=[&] {
         // A stale neutral controller snapshot from focus loss must not release
         // the transition gate before the window thread samples the held pad.
@@ -321,6 +339,7 @@ void haze_input_initialize() {
 void haze_input_attach(void* hwnd) {
     if (!hwnd) return;
     window=(HWND)hwnd;
+    haze_video_menu_register();
     if (controller_enabled) gamepad_initialized=haze_gamepad_initialize(config_path);
     RAWINPUTDEVICE device{0x01,0x02,0,window};
     if (!RegisterRawInputDevices(&device,1,sizeof(device))) {
@@ -334,7 +353,7 @@ bool haze_input_take_mouse(double& x, double& y, double& speed, bool& invert) {
     std::lock_guard<std::mutex> lock(settings_mutex);
     mouse_motion.take(x,y);
     speed=sensitivity; invert=invert_y;
-    return enabled && captured && GetForegroundWindow()==window.load();
+    return enabled && captured && !haze_menu_active() && !menu_back_reports && GetForegroundWindow()==window.load();
 }
 void haze_input_update() {
     const auto now=GetTickCount64();
@@ -354,7 +373,7 @@ void haze_input_update() {
     }
     if (gamepad_initialized) {
         const auto state=haze_gamepad_update();
-        const bool focused=GetForegroundWindow()==window.load();
+        const bool focused=GetForegroundWindow()==window.load() || haze_menu_has_focus();
         if (focused && state.connected && (!enabled || last_family!=HazeInputFamily::Keyboard))
             last_family=state.family;
         if (focused && state.activity) { last_family=state.family; capture(false); }
@@ -363,6 +382,8 @@ void haze_input_update() {
         controller_sample_focused=focused;
     }
     haze_prompts_update(last_family.load());
+    if (haze_menu_active()) capture(false);
+    haze_menu_update(window.load(),controller_state);
     if (startup_skip.showing()) {
         const auto family=last_family.load();
         if (now>=next_hint_check || family!=hint_family) {
@@ -387,7 +408,16 @@ void haze_input_update() {
     startup_prompt.update(window.load(),startup_skip.showing(),skip_hint);
 }
 HazeInputFamily haze_input_family() { return last_family.load(); }
+void haze_input_menu_return() { menu_back_reports=3; }
+unsigned haze_input_menu_button(int virtual_key) {
+    std::lock_guard<std::mutex> lock(settings_mutex);
+    last_family=HazeInputFamily::Keyboard;
+    unsigned buttons=0;
+    for (const auto& b:bindings) if (b.vk==virtual_key) buttons|=b.button;
+    return buttons;
+}
 void haze_input_shutdown() {
+    haze_menu_shutdown();
     startup_prompt.close();
     capture(false);
     haze_gamepad_shutdown(); gamepad_initialized=false;

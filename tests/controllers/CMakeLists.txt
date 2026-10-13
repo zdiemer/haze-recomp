@@ -16,7 +16,7 @@ add_test(NAME gamepad COMMAND test_haze_gamepad)
 add_executable(test_haze_prompts ../test_haze_prompts.cpp)
 target_include_directories(test_haze_prompts PRIVATE
     "${PS3RECOMP_DIR}/include" "${PS3RECOMP_DIR}/libs/input" "${PS3RECOMP_DIR}/libs/video")
-target_link_libraries(test_haze_prompts PRIVATE windowscodecs ole32)
+target_link_libraries(test_haze_prompts PRIVATE windowscodecs ole32 gdi32)
 if(MSVC)
     target_compile_options(test_haze_prompts PRIVATE /UNDEBUG)
 else()

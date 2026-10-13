@@ -47,6 +47,12 @@ HazeGamepadState haze_gamepad_update() { return fake_pad; }
 void haze_gamepad_shutdown() {}
 void haze_prompts_initialize(const char*) {}
 void haze_prompts_update(HazeInputFamily) {}
+static bool menu_active;
+bool haze_menu_active() { return menu_active; }
+bool haze_menu_has_focus() { return false; }
+void haze_menu_update(void*,const HazeGamepadState&) {}
+void haze_menu_shutdown() {}
+void haze_video_menu_register() {}
 static CellPadHostInput sample() {
     CellPadHostInput input{0,128,128,128,128,0,0};
     assert(poll(0,&input,nullptr)==1);
@@ -62,6 +68,15 @@ int main() {
     for (auto& b : bindings) b.vk=key_code(b.fallback);
     assert(key_code("w")=='W'); assert(key_code("Mouse2")==VK_RBUTTON);
     assert(sample().lx==128);
+    menu_active=true; keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=true;
+    auto blocked=sample(); assert(!blocked.buttons && blocked.lx==128 && blocked.ly==128);
+    menu_active=false; haze_input_menu_return();
+    assert(!sample().buttons && menu_back_reports==3);
+    keys['W']=keys[VK_SPACE]=keys[VK_LBUTTON]=false;
+    assert(!sample().buttons && menu_back_reports==2);
+    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
+    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
+    assert(!sample().buttons && !menu_back_reports);
     keys['W']=keys['D']=keys[VK_SPACE]=true;
     auto p=sample(); assert(p.lx==255 && p.ly==1 && (p.buttons&CELL_PAD_CTRL_CROSS));
     keys['S']=keys['A']=true;

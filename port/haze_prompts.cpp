@@ -263,3 +263,21 @@ void haze_prompts_update(HazeInputFamily family) {
     }
     if (changed) { first=false; current=family; rebuild(family); }
 }
+bool haze_prompts_draw_icon(void* context,int slot,int x,int y,int size) {
+    const auto atlas=std::atomic_load(&published);
+    if (!atlas || slot<0 || slot>=24) return false;
+    std::array<unsigned char,64*60*4> bgra{};
+    for (int py=0;py<60;++py) for (int px=0;px<64;++px) {
+        const size_t source=((slot/6*60+py)*width+slot%6*64+px)*4;
+        const size_t target=(py*64+px)*4;
+        const unsigned alpha=(*atlas)[source+3];
+        for (int channel=0;channel<3;++channel)
+            bgra[target+channel]=static_cast<unsigned char>(((*atlas)[source+2-channel]*alpha+(channel==2 ? 18:20)*(255-alpha))/255);
+    }
+    BITMAPINFO bitmap{}; bitmap.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    bitmap.bmiHeader.biWidth=64; bitmap.bmiHeader.biHeight=-60;
+    bitmap.bmiHeader.biPlanes=1; bitmap.bmiHeader.biBitCount=32;
+    bitmap.bmiHeader.biCompression=BI_RGB;
+    StretchDIBits((HDC)context,x,y,size,size,0,0,64,60,bgra.data(),&bitmap,DIB_RGB_COLORS,SRCCOPY);
+    return true;
+}
