@@ -188,4 +188,8 @@ def main() -> None:
     zipped = args.output / f"{stage.name}.zip"
     archive(stage, zipped)
     (args.output / "SHA256SUMS.txt").write_text("".join(f"{digest(p)}  {p.name}\n" for p in (msi, zipped)), encoding="ascii")
-    print(f"Release candidate: {args.output}. Complete the acceptance gates be
+    print(f"Release candidate: {args.output}. Complete the acceptance gates before publishing.")
+
+
+if __name__ == "__main__":
+    main()

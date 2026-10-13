@@ -30,6 +30,13 @@ jobs:
       - name: Run existing asset-free regressions
         shell: powershell
         run: ./scripts/ci.ps1 -Python (Get-Command python).Source
+      - name: Validate MSI authoring without game inputs
+        shell: powershell
+        run: |
+          dotnet tool install wix --version 6.0.2 --tool-path build/wix
+          if ($LASTEXITCODE -ne 0) { throw 'WiX installation failed' }
+          python tests/test_installer.py build/wix/wix.exe
+          if ($LASTEXITCODE -ne 0) { throw 'MSI validation failed' }
       - name: Retain test and configuration logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
