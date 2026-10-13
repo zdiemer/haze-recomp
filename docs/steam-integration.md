@@ -153,10 +153,32 @@ The Win32 menu test renders the actual page and confirmation with an accented
 launcher filename. Focus and glyph drawing are injected in that harness; it is
 not a physical-device or exclusive-fullscreen acceptance result.
 
+With the user's explicit profile selection, the production discovery, planning
+and installation functions registered the installed combined acceptance build
+in that real local Steam account while Steam was closed. An ignored native
+driver called the same implementation used by the menu; it did not substitute
+a separate shortcut writer. The shortcut uses the installed launcher and its
+canonical arguments for the acceptance build's isolated saves, settings and
+cache. The other local profile was left unchanged.
+
+The registration installed one **Haze Recomp** entry and four artwork images.
+Its recovery backup retains the prior shortcut bytes. A second invocation
+reported already registered, changed no shortcut bytes, and retained all four
+images. Independent parsing checked the written entry against the reviewed
+plan. The prior real library contained no entries, so preservation of populated
+libraries remains covered by the fixtures above. Local evidence is under
+`local/starfoxa-registration/`; user account metadata and generated artwork are
+not committed. Client appearance/persistence and launches still require the
+checks below; calling the production installer is not proof of reaching it
+through the game's main menu. The user then opened Steam with the selected
+account and confirmed that the entry and artwork both appear correctly. Steam
+desktop/Big Picture launch, controller title activation and normal-exit tracking
+are not established by that appearance confirmation.
+
 Still required before closing #47: launcher integration (draft PR #70) and the
 program icon (#41); foreground main-menu access with physical
 keyboard/mouse/controller (including rebound/unbound Select), DPI and exclusive
-fullscreen; real-client registration/restart persistence and artwork display;
+fullscreen; real-client restart persistence and artwork display;
 Steam desktop and Big Picture launch with correct saves/settings/cache and
 normal exit; and actual install relocation through the launcher.
 
