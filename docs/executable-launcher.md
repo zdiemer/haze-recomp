@@ -157,9 +157,29 @@ stack sample confirmed `wassert`/`abort`/`MessageBox`. The harness now reports t
 stderr without dialogs. Path normalization and a test-only CRLF/path-separator
 comparison were corrected; subsequent suites pass.
 
+The installed launcher (SHA-256
+`4797964063d94fc94773e4231ced2687028ccf4808be0439a17a1875fb8dd937`)
+also passed real TaskDialog and Windows file-picker checks on a private desktop.
+Starting without a game executable opened the executable picker; subsequent
+disc and firmware folder selections were saved to the isolated `launcher.ini`.
+The selected process fixture then ran with those paths and deliberately returned
+7. The launcher displayed its failure dialog with **Open session logs**, recorded
+the error in `launcher.log`, and returned the same exit code after Close.
+Canceling the executable picker and selecting the launcher itself as the game
+both left the prior configuration unchanged and started no child. The invalid
+selection returned to the repair prompt after its error was dismissed.
+
+These checks used posted messages addressed only to the owned launcher's native
+dialogs. They did not switch the visible desktop, run the game, or activate the
+log-opening button. Evidence: ignored `local/picker-native-2/report.json`,
+`local/picker-native-3-cancel/report.json`, and
+`local/picker-native-4-invalid/report.json`. The first probe had an incorrect
+fixture INI section; a later harness assertion sampled the closing dialog before
+its replacement appeared. Both were harness defects, with no production change.
+
 Still required: the game's embedded icon from #41; interactive Explorer launch
-and first-run picker/error/log-opening checks; actual Steam desktop/Big Picture
-launch and lifetime reporting; and normal audio confirmation. The native game
+and log-opening checks; actual Steam desktop/Big Picture launch and lifetime
+reporting; and normal audio confirmation. The native game
 and SDK still have their own path-length/encoding limits; UTF-16 launcher fixture
 coverage is not proof that every game subsystem accepts every Unicode path.
 
