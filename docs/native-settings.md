@@ -25,8 +25,8 @@ Changes remain staged until **Apply**. Successful application saves through the
 existing `graphics.ini` transaction and shows its result. **Back** discards edits
 made since the last successful Apply. Defaults also require Apply. Validation,
 failed writes and external file conflicts leave the last effective settings in
-place. See [live video settings](video-live-settings.md) for the transaction,
-override and rollback contracts.
+place. The [live graphics backend](../port/haze_graphics_live.cpp) implements
+the transaction, override and rollback contracts.
 
 Display mode, monitor and window size now use a 15-second preview after Apply.
 The confirmation defaults to **Revert**; **Keep** saves the complete staged
@@ -228,7 +228,7 @@ power loss. Broader save recovery belongs to #48.
   flow; its implementation and automated tests are integrated in the candidate.
 - Finish native display checks for exclusive fullscreen, focus loss, monitor
   changes and restart persistence. Window-size timeout and save-on-Keep passed
-  in the combined candidate's `video-native-1` run (see video-live-settings.md).
+  in the combined candidate's `video-native-1` run.
   The automated UI/DXGI seams do not establish that the owned popup remains
   visible or that exclusive entry succeeds while the settings window has focus.
 - Verify physical keyboard/mouse/controller interaction in both main and pause
