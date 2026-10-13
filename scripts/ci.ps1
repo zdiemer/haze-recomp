@@ -24,7 +24,10 @@ try {
         @('test-steam.ps1')
     )
     foreach ($check in $checks) {
-        $name, $arguments = $check
+        $name = @($check)[0]
+        # Keep a one-argument invocation an array: Windows PowerShell native
+        # splatting of a scalar '-Test' does not preserve the switch correctly.
+        $arguments = @($check | Select-Object -Skip 1)
         if ($name -eq 'test-input.ps1' -and $SDL3Root) { $arguments += @('-SDL3Root', $SDL3Root) }
         & $shell -NoProfile -ExecutionPolicy Bypass -File "$root/scripts/$name" @arguments
         if ($LASTEXITCODE -ne 0) { throw "CI failed: $name" }
