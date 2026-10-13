@@ -588,7 +588,16 @@ HazeMenuPointer haze_input_take_pointer() {
             (gamepad_initialized && !controller_sample_focused)) return {};
         bool held=controller_state.input.buttons || controller_state.input.lx!=128 || controller_state.input.ly!=128 ||
             controller_state.input.rx!=128 || controller_state.input.ry!=128;
-        for (int key=1;key<256;++key) if (GetAsyncKeyState(key)&0x8000) held=true;
+        auto key_held=[](int key) {
+            return key>0 && key<256 && (GetAsyncKeyState(key)&0x8000);
+        };
+        // Wait only for inputs that can act in the menu or game. Scanning all
+        // Windows keys can strand Back on an unrelated lock/system key.
+        for (int key : {VK_ESCAPE,VK_RETURN,VK_SPACE,VK_TAB,VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,
+                        VK_LBUTTON,VK_RBUTTON,VK_MBUTTON,VK_XBUTTON1,VK_XBUTTON2})
+            held|=key_held(key);
+        for (const auto& binding:bindings) held|=key_held(binding.vk);
+        for (int key:movement) held|=key_held(key);
         if (held) return {};
         menu_return_pending=false;
         HazeMenuPointer back; back.active=true; back.back=true;
