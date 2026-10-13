@@ -82,3 +82,9 @@ the runner's broad `gameplay_validated` flag remains false.
 Private evidence: `local/native-performance-checkpoint-{build,retest}.log`,
 `local/native-performance-checkpoint-smoke-*`, and the run directory above.
 No evidence files containing game data or binaries are committed.
+
+SDK [PR #1](https://github.com/zdiemer/ps3recomp/pull/1) is merged into `haze`
+as `e6b28a0b3c2d74cbca251cd4e97e8001a2b67096`, whose tree exactly matches tested
+SDK `793e89f`. The Haze checkpoint pins that canonical merge. Both the original
+audio pin `3cd8e81` and the tested checkpoint are verified ancestors of
+`origin/haze`; no SDK commit needed by this PR remains only on a feature branch.
