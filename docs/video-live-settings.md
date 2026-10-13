@@ -164,4 +164,14 @@ copied save profile.
 
 ## Current-main integration (2026-10-13)
 
+Main 4e498ec pins SDK e6b28a0. Its renderer changes add complete-mip upload
+validation and an immutable texture-content cache. The cache retains a separate
+COM reference and compares format, mip layout and complete bytes before reuse;
+sampler settings are outside that identity. Live anisotropy/mip-bias changes
+therefore still invalidate only sampler descriptors after the existing GPU
+fence. Postprocess allocation, display buffers, frame pacing and their rollback
+paths are unchanged. Shutdown clears the new cache after the normal flush (or
+releases its references when the renderer has already stopped). The renderer
+source guard has been updated after this audit; it still rejects other revisions.
+
 Merged main efc7db9, including the retail mouse-menu bridge and audio fixes. The complete input regression suite and full native FMA build pass against main's exact SDK revision 3cd8e810caade4907e583bd38febfc684dd472cf, isolated in menu-sdk-main. The older 8660186 SDK lacks the native-float entry point now required by main. Logs: local/main-sdk-tests.log and local/main-sdk-build.log. Earlier native acceptance evidence predates this integration; remaining interactive checks above are still pending.
