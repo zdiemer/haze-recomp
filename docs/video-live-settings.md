@@ -60,6 +60,29 @@ saves serialize the graphics section canonically; comments are not preserved.
 The external-edit check detects changes before replacement; it cannot lock an
 uncooperative editor out of the final check/replace interval.
 
+The reversible display primitive for the upcoming timed confirmation is now
+available as `haze_display_begin` / `haze_display_finish`. It accepts explicit
+window mode, monitor and resolved window dimensions without modifying startup
+environment variables. It captures window placement, styles, visibility and
+fullscreen policy; a rejected transition restores them. Keep discards the
+snapshot, while revert restores it. Only one transition may be pending, and a
+failed restoration remains observable and cannot be accepted with Keep.
+
+DXGI transitions finish outstanding GPU work and refresh only the scanout
+buffers, leaving internal rendering dimensions intact. Denied fullscreen
+requests retain existing buffers. Resize or buffer-acquisition failures attempt
+to restore the previous mode and scanout resources. An unrecoverable failure
+releases exclusive ownership and stops renderer use rather than presenting
+through missing buffers. Reverting while unfocused restores the previous
+fullscreen preference with exclusive reacquisition deferred to the renderer's
+existing focus policy. Window placement restoration preserves hidden/maximized
+states and lets Windows recover placement when the original monitor is absent.
+
+This primitive does **not yet enable live display changes from Apply or F6**.
+The graphics-state transaction, countdown, Keep/Revert menu and deferred
+persistence still need integration in #58. Until then, their restart indicators
+remain accurate; callers must not leave a primitive transition unconfirmed.
+
 The title compiles the pinned SDK renderer once through a small owning-translation-
 unit extension. CMake checks its normalized source hash so changed internals
 require an audit. The SDK checkout is not modified. Renderer-specific calls run
@@ -86,3 +109,14 @@ Gameplay sampling/shadow behavior, sustained repeated real-GPU applications,
 and the #58 menu/controller/persistence acceptance pass remain outstanding.
 Failure injection proves the transaction's resource/state ordering; it is not
 a real GPU out-of-memory test. Browser rendering is not covered by this backend.
+
+The display primitive additionally has real Win32 window tests for repeated
+windowed/borderless previews, exact geometry/style/visibility restoration,
+maximized restoration, Keep, overlap and thread refusal, and failed-revert retry.
+Those window tests inject the DXGI boundary. The actual renderer extension has
+deterministic seams for exclusive transitions, denied modes, partial buffer
+acquisition, resize failure, device failure and unsuccessful recovery. The full
+native build passes; real GPU display transitions and timed UI acceptance remain
+unverified. Implementation follows Microsoft's [fullscreen transition](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-setfullscreenstate)
+and [swap-chain resize](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
+requirements.

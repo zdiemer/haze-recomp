@@ -94,30 +94,30 @@ bool haze_display_detect(const char* choice, haze_display_defaults& defaults) {
     if(previous) set_context(previous);
     return found;
 }
-bool haze_display_apply(void* window) {
+bool haze_display_configure(void* window,const char* mode,const char* choice,const char* window_size,bool activate) {
     HWND hwnd=static_cast<HWND>(window);
-    if (!IsWindow(hwnd)) return false;
+    if (!IsWindow(hwnd) || GetWindowThreadProcessId(hwnd,nullptr)!=GetCurrentThreadId() || !mode ||
+        (std::strcmp(mode,"windowed") && std::strcmp(mode,"borderless") && std::strcmp(mode,"fullscreen"))) return false;
+    rsx_render_resolution size;
+    if(rsx_render_resolution_parse(&size,1280,720,window_size)<0) return false;
     std::vector<MONITORINFOEXA> monitors;
     size_t selected=0;
-    if(!select_monitor(std::getenv("RSX_MONITOR"),monitors,selected)) return false;
+    if(!select_monitor(choice,monitors,selected)) return false;
     for(size_t i=0;i<monitors.size();++i)
         std::fprintf(stderr,"[display] monitor %zu: %s %ldx%ld%s\n",i+1,monitors[i].szDevice,
             monitors[i].rcMonitor.right-monitors[i].rcMonitor.left,
             monitors[i].rcMonitor.bottom-monitors[i].rcMonitor.top,
             monitors[i].dwFlags&MONITORINFOF_PRIMARY ? " primary":"");
     const auto& monitor=monitors[selected];
-    const char* mode=std::getenv("RSX_WINDOW_MODE"); if(!mode) mode="windowed";
     const bool decorated=!std::strcmp(mode,"windowed");
     const LONG_PTR style=decorated ? WS_OVERLAPPEDWINDOW : WS_POPUP;
     RECT target=monitor.rcMonitor;
     if(decorated) {
-        RECT previous{}; GetWindowRect(hwnd,&previous);
+        RECT previous{}; if (!GetWindowRect(hwnd,&previous)) return false;
         if(!SetWindowPos(hwnd,nullptr,
             (monitor.rcMonitor.left+monitor.rcMonitor.right-(previous.right-previous.left))/2,
             (monitor.rcMonitor.top+monitor.rcMonitor.bottom-(previous.bottom-previous.top))/2,
             0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE)) return false;
-        rsx_render_resolution size;
-        if(rsx_render_resolution_parse(&size,1280,720,std::getenv("RSX_WINDOW_SIZE"))<0) return false;
         RECT frame{0,0,static_cast<LONG>(size.host_w),static_cast<LONG>(size.host_h)};
         using GetDpi=UINT (WINAPI*)(HWND);
         using AdjustDpi=BOOL (WINAPI*)(LPRECT,DWORD,BOOL,DWORD,UINT);
@@ -137,10 +137,14 @@ bool haze_display_apply(void* window) {
     if(!SetWindowLongPtrA(hwnd,GWL_STYLE,style|WS_VISIBLE) && GetLastError()) return false;
     if(!SetWindowPos(hwnd,HWND_NOTOPMOST,target.left,target.top,target.right-target.left,target.bottom-target.top,
         SWP_FRAMECHANGED|SWP_NOACTIVATE|SWP_SHOWWINDOW)) return false;
-    if(!decorated) { ShowWindow(hwnd,SW_SHOW); SetForegroundWindow(hwnd); }
+    if(!decorated && activate) { ShowWindow(hwnd,SW_SHOW); SetForegroundWindow(hwnd); }
     RECT client{}; GetClientRect(hwnd,&client);
     std::fprintf(stderr,"[display] mode=%s monitor=%zu client=%ldx%ld\n",mode,selected+1,client.right,client.bottom);
     return true;
+}
+bool haze_display_apply(void* window) {
+    const char* mode=std::getenv("RSX_WINDOW_MODE");
+    return haze_display_configure(window,mode ? mode : "windowed",std::getenv("RSX_MONITOR"),std::getenv("RSX_WINDOW_SIZE"),true);
 }
 #else
 bool haze_display_detect(const char*, haze_display_defaults& defaults) {
@@ -148,4 +152,5 @@ bool haze_display_detect(const char*, haze_display_defaults& defaults) {
 }
 void haze_display_prepare() {}
 bool haze_display_apply(void*) { return true; }
+bool haze_display_configure(void*,const char*,const char*,const char*,bool) { return false; }
 #endif
