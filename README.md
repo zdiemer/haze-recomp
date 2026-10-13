@@ -74,7 +74,25 @@ options, and startup skipping live in [config/input.ini](config/input.ini)
 and reload while running. Action names above assume Haze's default controller
 layout; zoom and crouch can be changed from toggle to hold in the game's settings.
 
-Edit [config/graphics.ini](config/graphics.ini), then press **F6** to apply
+**Settings > Control Setup** opens PC Controls for bindings, sensitivity,
+deadzones and prompt style. Select a binding to capture an input, review any
+conflicts, then **Apply**. **Back** discards edits; **Defaults** requires Apply.
+**Game control options** opens the original controller layout and toggle/hold
+settings.
+
+The main-menu footer opens **Desktop Options** through the current Select
+binding (Tab by default) or a mouse click. **Add to Steam** lets you select a
+local account and confirm registration with the executable launcher and artwork;
+close Steam first. The pause-menu footer opens **Quit to Desktop** directly.
+Quit confirmation defaults to Cancel and waits for active saves and settings
+before shutting down.
+
+Open **Video Setup** or **Sound Setup** from the main or pause menu for PC
+Video and Audio settings. Changes are staged until **Apply**; **Back** discards
+edits. Display changes offer a 15-second **Keep/Revert** confirmation. Render
+resolution and shadow resolution require restarting.
+
+Alternatively, edit [config/graphics.ini](config/graphics.ini), then press **F6** to apply
 filtering, FXAA, sharpening, exposure, VSync, and frame-limit changes live.
 Editing alone does not apply changes; the window title reports the reload result.
 Display mode, monitor, window size, render resolution, and shadow resolution

@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstdint>
 #include "../port/haze_video_backend.c"
 int main() {
     g.dev=&device; g.ready=1; owner_thread=GetCurrentThreadId();
@@ -66,5 +67,19 @@ int main() {
     all_resize_fail=1;
     assert(!haze_video_display_set(1,1,error,sizeof error) && !g.ready && !actual_fullscreen && !g_ld_fullscreen_requested);
     assert(strstr(error,"Restart Haze")!=nullptr);
+    restored_display=0;
+    g.queue=&queue; g.fence=&fence; g.swap=&swap_chain; g.ready=1; g_ld_fullscreen_requested=1;
+    const auto retained=g_ld_postprocess.output;
+    assert(haze_video_stop(123));
+    assert(wait_limit==123 && restored_display==1 && timer_destroyed==1 && !g.ready && !g_ld_fullscreen_requested);
+    assert(g.queue==&queue && g.fence==&fence && g_ld_postprocess.output==retained); // No in-flight resource release.
+    g.ready=1; wait_result=WAIT_TIMEOUT; wait_limit=0;
+    assert(!haze_video_stop(17)); assert(wait_limit==17 && restored_display==2 && !g.ready);
+    g.ready=1; signal_failure=1; wait_limit=0;
+    assert(!haze_video_stop(19)); assert(wait_limit==0 && restored_display==3);
+    signal_failure=0; g.ready=1; event_failure=1;
+    assert(!haze_video_stop(19)); assert(wait_limit==0 && restored_display==4);
+    event_failure=0; completed_value=UINT64_MAX; g.ready=1; restore_failure=1;
+    assert(!haze_video_stop(19)); assert(wait_limit==0 && restored_display==5);
     puts("Live renderer transaction: allocation/fence/device failure, cancellation, sampler invalidation and effect lifetime passed.");
 }

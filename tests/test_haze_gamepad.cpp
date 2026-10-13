@@ -1,21 +1,27 @@
 // Exercise the real SDL driver and port mapper using virtual hardware.
 #include <SDL3/SDL.h>
 #include "../port/haze_gamepad.h"
+#include "../port/haze_input_source.h"
 #include <cassert>
 #include <cstdio>
 #include <fstream>
 #include <filesystem>
 #include <cstdlib>
+#include <crtdbg.h>
+#include <chrono>
+#include <process.h>
 
-static SDL_JoystickID attach(bool custom=false) {
+static SDL_JoystickID attach(bool custom=false,bool unmapped=false) {
     SDL_VirtualJoystickDesc desc{};
     SDL_INIT_INTERFACE(&desc);
     desc.type=custom ? SDL_JOYSTICK_TYPE_FLIGHT_STICK : SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.naxes=SDL_GAMEPAD_AXIS_COUNT;
     desc.nbuttons=SDL_GAMEPAD_BUTTON_COUNT;
+    desc.nhats=1;
     desc.axis_mask=(1u<<SDL_GAMEPAD_AXIS_COUNT)-1;
     desc.button_mask=(1u<<SDL_GAMEPAD_BUTTON_COUNT)-1;
     desc.name=custom ? "Haze custom joystick" : "Haze virtual controller";
+    if (unmapped) { desc.vendor_id=0x1234; desc.product_id=0x5678; }
     auto id=SDL_AttachVirtualJoystick(&desc);
     assert(id);
     return id;
@@ -23,8 +29,13 @@ static SDL_JoystickID attach(bool custom=false) {
 int main() {
     _set_error_mode(_OUT_TO_STDERR);
     _set_abort_behavior(0,_CALL_REPORTFAULT);
+    _CrtSetReportMode(_CRT_ERROR,_CRTDBG_MODE_FILE); _CrtSetReportFile(_CRT_ERROR,_CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ASSERT,_CRTDBG_MODE_FILE); _CrtSetReportFile(_CRT_ASSERT,_CRTDBG_FILE_STDERR);
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");
-    const auto config=std::filesystem::absolute("controller-test.ini").string();
+    const auto directory=std::filesystem::temp_directory_path()/("haze-controller-test-"+
+        std::to_string(_getpid())+"-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    assert(std::filesystem::create_directory(directory));
+    const auto config=(directory/"input.ini").string();
     assert(haze_gamepad_initialize(config.c_str()));
     assert(!haze_gamepad_update().connected);
     auto id=attach();
@@ -34,6 +45,15 @@ int main() {
     SDL_Delay(510);
     auto state=haze_gamepad_update();
     assert(state.connected && !state.input.buttons && state.input.lx==128);
+    assert(haze_gamepad_bindings_overlap("south",false,"raw:b0",false));
+    assert(haze_gamepad_bindings_overlap("raw:b0",false,"a",false));
+    assert(!haze_gamepad_bindings_overlap("east",false,"raw:b0",false));
+    assert(!haze_gamepad_bindings_overlap("None",false,"None",false));
+    assert(haze_gamepad_bindings_overlap("leftx",true,"raw:-a0",false));
+    assert(haze_gamepad_bindings_overlap("-leftx",false,"raw:-a0",false));
+    assert(!haze_gamepad_bindings_overlap("leftx",false,"raw:-a0",false));
+    assert(!haze_gamepad_bindings_overlap("raw:+a0",false,"raw:-a0",false));
+    assert(haze_gamepad_bindings_overlap("raw:+a0",true,"raw:-a0",false));
     assert(SDL_SetJoystickVirtualButton(joy,SDL_GAMEPAD_BUTTON_SOUTH,true));
     state=haze_gamepad_update();
     assert(state.activity && (state.input.buttons&CELL_PAD_CTRL_CROSS));
@@ -52,6 +72,16 @@ int main() {
     assert(haze_gamepad_update().input.l2==255);
     {
         std::ofstream file(config);
+        file<<"[ControllerBindings]\nCross=south\nCircle=raw:b0\n";
+    }
+    haze_gamepad_configure(config.c_str());
+    SDL_SetJoystickVirtualButton(joy,SDL_GAMEPAD_BUTTON_SOUTH,true);
+    state=haze_gamepad_update();
+    assert((state.input.buttons&CELL_PAD_CTRL_CROSS) && (state.input.buttons&CELL_PAD_CTRL_CIRCLE));
+    assert(state.menu_recovery && (state.menu_input.buttons&CELL_PAD_CTRL_CROSS) && !(state.menu_input.buttons&CELL_PAD_CTRL_CIRCLE));
+    SDL_SetJoystickVirtualButton(joy,SDL_GAMEPAD_BUTTON_SOUTH,false);
+    {
+        std::ofstream file(config);
         file<<"[ControllerBindings]\nCross=east\nCircle=none\nR2=lefttrigger\n"
               "[Controller]\nInvertLookY=1\nIconFamily=playstation\n";
     }
@@ -60,6 +90,7 @@ int main() {
     state=haze_gamepad_update();
     assert((state.input.buttons&CELL_PAD_CTRL_CROSS) && !(state.input.buttons&CELL_PAD_CTRL_CIRCLE));
     assert(state.input.r2==255 && state.input.ry==255 && state.family==HazeInputFamily::PlayStation);
+    assert(state.menu_input_valid && state.menu_recovery && (state.menu_input.buttons&CELL_PAD_CTRL_CIRCLE) && !(state.menu_input.buttons&CELL_PAD_CTRL_CROSS));
     for (const auto& family : {std::pair{"xbox",HazeInputFamily::Xbox},
                               std::pair{"playstation",HazeInputFamily::PlayStation},
                               std::pair{"switch",HazeInputFamily::Switch}}) {
@@ -88,11 +119,11 @@ int main() {
     id=attach(true);
     assert(!SDL_IsGamepad(id));
     char guid[33]; SDL_GUIDToString(SDL_GetJoystickGUIDForID(id),guid,sizeof(guid));
-    const auto mapping=std::filesystem::absolute("controller-test-mappings.txt");
+    const auto mapping=directory/"mappings.txt";
     {
         std::ofstream file(mapping);
         file<<guid<<",Haze custom mapping,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,"
-                    "rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,platform:Windows,\n";
+                    "rightx:a2~,righty:a3,lefttrigger:+a4,righttrigger:a5,dpup:h0.1,dpdown:h0.4,platform:Windows,\n";
         std::ofstream ini(config);
         ini<<"[Controller]\nMappingFile="<<mapping.filename().string()<<"\n";
     }
@@ -105,10 +136,88 @@ int main() {
     SDL_Delay(510);
     state=haze_gamepad_update();
     assert(state.connected && (state.input.buttons&CELL_PAD_CTRL_CROSS));
+    assert(haze_gamepad_bindings_overlap("dpup",false,"raw:h0.1",false));
+    assert(!haze_gamepad_bindings_overlap("dpdown",false,"raw:h0.1",false));
+    assert(haze_gamepad_bindings_overlap("rightx",false,"raw:-a2",false));
+    assert(!haze_gamepad_bindings_overlap("rightx",false,"raw:+a2",false));
+    assert(haze_gamepad_bindings_overlap("-rightx",false,"raw:+a2",false));
+    assert(haze_gamepad_bindings_overlap("rightx",true,"raw:+a2",false));
+    assert(haze_gamepad_bindings_overlap("lefttrigger",false,"raw:+a4",false));
+    assert(!haze_gamepad_bindings_overlap("lefttrigger",false,"raw:-a4",false));
+    // A mapping reload must immediately change alias resolution on the same device.
+    const auto remapped=std::string(guid)+",Haze remapped,a:b3,b:b1,x:b2,y:+a3,leftx:b5,lefty:a1,platform:Windows,";
+    assert(SDL_AddGamepadMapping(remapped.c_str())>=0);
+    assert(haze_gamepad_bindings_overlap("south",false,"raw:b3",false));
+    assert(!haze_gamepad_bindings_overlap("south",false,"raw:b0",false));
+    assert(haze_gamepad_bindings_overlap("north",false,"raw:+a3",false)); // Axis mapped to a button.
+    assert(!haze_gamepad_bindings_overlap("north",false,"raw:-a3",false));
+    assert(haze_gamepad_bindings_overlap("leftx",false,"raw:b5",false)); // Button mapped to an axis.
+    assert(!haze_gamepad_bindings_overlap("-leftx",false,"raw:b5",false));
+    // A custom SDL mapping can alias the standard face buttons themselves.
+    // Recovery must then use distinct raw buttons, with matching raw prompts.
+    {
+        std::ofstream file(mapping);
+        file<<guid<<",Haze duplicate faces,a:b3,b:b3,x:b2,y:b0,leftx:a0,lefty:a1,platform:Windows,\n";
+    }
+    haze_gamepad_configure(config.c_str());
+    SDL_SetJoystickVirtualButton(joy,0,false); SDL_SetJoystickVirtualButton(joy,3,true);
+    state=haze_gamepad_update();
+    assert((state.input.buttons&CELL_PAD_CTRL_CROSS) && (state.input.buttons&CELL_PAD_CTRL_CIRCLE));
+    assert(state.menu_recovery_raw && !(state.menu_input.buttons&(CELL_PAD_CTRL_CROSS|CELL_PAD_CTRL_CIRCLE)));
+    SDL_SetJoystickVirtualButton(joy,0,true); state=haze_gamepad_update();
+    assert((state.menu_input.buttons&CELL_PAD_CTRL_CROSS) && !(state.menu_input.buttons&CELL_PAD_CTRL_CIRCLE));
     SDL_CloseJoystick(joy); SDL_DetachVirtualJoystick(id);
     haze_gamepad_update();
+    // Unmapped hardware remains available for raw capture and binding.
+    id=attach(true,true); joy=SDL_OpenJoystick(id); assert(joy);
+    assert(!SDL_IsGamepad(id));
+    SDL_Delay(510); haze_gamepad_update();
+    assert(!haze_gamepad_bindings_overlap("south",false,"raw:b0",false)); // No assumed mapping for an unknown device.
+    assert(haze_gamepad_bindings_overlap("raw:h0.1",false,"raw:h0.1",false));
+    assert(haze_gamepad_info().connected && !haze_gamepad_info().mapped);
+    SDL_SetJoystickVirtualButton(joy,2,true); haze_gamepad_update();
+    haze_gamepad_capture_begin(false); haze_gamepad_update();
+    assert(haze_gamepad_capture().phase==HazeBindingCapturePhase::Release);
+    SDL_SetJoystickVirtualButton(joy,2,false); haze_gamepad_update();
+    assert(haze_gamepad_capture().phase==HazeBindingCapturePhase::Listening);
+    SDL_SetJoystickVirtualHat(joy,0,SDL_HAT_DOWN); haze_gamepad_update();
+    assert(haze_gamepad_capture().source=="raw:h0.4");
+    SDL_SetJoystickVirtualHat(joy,0,SDL_HAT_CENTERED); haze_gamepad_update();
+    haze_gamepad_capture_begin(false); haze_gamepad_update();
+    SDL_SetJoystickVirtualAxis(joy,0,-32768); haze_gamepad_update();
+    assert(haze_gamepad_capture().source=="raw:-a0");
+    {
+        std::ofstream ini(config);
+        ini<<"[ControllerBindings]\nCross=raw:b2\nCircle=raw:h0.4\nSquare=raw:-a0\n"
+              "[Controller]\nMoveX=raw:a1\nLookY=raw:a2\n";
+    }
+    haze_gamepad_configure(config.c_str());
+    SDL_SetJoystickVirtualButton(joy,2,true);
+    SDL_SetJoystickVirtualHat(joy,0,SDL_HAT_DOWN);
+    SDL_SetJoystickVirtualAxis(joy,1,32767);
+    state=haze_gamepad_update();
+    assert((state.input.buttons&(CELL_PAD_CTRL_CROSS|CELL_PAD_CTRL_CIRCLE|CELL_PAD_CTRL_SQUARE))==
+        (CELL_PAD_CTRL_CROSS|CELL_PAD_CTRL_CIRCLE|CELL_PAD_CTRL_SQUARE));
+    assert(state.input.lx==255);
+    SDL_SetJoystickVirtualButton(joy,2,false); SDL_SetJoystickVirtualHat(joy,0,0);
+    SDL_SetJoystickVirtualAxis(joy,0,0); SDL_SetJoystickVirtualAxis(joy,1,0); haze_gamepad_update();
+    haze_gamepad_capture_begin(false); haze_gamepad_update();
+    SDL_SetJoystickVirtualButton(joy,2,true); haze_gamepad_update();
+    assert(haze_gamepad_capture().source=="raw:b2");
+    SDL_SetJoystickVirtualButton(joy,2,false); haze_gamepad_update();
+    haze_gamepad_capture_begin(true); haze_gamepad_update();
+    SDL_SetJoystickVirtualAxis(joy,2,32767); haze_gamepad_update();
+    assert(haze_gamepad_capture().source=="raw:a2");
+    haze_gamepad_capture_begin(true); haze_gamepad_capture_cancel();
+    assert(haze_gamepad_capture().phase==HazeBindingCapturePhase::Cancelled);
+    haze_gamepad_capture_begin(true);
+    SDL_CloseJoystick(joy); SDL_DetachVirtualJoystick(id); haze_gamepad_update();
+    assert(haze_gamepad_capture().phase==HazeBindingCapturePhase::Cancelled && !haze_gamepad_info().connected);
+    for (const char* invalid:{"raw:b-1","raw:a256","raw:h0.0","raw:h0.3","raw:+b1","raw:a0junk","raw:"})
+        assert(haze_raw_source(invalid).kind==HazeRawSource::None);
     haze_gamepad_shutdown();
     std::filesystem::remove(config);
     std::filesystem::remove(mapping);
+    std::filesystem::remove(directory);
     puts("SDL controller hotplug, position mapping, deadzones, analog triggers, activity and rebinds passed.");
 }
