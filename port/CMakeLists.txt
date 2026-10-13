@@ -309,6 +309,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 if(WIN32)
     include(controller-dependency.cmake)
+    add_subdirectory(launcher)
     target_sources(${PROJECT_NAME} PRIVATE haze_gamepad.cpp haze_prompts.cpp)
     target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3 windowscodecs ole32)
     if(TARGET SDL3::SDL3-shared)

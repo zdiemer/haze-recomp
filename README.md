@@ -288,7 +288,7 @@ $env:PS3_DEV_FLASH = 'C:\path\to\dev_flash'
 .\scripts\build.ps1 -RuntimeOnly
 .\scripts\build.ps1
 
-# Interactive development build (experimental):
+# Optional script-based development launch (experimental):
 .\scripts\play.ps1
 # Or restrict input to SDL-supported controllers:
 .\scripts\play.ps1 -InputMode Controller
@@ -299,6 +299,14 @@ $env:PS3_DEV_FLASH = 'C:\path\to\dev_flash'
 # Bounded native boot diagnostic; capture later frames after initialization:
 .\scripts\run.ps1 -Seconds 90 -CaptureFrames 4 -FrameSkip 3000 -FrameEvery 300
 ```
+
+For normal play after building, double-click **build/haze/HazeLauncher.exe**.
+It starts Haze without a scripting console, keeps saves/settings/cache in the
+usual worktree locations, and retains per-session logs. Missing game/firmware
+paths can be selected and saved through native dialogs. See the
+[executable launcher guide](docs/executable-launcher.md) for configuration,
+shared data roots, packaging and validation status. The launcher is also the
+target for the Add to Steam menu work.
 
 The scripts emit binary inventory, import coverage, loader information, and
 translation provenance under ignored local directories. Import coverage is a
