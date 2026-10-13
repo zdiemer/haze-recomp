@@ -4,7 +4,16 @@ Work in progress for #57, based on the shared settings and input infrastructure
 in #67. A **Quit to Desktop** action appears at the lower right of the native
 main and pause menus. Click it, press the current Select binding (Tab by
 default), or press Tab as a keyboard fallback. The controller uses its mapped
-Select button, with the current Kenney glyph beside the action.
+Select button, with the current Kenney glyph and a readable binding name beside
+the action (for example, **Tab** or Xbox **View**). Rebinding updates that label;
+an unbound Select retains the explicit Tab fallback.
+
+The footer declines mouse activation and recognizes its own window as part of
+the game's focus group. If it nevertheless receives foreground ownership, a
+click hands focus to the game before opening the confirmation or Desktop
+Options. Previously that state rejected the click and hid the footer. A
+regression reproduces the rejected click before the fix; external-app focus
+still prevents opening a dialog.
 
 The confirmation defaults to **Cancel**. Arrows or the current controller menu
 directions change the selection; Enter/current Confirm activates it and
