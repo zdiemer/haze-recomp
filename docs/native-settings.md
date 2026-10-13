@@ -197,19 +197,35 @@ Real-file tests cover short writes, flush/close/replacement failures, a failed
 final callback, duplicate writes, metadata failures, profile locking, competing
 Audio transactions, external edits, cleanup and successful publication. The
 Audio bridge tests verify that only its own Apply arms the transaction.
-These tests do not establish full-game compatibility of the new hook. A new
-native save/restart check is still required. This is also not a general
-checkpoint/new-profile recovery system: it does not coordinate nonparticipating
+Two native runs of combined build `1c52af1` then exercised this hook with the
+original guest callbacks and a copied profile. In `audio-transaction-native-2`,
+Audio Apply changed Music 65 to 60 and committed successfully. A subsequent
+55 request held the profile open with read sharing but without delete sharing:
+the SDK completed its 1 MiB file operation and final callback, then the final
+replacement failed with `0x8002b402`. The page reported rollback; the profile
+and metadata hashes stayed unchanged and the staging directory was removed.
+The process remained alive and later exited normally with code 0.
+
+A fresh process in `audio-transaction-native-3` loaded that saved profile and
+opened Audio with Music 60. It also exited 0 without changing the saved hash
+(`73f8419d356b2195978e76142eb4961dba45bae88ab3c23d4399e5fcd3ae4142`).
+Logs and reports are under the combined worktree's `local/runs/`. These runs
+used explicit Win32 desktop assignment to a nonvisible desktop, diagnostic
+pad input and posted menu keys; the visible input desktop stayed unchanged.
+They establish native callback/persistence behavior, not listening, physical
+input, visual focus behavior or fullscreen acceptance.
+
+This is not a general checkpoint/new-profile recovery system: it does not coordinate nonparticipating
 external writers after the last conflict check or guarantee recovery from
 power loss. Broader save recovery belongs to #48.
 
 ## Work still required before #58 can close
 
-- Finish Audio gameplay effect checks and native save/restart validation,
-  and assess headset/voice support. Master/device/focus-mute need new backend
-  work; coordinate device recovery with #49.
-- Validate the separate Controls provider from #23 through its remaining
-  physical-device and gameplay acceptance checks.
+- Finish Audio gameplay effect and listening checks. The audit above identifies
+  unsupported master/device/focus-mute controls as separate backend work;
+  device recovery remains coordinated with #49.
+- Validate the separate Controls provider from #23 in the combined main/pause
+  flow; its implementation and automated tests are integrated in the candidate.
 - Verify timed keep/revert and save-on-Keep in the native game, including
   exclusive fullscreen, focus loss, monitor changes and restart persistence.
   The automated UI/DXGI seams do not establish that the owned popup remains
