@@ -9,24 +9,9 @@
 #include <map>
 
 namespace {
-std::string trim(std::string text) {
-    const auto first=text.find_first_not_of(" \t\r\n");
-    if (first==std::string::npos) return {};
-    return text.substr(first,text.find_last_not_of(" \t\r\n")-first+1);
-}
-bool automatic_size(const rsx_graphics_option& option) {
-    return !std::strcmp(option.key,"render_resolution") || !std::strcmp(option.key,"window_size");
-}
-const char* fallback(const rsx_graphics_option& option) {
-    if(!std::strcmp(option.key,"display_mode")) return "borderless";
-    if(automatic_size(option)) return "auto";
-    // Desktop rendering must not implicitly multiply the shadow atlas size.
-    if(!std::strcmp(option.key,"shadow_resolution")) return "native";
-    return option.fallback;
-}
-bool valid(const rsx_graphics_option& option,const char* value) {
-    return (automatic_size(option) && value && !std::strcmp(value,"auto")) || rsx_graphics_valid(&option,value);
-}
+using haze_video::automatic_size;
+using haze_video::fallback;
+using haze_video::valid;
 std::string allowed(const rsx_graphics_option& option) {
     return std::string(automatic_size(option) ? "auto, or " : "")+option.allowed;
 }
@@ -38,32 +23,11 @@ bool haze_graphics_initialize() {
     if (!file && configured && *configured) {
         std::fprintf(stderr,"[graphics] Cannot open %s\n",path); return false;
     }
-    std::map<std::string,std::string> values;
-    std::string line,section;
-    unsigned number=0;
-    while (std::getline(file,line)) {
-        ++number;
-        if (number==1 && line.compare(0,3,"\xef\xbb\xbf")==0) line.erase(0,3);
-        line=trim(line.substr(0,line.find_first_of(";#")));
-        if (line.empty()) continue;
-        if (line.front()=='[' && line.back()==']') {
-            section=trim(line.substr(1,line.size()-2));
-            if (section=="graphics") continue;
-            std::fprintf(stderr,"[graphics] %s:%u: unknown section '%s'\n",path,number,section.c_str()); return false;
-        }
-        const auto split=line.find('=');
-        const auto key=trim(line.substr(0,split));
-        const rsx_graphics_option* option=rsx_graphics_find_option(key.c_str());
-        if (section!="graphics" || split==std::string::npos || !option || values.count(key)) {
-            std::fprintf(stderr,"[graphics] %s:%u: unknown section/key or duplicate setting\n",path,number); return false;
-        }
-        auto value=trim(line.substr(split+1));
-        if (!valid(*option,value.c_str())) {
-            std::fprintf(stderr,"[graphics] %s:%u: invalid %s=%s (expected %s)\n",path,number,key.c_str(),value.c_str(),allowed(*option).c_str()); return false;
-        }
-        values.emplace(key,value);
+    haze_video::Values values;
+    std::string error;
+    if (!haze_video::parse(file,values,error)) {
+        std::fprintf(stderr,"[graphics] %s: %s\n",path,error.c_str()); return false;
     }
-    if (file.bad()) { std::fprintf(stderr,"[graphics] Error reading %s\n",path); return false; }
     // Validate the complete file and overrides before changing the process.
     for (const auto& option:rsx_graphics_options) {
         const char* value=std::getenv(option.environment);
@@ -71,9 +35,10 @@ bool haze_graphics_initialize() {
             std::fprintf(stderr,"[graphics] Invalid %s=%s (expected %s)\n",option.environment,value,allowed(option).c_str()); return false;
         }
     }
-    std::map<std::string,std::string> effective;
+    std::map<std::string,std::string> effective,overrides;
     for (const auto& option:rsx_graphics_options) {
         const char* current=std::getenv(option.environment);
+        if (current && *current) overrides[option.key]=current;
         const auto found=values.find(option.key);
         effective[option.key]=current && *current ? current :
             found!=values.end() ? found->second.c_str() : fallback(option);
@@ -97,5 +62,6 @@ bool haze_graphics_initialize() {
 #endif
         std::fprintf(stderr,"[graphics] %s=%s\n",option.key,value.c_str());
     }
+    haze_graphics_started(values,effective,overrides,path);
     return true;
 }
