@@ -335,6 +335,7 @@ static bool test_environment_paths_are_owned()
     CHECK(std::fgets(line,sizeof(line),csv)!=nullptr);
     std::fclose(csv);
     std::remove(csv_path);
+    std::remove((std::string(csv_path)+".waits.csv").c_str());
     std::remove(control_path);
     delete p;
     CHECK(_putenv_s("HAZE_PUMP_CSV","")==0);
