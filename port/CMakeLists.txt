@@ -326,11 +326,19 @@ if(WIN32)
     file(READ "${HAZE_AUDIO_SOURCE}" HAZE_AUDIO_TEXT)
     string(REPLACE "\r\n" "\n" HAZE_AUDIO_TEXT "${HAZE_AUDIO_TEXT}")
     string(SHA256 HAZE_AUDIO_HASH "${HAZE_AUDIO_TEXT}")
-    # SDK 3cd8e81 changes downmix routing and a per-port diagnostic counter.
-    # The mixer thread flag/handle, locks and shutdown path remain unchanged.
+    # Audit both the output shutdown and pre-clamp limiter hooks on SDK changes.
     if(NOT HAZE_AUDIO_HASH STREQUAL "b174688dc8ae62fa67f35888477b5543310cdfee33e6f613e9bb796b7b0c0504")
-        message(FATAL_ERROR "Audio backend changed: audit native output shutdown before building")
+        message(FATAL_ERROR "Audio backend changed: audit native output shutdown and limiter before building")
     endif()
+    string(REPLACE "    /* Clip to [-1.0, 1.0] */"
+        "    haze_audio_limiter_process(&s_haze_audio_limiter, s_mix_buffer);\n    /* Clip to [-1.0, 1.0] */"
+        HAZE_AUDIO_TEXT "${HAZE_AUDIO_TEXT}")
+    string(REPLACE "    if (audio_start_mix_thread() < 0) {"
+        "    haze_audio_limiter_reset(&s_haze_audio_limiter);\n    if (audio_start_mix_thread() < 0) {"
+        HAZE_AUDIO_TEXT "${HAZE_AUDIO_TEXT}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/haze_cell_audio.c" "${HAZE_AUDIO_TEXT}")
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_backend.c"
+        TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}")
     list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_AUDIO_SOURCE}")
     list(APPEND HAZE_SDK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_backend.c")
     file(READ "${PS3RECOMP_DIR}/libs/codec/cellSail.c" HAZE_SAIL_TEXT)

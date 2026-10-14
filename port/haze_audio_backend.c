@@ -1,7 +1,9 @@
 /* Keep the pinned audio implementation in one TU. Native process shutdown
  * stops output without destroying port state that guest workers may still
  * touch before the OS ends their threads. */
-#include "cellAudio.c"
+#include "haze_audio_limiter.h"
+static HazeAudioLimiter s_haze_audio_limiter;
+#include "haze_cell_audio.c"
 
 int haze_audio_stop_output(unsigned timeout_ms) {
     s_mix_thread_running=0;
