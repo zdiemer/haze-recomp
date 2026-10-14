@@ -79,7 +79,8 @@ class Artifacts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Checksums'):
             release_artifacts.verify(self.root)
 
-    def publisher(self, bad_digest=False, existing=False):
+    def publisher(self, bad_digest=False, existing=False, resume=False, published=False,
+                  verify_only=False, missing_asset=False, wrong_id=False, wrong_tag=False):
         script = self.root / 'fake-publish.ps1'
         # Place mocks outside the strictly allowlisted artifact directory.
         artifacts = self.root / 'artifacts'
@@ -90,22 +91,40 @@ class Artifacts(unittest.TestCase):
         notes = self.root / 'notes.txt'
         notes.write_text('Synthetic publication regression.\n')
         calls = self.root / 'calls.txt'
-        payload = {'assets': [{'name': path.name, 'size': path.stat().st_size,
+        payload = {'id': 42, 'tag_name': 'v0.1.0', 'draft': not published,
+                   'assets': [{'name': path.name, 'size': path.stat().st_size,
                     'digest': 'sha256:' + ('0' * 64 if bad_digest else release.digest(path))}
                    for path in artifacts.iterdir()]}
+        if missing_asset:
+            payload['assets'].pop()
+        listed = json.dumps(payload)
+        if wrong_tag:
+            payload['tag_name'] = 'v9.9.9'
+        published_payload = json.dumps(dict(payload, draft=False, html_url='https://example.invalid/release'))
         publisher = Path(__file__).resolve().parents[1] / 'scripts/publish-release.ps1'
         def quoted(path):
             return "'" + str(path).replace("'", "''") + "'"
-        script.write_text("$ErrorActionPreference='Stop'\nfunction global:gh {\n"
+        script.write_text("$ErrorActionPreference='Stop'\n$global:Created=$false\nfunction global:gh {\n"
             "$global:LASTEXITCODE=0\n$command=$args -join ' '\n"
             f"Add-Content -LiteralPath {quoted(calls)} -Value $command\n"
             "if ($command -like 'api */git/ref/tags/*') {\n"
             f"  return '{{\"object\":{{\"type\":\"commit\",\"sha\":\"{self.commit}\"}}}}'\n}}\n"
-            "if ($command -match '/releases\\?per_page=') { " + ("return 'v0.1.0'" if existing else 'return') + " }\n"
+            "if ($command -match '/releases\\?per_page=') {\n"
+            "  if ($command -notlike '*--paginate*') { throw 'Release listing must paginate' }\n"
+            "  Write-Output '{\"id\":99,\"tag_name\":\"v9.9.9\",\"draft\":false}'\n"
+            f"  if ($global:Created -or ${str(existing).lower()}) {{ Write-Output '{listed}' }}\n  return\n}}\n"
+            "if ($command -like 'release create *') { $global:Created=$true; return }\n"
             "if ($command -like 'api */releases/tags/*') {\n"
-            f"  return '{json.dumps(payload)}'\n}}\n}}\n"
+            "  $global:LASTEXITCODE=1; [Console]::Error.WriteLine('Not Found (HTTP 404)'); return\n}\n"
+            "if ($command -like 'api */releases/42 --method PATCH --field draft=false') {\n"
+            f"  return '{published_payload}'\n}}\n"
+            "if ($command -like 'api */releases/42') {\n"
+            f"  return '{json.dumps(payload)}'\n}}\n"
+            "throw \"Unexpected gh command: $command\"\n}\n"
             f"& {quoted(publisher)} -Directory {quoted(artifacts)} -Tag v0.1.0 -Commit {self.commit} "
-            f"-Notes {quoted(notes)} -Python {quoted(sys.executable)}\n", encoding='utf-8')
+            f"-Notes {quoted(notes)} -Python {quoted(sys.executable)} "
+            + (f"-ResumeDraftId {43 if wrong_id else 42} " if resume else '')
+            + ('-VerifyOnly ' if verify_only else '') + '\n', encoding='utf-8')
         result = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)],
                                 capture_output=True, text=True, timeout=30)
         return result, calls.read_text() if calls.exists() else ''
@@ -115,20 +134,73 @@ class Artifacts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('release create', calls)
         self.assertIn('--draft', calls)
-        self.assertIn('release edit v0.1.0', calls)
+        self.assertIn('/releases/42 --method PATCH --field draft=false', calls)
+        self.assertNotIn('/releases/tags/', calls)
 
     def test_bad_uploaded_digest_keeps_draft_private(self):
         result, calls = self.publisher(bad_digest=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Uploaded checksum differs', result.stderr)
         self.assertIn('release create', calls)
-        self.assertNotIn('release edit', calls)
+        self.assertNotIn('--method PATCH', calls)
 
     def test_existing_release_cannot_be_overwritten(self):
         result, calls = self.publisher(existing=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('release create', calls)
-        self.assertNotIn('release edit', calls)
+        self.assertNotIn('--method PATCH', calls)
+
+    def test_existing_draft_requires_explicit_resume(self):
+        result, calls = self.publisher(existing=True, resume=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('release create', calls)
+        self.assertIn('/releases/42 --method PATCH --field draft=false', calls)
+
+    def test_resume_never_modifies_published_release(self):
+        result, calls = self.publisher(existing=True, resume=True, published=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('--method PATCH', calls)
+        self.assertNotIn('release create', calls)
+
+    def test_resume_rejects_wrong_draft_id(self):
+        result, calls = self.publisher(existing=True, resume=True, wrong_id=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('--method PATCH', calls)
+
+    def test_resume_rejects_missing_draft(self):
+        result, calls = self.publisher(resume=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('release create', calls)
+
+    def test_resume_rejects_incomplete_upload(self):
+        result, calls = self.publisher(existing=True, resume=True, missing_asset=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Uploaded asset set differs', result.stderr)
+        self.assertNotIn('--method PATCH', calls)
+
+    def test_release_identity_is_checked_again_by_id(self):
+        result, calls = self.publisher(existing=True, resume=True, wrong_tag=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Release identity or draft state changed', result.stderr)
+        self.assertNotIn('--method PATCH', calls)
+
+    def test_verify_only_checks_real_hashes_without_publishing(self):
+        result, calls = self.publisher(existing=True, resume=True, verify_only=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Verified draft 42', result.stdout)
+        self.assertNotIn('--method PATCH', calls)
+        self.assertNotIn('release create', calls)
+
+    def test_verify_only_rejects_bad_uploaded_hash(self):
+        result, calls = self.publisher(existing=True, resume=True, verify_only=True, bad_digest=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Uploaded checksum differs', result.stderr)
+        self.assertNotIn('--method PATCH', calls)
+
+    def test_verify_only_requires_explicit_draft(self):
+        result, calls = self.publisher(verify_only=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, '')
 
 
 if __name__ == '__main__':

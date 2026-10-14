@@ -53,8 +53,31 @@ retains the deliverables as an Actions artifact without publishing a release.
 This supports the existing `v0.1.0` tag without moving it. The workflow version
 provides packaging/installer tooling while game code comes from the chosen tag.
 
-If an upload fails, inspect the incomplete draft and its assets before removing
-that draft and rerunning. Do not delete or move the tag. A published version is
+If publication fails after upload, keep the draft and download the exact
+`windows-release` artifact from the failed run. The publisher resolves drafts
+through authenticated release listings and uses their numeric IDs; GitHub's
+release-by-tag endpoint only finds published releases.
+
+For the v0.1.1 publication failure, run the following from a checkout containing
+the publisher fix (with Python and authenticated `gh` available):
+
+```powershell
+gh run download 38501319172 --repo zdiemer/haze-recomp --name windows-release --dir local/recover-v0.1.1
+./scripts/publish-release.ps1 -Directory local/recover-v0.1.1 -Tag v0.1.1 `
+    -Commit 2139a6556ba51444a650c19395aba004b4ce14d6 -Notes docs/release-notes.txt `
+    -ResumeDraftId 412290693 -VerifyOnly
+```
+
+After read-only verification succeeds, repeat the publisher command without
+`-VerifyOnly` to publish that draft. It rechecks the tag, exact asset set, sizes
+and SHA-256 digests before publishing by ID. Resume never uploads or replaces
+files, rewrites notes, or modifies an already published release. An incomplete
+or mismatched draft fails verification and needs investigation. For another run,
+substitute its run ID, tag, commit and draft ID.
+
+Rerunning the old failed job uses its original broken script; rebuilding can
+produce different MSI bytes. Recover using the original artifact and the fixed
+publisher instead. Do not delete or move the tag. A published version is
 immutable: fix problems in a new version instead.
 
 ## What gets built and published
