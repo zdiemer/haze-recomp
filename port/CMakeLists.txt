@@ -294,7 +294,9 @@ if(WIN32)
     # SDK 562bfac GPU pulling shares the existing fenced vertex-upload ring;
     # decoded geometry caches do not depend on live sampler/effect settings.
     # Dedicated packed-depth descriptors remain owned by the renderer.
-    if(NOT HAZE_RSX_HASH STREQUAL "95d8e710e7da97dc8809636afa71ce04a946f720b0e69d786fc05046f37be1e9")
+    # SDK d6a543a preserves producer AA metadata and corrects packed-depth
+    # sample coordinates/bounds. Resource and descriptor ownership is unchanged.
+    if(NOT HAZE_RSX_HASH STREQUAL "0f6f593a68c38a7dc1e248ec529b776c2f0ec12c55b753faacc956301018fa1d")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
