@@ -300,6 +300,16 @@ if(WIN32)
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
+    string(REPLACE "    g.ready = 1;" "    g.ready = 1;\n    haze_overlay_start();"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(REPLACE "    ld_flush(LD_FLUSH_MOVIE_PRESENT);" "    haze_overlay_draw(bbi);\n    ld_flush(LD_FLUSH_MOVIE_PRESENT);"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    # Match only the final presentation flush, not settings/readback flushes.
+    string(REPLACE "    ld_flush(LD_FLUSH_PRESENT);\n    {" "    haze_overlay_draw(bbi);\n    ld_flush(LD_FLUSH_PRESENT);\n    {"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(REPLACE "    rsx_postprocess_destroy(&g_ld_postprocess);"
+        "    haze_overlay_destroy();\n    rsx_postprocess_destroy(&g_ld_postprocess);"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     string(REPLACE "ld_flush(LD_FLUSH_MOVIE_PRESENT);"
         "ld_flush(LD_FLUSH_MOVIE_PRESENT);\n    haze_movie_capture_backbuffer(bbi);"
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")

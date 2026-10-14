@@ -29,14 +29,14 @@ bool haze_graphics_initialize() {
         std::fprintf(stderr,"[graphics] %s: %s\n",path,error.c_str()); return false;
     }
     // Validate the complete file and overrides before changing the process.
-    for (const auto& option:rsx_graphics_options) {
+    for (const auto& option:haze_video::options()) {
         const char* value=std::getenv(option.environment);
         if (value && *value && !valid(option,value)) {
             std::fprintf(stderr,"[graphics] Invalid %s=%s (expected %s)\n",option.environment,value,allowed(option).c_str()); return false;
         }
     }
     std::map<std::string,std::string> effective,overrides;
-    for (const auto& option:rsx_graphics_options) {
+    for (const auto& option:haze_video::options()) {
         const char* current=std::getenv(option.environment);
         if (current && *current) overrides[option.key]=current;
         const auto found=values.find(option.key);
@@ -53,7 +53,7 @@ bool haze_graphics_initialize() {
             effective["window_size"]=dimensions(detected.window_width,detected.window_height);
     }
     std::fprintf(stderr,"[graphics] %s %s\n",file.is_open() ? "Loaded" : "Defaults; no file at",path);
-    for (const auto& option:rsx_graphics_options) {
+    for (const auto& option:haze_video::options()) {
         const auto& value=effective.at(option.key);
 #ifdef _WIN32
         if (_putenv_s(option.environment,value.c_str())!=0) return false;

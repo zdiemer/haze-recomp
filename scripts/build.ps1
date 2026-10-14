@@ -160,6 +160,10 @@ if ($Test) {
     & $python "$root/tests/test_camera_benchmark_io.py" --compiler $clang --output-dir "$root/build/camera-benchmark-io"
     if ($LASTEXITCODE -ne 0) { throw 'Camera benchmark asynchronous control and deferred audit tests failed.' }
     $graphicsTest = Join-Path $root 'local/test_haze_graphics.exe'
+    & $clang /nologo /W0 /O2 /std:c++20 /EHsc "/Fe$root/local/test_haze_overlay.exe" "/Fo$root/local/test_haze_overlay.obj" "$root/tests/test_haze_overlay.cpp"
+    if ($LASTEXITCODE -ne 0) { throw 'Performance overlay test compilation failed.' }
+    & "$root/local/test_haze_overlay.exe"
+    if ($LASTEXITCODE -ne 0) { throw 'Performance overlay counter/layout regression failed.' }
     & $clang /nologo /W0 /O1 /std:c++20 "/I$sdk/libs/video" "/Fe$graphicsTest" "/Fo$root/local/test_haze_graphics.obj" "$root/tests/test_haze_graphics.cpp" /link user32.lib
     if ($LASTEXITCODE -ne 0) { throw 'Graphics configuration test compilation failed.' }
     & $graphicsTest

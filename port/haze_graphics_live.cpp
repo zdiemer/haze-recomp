@@ -19,6 +19,7 @@ HazeGraphicsState state;
 std::string source_text;
 haze_video::Values startup_requested;
 std::atomic<bool> reload_requested;
+std::atomic<bool> overlay_cycle_requested;
 std::atomic_flag operation=ATOMIC_FLAG_INIT;
 struct Operation {
     bool acquired=!operation.test_and_set();
@@ -127,6 +128,10 @@ bool apply_values(const haze_video::Values& configured,bool persist,bool display
     live.sharpening=float(std::strtod(target.at("sharpening").c_str(),nullptr));
     live.exposure=float(std::strtod(target.at("exposure").c_str(),nullptr));
     live.vsync=target.at("vsync")=="on" ? 1 : target.at("vsync")=="off" ? 0 : -1;
+    live.overlay=target.at("performance_overlay")=="expanded" ? 2 : target.at("performance_overlay")=="compact" ? 1 : 0;
+    const auto& position=target.at("overlay_position");
+    live.overlay_position=(position.find("right")!=std::string::npos ? 1 : 0) |
+        (position.find("bottom")!=std::string::npos ? 2 : 0);
     char detail[256]{};
     if (!haze_video_prepare(&live,detail,sizeof detail)) { error=detail; return false; }
     std::string serialized;
@@ -235,7 +240,18 @@ bool haze_graphics_confirm(unsigned revision,bool keep,std::string& error) {
 #endif
 }
 void haze_graphics_request_reload() { reload_requested=true; }
+void haze_graphics_request_overlay_cycle() { overlay_cycle_requested=true; }
 void haze_graphics_update() {
+    if (overlay_cycle_requested.exchange(false)) {
+        const auto current=haze_graphics_state();
+        auto requested=current.configured;
+        const auto mode=current.effective.at("performance_overlay");
+        requested["performance_overlay"]=mode=="off" ? "compact" : mode=="compact" ? "expanded" : "off";
+        std::string error;
+        if (current.overrides.count("performance_overlay")) error="Performance overlay is controlled by a launch override.";
+        else haze_graphics_apply(requested,true,error);
+        if (!error.empty()) { std::lock_guard<std::mutex> lock(state_mutex); state.notice=error; }
+    }
 #ifdef _WIN32
     const auto pending_state=haze_graphics_state();
     if (pending_state.display_preview && !pending_state.display_restore_failed) {

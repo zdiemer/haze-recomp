@@ -83,6 +83,9 @@ int main() {
     const auto old=haze_menu_view();
     send(K::Back); assert(!haze_menu_active() && haze_menu_view().pop);
     open(); assert(haze_video::preset_name(edited)=="Medium");
+    send(K::Change,"performance_overlay","expanded");
+    send(K::Change,"overlay_position","bottom-right");
+    assert(edited.at("performance_overlay")=="expanded" && edited.at("overlay_position")=="bottom-right");
     haze_menu_command({old.generation,K::Defaults}); tick();
     assert(haze_video::preset_name(edited)=="Medium"); // A destroyed widget cannot edit a new page.
     send(K::Change,"quality","High"); fail_apply=true; send(K::Apply);

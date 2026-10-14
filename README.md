@@ -135,10 +135,19 @@ edits. Display changes offer a 15-second **Keep/Revert** confirmation. Render
 resolution and shadow resolution require restarting.
 
 Alternatively, edit [config/graphics.ini](config/graphics.ini), then press **F6** to apply
-filtering, FXAA, sharpening, exposure, VSync, and frame-limit changes live.
+filtering, FXAA, sharpening, exposure, VSync, frame-limit, and performance-overlay changes live.
 Editing alone does not apply changes; the window title reports the reload result.
 Display mode, monitor, window size, render resolution, and shadow resolution
-still require a restart. Launch overrides remain in effect after reloading.
+changes made in the file require restarting.
+
+The Video page offers **Performance overlay** (Off / Compact / Expanded) and
+**Overlay position** (four corners). **F7** cycles modes during gameplay or menus
+and saves the preference. Compact is a tiny, single-line presentation FPS counter
+with a text shadow. Expanded adds mean presentation interval, guest flips (not
+simulation rate), draw packets per guest frame,
+cached textures, and process working-set RAM. CPU/GPU timings are marked N/A
+because the normal renderer does not expose reliable per-frame measurements.
+Launch overrides remain in effect after reloading.
 Defaults are borderless at the monitor's desktop resolution with a 30 FPS cap.
 Override resolution for one run with
 `.\scripts\play.ps1 -RenderResolution 1920x1080`.

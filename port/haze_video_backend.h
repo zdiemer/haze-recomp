@@ -6,6 +6,7 @@ typedef struct {
     unsigned aa, anisotropy, frame_limit;
     float mip_bias, sharpening, exposure;
     int vsync; /* -1 auto, 0 off, 1 on */
+    unsigned overlay, overlay_position; /* 0 off / 1 compact / 2 expanded; TL, TR, BL, BR */
 } haze_video_live;
 /* Render/window thread only. Prepare leaves all effective values unchanged.
  * Finish immediately, without another renderer call, after persistence succeeds

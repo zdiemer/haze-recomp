@@ -1,11 +1,23 @@
 #include <cassert>
 #include <cstdint>
+#define HAZE_VIDEO_BACKEND_TEST
+static bool haze_overlay_pipeline=true;
+static unsigned overlay_mode,overlay_corner;
+static void haze_overlay_set(unsigned mode,unsigned corner) { overlay_mode=mode; overlay_corner=corner; }
 #include "../port/haze_video_backend.c"
 int main() {
     g.dev=&device; g.ready=1; owner_thread=GetCurrentThreadId();
     g.n_samplers=3; g.smp_ring_used=2; g.smp_keys[0]=42;
     g_ld_anisotropy=1;
     haze_video_live high={1,16,60,0,.15f,0,-1}; char error[200];
+    high.overlay=2; high.overlay_position=3;
+    auto bad_overlay=high; bad_overlay.overlay=3;
+    assert(!haze_video_prepare(&bad_overlay,error,sizeof error));
+    bad_overlay=high; bad_overlay.overlay_position=4;
+    assert(!haze_video_prepare(&bad_overlay,error,sizeof error));
+    haze_overlay_pipeline=false;
+    assert(!haze_video_prepare(&high,error,sizeof error));
+    haze_overlay_pipeline=true;
     allocation_failure=1;
     assert(!haze_video_prepare(&high,error,sizeof error));
     assert(fences==0 && !g_ld_postprocess.output && g_ld_anisotropy==1 && g.n_samplers==3);
@@ -14,8 +26,10 @@ int main() {
     assert(fences==1 && allocated==1 && !g_ld_postprocess.output && g_ld_anisotropy==1);
     assert(!haze_video_prepare(&high,error,sizeof error)); // No overlapping transactions.
     haze_video_finish(0);
+    assert(overlay_mode==0 && overlay_corner==0);
     assert(released==1 && g.n_samplers==3 && g_ld_anisotropy==1);
     assert(haze_video_prepare(&high,error,sizeof error)); haze_video_finish(1);
+    assert(overlay_mode==2 && overlay_corner==3);
     assert(g_ld_postprocess.output && g_ld_anisotropy==16 && !g.n_samplers && !g.smp_ring_used && !g.smp_keys[0]);
     assert(g_ld_frame_limiter.period==16667 && g_ld_frame_limiter.last_present==0);
     // Same allocation supports changes to effect parameters without recreation.

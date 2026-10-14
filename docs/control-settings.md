@@ -58,7 +58,8 @@ change the saved bindings.
 
 Keyboard names include A-Z, 0-9, Space, Enter, Escape, Tab, Shift, Ctrl, Alt,
 arrows, Mouse1-Mouse5, Backspace, Delete, Insert, Home, End, PageUp, PageDown,
-and F2-F12 except F6. F1 controls mouse capture and F6 reloads graphics settings.
+and F2-F12 except F6/F7. F1 controls mouse capture, F6 reloads graphics settings,
+and F7 cycles the performance overlay.
 Escape is reserved for cancelling a binding capture; existing Escape bindings
 in the INI remain supported by the mapper.
 

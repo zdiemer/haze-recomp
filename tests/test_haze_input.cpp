@@ -8,8 +8,9 @@
 static bool focused=true;
 static bool keys[256];
 static ULONGLONG ticks=100;
-static unsigned graphics_reloads;
+static unsigned graphics_reloads,overlay_cycles;
 void haze_graphics_request_reload() { ++graphics_reloads; }
+void haze_graphics_request_overlay_cycle() { ++overlay_cycles; }
 std::string haze_graphics_notice() { return {}; }
 static SHORT test_key(int vk) { return keys[vk] ? (SHORT)0x8000 : 0; }
 static HWND test_foreground() { return focused ? (HWND)1 : nullptr; }
@@ -109,6 +110,10 @@ int main() {
     window_proc((HWND)1,WM_KEYDOWN,VK_F6,0);
     window_proc((HWND)1,WM_KEYDOWN,VK_F6,1ll<<30);
     assert(graphics_reloads==1 && message_keys[VK_F6]==0);
+    const auto captures_before_overlay=capture_calls;
+    window_proc((HWND)1,WM_KEYDOWN,VK_F7,0);
+    window_proc((HWND)1,WM_KEYDOWN,VK_F7,1ll<<30);
+    assert(overlay_cycles==1 && message_keys[VK_F7]==0 && capture_calls==captures_before_overlay);
     _set_error_mode(_OUT_TO_STDERR);
     _set_abort_behavior(0,_CALL_REPORTFAULT);
     window=(HWND)1;

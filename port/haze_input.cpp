@@ -195,6 +195,7 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (haze_menu_capture_key(int(wp))) return 0;
         if (haze_quit_menu_key(int(wp),(lp&(1ll<<30))!=0)) { capture(false); return 0; }
         if (wp == VK_F6) { if (!(lp & (1ll<<30))) haze_graphics_request_reload(); return 0; }
+        if (wp == VK_F7) { if (!(lp & (1ll<<30))) haze_graphics_request_overlay_cycle(); return 0; }
         // Repeats do not start a new press after a focus/menu transition has
         // cleared the held state. The guest owns repeat timing for held keys.
         if (!(lp & (1ll<<30))) record_key((int)wp,true,GetTickCount64());

@@ -44,7 +44,7 @@ extern "C" void haze_video_finish(int commit) {
     if (commit) { active_video=pending_video; ++commits; } else ++cancels;
 }
 static void clear_options() {
-    for (const auto& o:rsx_graphics_options) _putenv_s(o.environment,"");
+    for (const auto& o:haze_video::options()) _putenv_s(o.environment,"");
 }
 static void config(const char* text) {
     FILE* f=std::fopen("local/test-graphics.ini","wb"); assert(f);
@@ -76,7 +76,8 @@ int main() {
         "[graphics]\nrender_resolution=8193x720\n", "[graphics]\nexposure=inf\n",
         "[graphics]\nframe_limit=-1\n", "[graphics]\nmip_lod_bias=3\n",
         "[graphics]\ndisplay_mode=exclusive\n", "[graphics]\nwindow_size=native\n",
-        "[graphics]\nmonitor=0\n", "[graphics]\nmonitor=1.5\n"};
+        "[graphics]\nmonitor=0\n", "[graphics]\nmonitor=1.5\n",
+        "[graphics]\nperformance_overlay=yes\n", "[graphics]\noverlay_position=center\n"};
     for (auto text:bad) {
         clear_options(); config(text); assert(!haze_graphics_initialize());
         assert(!std::getenv("RSX_MAX_FPS")); // Failed file never partially applies.
@@ -91,7 +92,7 @@ int main() {
         assert(std::getenv("RSX_WINDOW_SIZE")==dimensions(detected.window_width,detected.window_height));
         assert(!std::strcmp(std::getenv("RSX_SHADOW_RESOLUTION"),"native"));
         assert(!std::strcmp(std::getenv("RSX_WINDOW_MODE"),"borderless"));
-        for (const auto& o:rsx_graphics_options)
+        for (const auto& o:haze_video::options())
             if(!automatic_size(o)) assert(!std::strcmp(std::getenv(o.environment),!std::strcmp(o.key,"monitor") ? monitor : fallback(o)));
     };
     clear_options(); config("[graphics]\n"); assert(haze_graphics_initialize()); check_defaults();
@@ -124,6 +125,26 @@ int main() {
     config("[graphics]\nframe_limit=30\n");
     _putenv_s("RSX_EXPOSURE","0.25"); assert(haze_graphics_initialize());
     auto before=haze_graphics_state();
+    assert(before.configured.at("performance_overlay")=="off");
+    for (const auto* mode:{"compact","expanded","off"}) {
+        haze_graphics_request_overlay_cycle(); haze_graphics_update();
+        assert(haze_graphics_state().effective.at("performance_overlay")==mode);
+        std::ifstream saved("local/test-graphics.ini"); haze_video::Values readback; std::string detail;
+        assert(haze_video::parse(saved,readback,detail) && readback.at("performance_overlay")==mode);
+    }
+    auto overlay=before.configured; overlay["performance_overlay"]="expanded"; overlay["overlay_position"]="bottom-right";
+    std::string overlay_error;
+    assert(haze_graphics_apply(overlay,true,overlay_error));
+    assert(active_video.overlay==2 && active_video.overlay_position==3 && haze_graphics_state().restart.empty());
+    clear_options(); assert(haze_graphics_initialize());
+    assert(haze_graphics_state().effective.at("performance_overlay")=="expanded");
+    assert(haze_graphics_state().effective.at("overlay_position")=="bottom-right");
+    clear_options(); _putenv_s("RSX_EXPOSURE","0.25"); config("[graphics]\nframe_limit=30\n");
+    assert(haze_graphics_initialize());
+    backend_fail=true;
+    haze_graphics_request_overlay_cycle(); haze_graphics_update();
+    assert(haze_graphics_state().effective.at("performance_overlay")=="off");
+    backend_fail=false;
     assert(before.overrides.size()==1 && before.overrides.at("exposure")=="0.25");
     std::string error;
     for (int iteration=0;iteration<3;++iteration) for (const auto* quality:{"Low","Medium","High"}) {
