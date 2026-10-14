@@ -20,6 +20,16 @@ struct HazePumpProfile {
     static constexpr unsigned capacity=16384;
     HazePumpInterval rows[capacity]{};
     uint64_t recorded=0;
+    // Same-thread bounded diagnostic; no file I/O while the game is running.
+    struct SlowWait {
+        uint64_t sequence;
+        LONGLONG begin, end;
+        unsigned host_tid, timeout_ms, result;
+        bool queued_before, queued_after;
+    };
+    SlowWait slow_waits[capacity]{};
+    uint64_t wait_sequence=0, slow_wait_count=0;
+    LONGLONG last_discarded_wait_end=0;
     HazePumpProfile() {
         const char* csv=getenv("HAZE_PUMP_CSV");
         csv_requested=csv!=nullptr;
@@ -75,6 +85,33 @@ struct HazePumpProfile {
         default: ++p.failed_waits; p.failed_wait+=elapsed; break;
         }
     }
+    void record_wait(LONGLONG begin, LONGLONG end, unsigned result,
+                     bool queued_before, bool queued_after) {
+        if (!csv_path) return;
+        const uint64_t sequence=++wait_sequence;
+        if (end<begin || end-begin<=frequency/500) return;
+        auto& row=slow_waits[slow_wait_count%capacity];
+        if (slow_wait_count>=capacity) last_discarded_wait_end=row.end;
+        row={sequence,begin,end,GetCurrentThreadId(),wait_ms,result,queued_before,queued_after};
+        ++slow_wait_count;
+    }
+    void dump_waits() const {
+        const std::string path=csv_path_storage+".waits.csv";
+        FILE* csv=fopen(path.c_str(),"wb");
+        if (!csv) { fprintf(stderr,"[pump-csv] cannot open wait output\n"); return; }
+        const uint64_t first=slow_wait_count>capacity ? slow_wait_count-capacity : 0;
+        fprintf(csv,"#qpc_frequency,%lld,threshold_us,2000,total_waits,%llu,slow_waits,%llu,overwritten,%llu,max_discarded_end_qpc,%lld\n",
+            frequency,(unsigned long long)wait_sequence,(unsigned long long)slow_wait_count,
+            (unsigned long long)first,last_discarded_wait_end);
+        fprintf(csv,"sequence,begin_qpc,end_qpc,host_tid,timeout_ms,result,queued_before,queued_after\n");
+        for(uint64_t i=first;i<slow_wait_count;++i) {
+            const auto& r=slow_waits[i%capacity];
+            fprintf(csv,"%llu,%lld,%lld,%u,%u,%u,%u,%u\n",
+                (unsigned long long)r.sequence,r.begin,r.end,r.host_tid,r.timeout_ms,
+                r.result,(unsigned)r.queued_before,(unsigned)r.queued_after);
+        }
+        fclose(csv);
+    }
     void finish_present(LONGLONG begin, unsigned frame, unsigned flips) {
         const LONGLONG end=now();
         present+=end-begin; ++presents;
@@ -108,6 +145,7 @@ struct HazePumpProfile {
                 r.failed_wait*scale,r.max_wait*scale,r.queued_after_waits,r.empty_signals);
         }
         fclose(csv);
+        dump_waits();
         fprintf(stderr,"[pump-csv] recorded=%llu retained=%llu\n",
             (unsigned long long)recorded,(unsigned long long)(recorded-first));
     }
@@ -150,6 +188,7 @@ struct HazePumpProfile {
     void note_wait(bool) {}
     void report_wait_mode() {}
     void note_wait_result(unsigned,int64_t,bool) {}
+    void record_wait(int64_t,int64_t,unsigned,bool,bool) {}
     void finish_present(int64_t,unsigned,unsigned) {}
     void dump() const {}
 };

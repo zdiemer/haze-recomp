@@ -409,13 +409,17 @@ static DWORD WINAPI frame_clock(LPVOID)
          * Keep those render-pass dependencies responsive instead of adding
          * a four-millisecond host delay to every producer/consumer round trip. */
         g_pump_profile.report_wait_mode();
-        const auto wait_begin=g_pump_profile.now();
         if (g_pump_profile.enabled) {
-            g_pump_profile.note_wait(cellGcm_fifo_has_queued_work()!=0);
+            const bool queued_before=cellGcm_fifo_has_queued_work()!=0;
+            g_pump_profile.note_wait(queued_before);
+            const auto wait_begin=g_pump_profile.now();
             const unsigned result=cellGcm_fifo_kick_wait_result(g_pump_profile.wait_ms);
-            const auto elapsed=g_pump_profile.now()-wait_begin;
+            const auto wait_end=g_pump_profile.now();
+            const auto elapsed=wait_end-wait_begin;
+            const bool queued_after=cellGcm_fifo_has_queued_work()!=0;
             g_pump_profile.add_wait(elapsed);
-            g_pump_profile.note_wait_result(result,elapsed,cellGcm_fifo_has_queued_work()!=0);
+            g_pump_profile.note_wait_result(result,elapsed,queued_after);
+            g_pump_profile.record_wait(wait_begin,wait_end,result,queued_before,queued_after);
         } else {
             cellGcm_fifo_kick_wait(g_pump_profile.wait_ms);
         }
