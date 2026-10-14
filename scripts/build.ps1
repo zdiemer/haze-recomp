@@ -127,6 +127,8 @@ if ($Test) {
     if (-not $RuntimeOnly) {
         & $python "$root/tests/test_movie_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
         if ($LASTEXITCODE -ne 0) { throw 'Movie guest EOF patch regression failed.' }
+        & $python "$root/tests/test_startup_splash_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp" "$clang" "$sdk"
+        if ($LASTEXITCODE -ne 0) { throw 'Startup splash transition regression failed.' }
         & $cmake --build $build --target HazeMovieDecodeTest HazeMoviePlaybackTest HazeMovieSailTest HazeMoviePamfTest --parallel $Jobs
         if ($LASTEXITCODE -ne 0) { throw 'Movie test compilation failed.' }
         & "$exeOutput/HazeMovieSailTest.exe"
@@ -160,6 +162,10 @@ if ($Test) {
     & $python "$root/tests/test_camera_benchmark_io.py" --compiler $clang --output-dir "$root/build/camera-benchmark-io"
     if ($LASTEXITCODE -ne 0) { throw 'Camera benchmark asynchronous control and deferred audit tests failed.' }
     $graphicsTest = Join-Path $root 'local/test_haze_graphics.exe'
+    & $clang /nologo /W0 /O2 /std:c++20 /EHsc "/Fe$root/local/test_haze_overlay.exe" "/Fo$root/local/test_haze_overlay.obj" "$root/tests/test_haze_overlay.cpp"
+    if ($LASTEXITCODE -ne 0) { throw 'Performance overlay test compilation failed.' }
+    & "$root/local/test_haze_overlay.exe"
+    if ($LASTEXITCODE -ne 0) { throw 'Performance overlay counter/layout regression failed.' }
     & $clang /nologo /W0 /O1 /std:c++20 "/I$sdk/libs/video" "/Fe$graphicsTest" "/Fo$root/local/test_haze_graphics.obj" "$root/tests/test_haze_graphics.cpp" /link user32.lib
     if ($LASTEXITCODE -ne 0) { throw 'Graphics configuration test compilation failed.' }
     & $graphicsTest
@@ -213,6 +219,11 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'SPU reservation publication test compilation failed.' }
     & $coherencyAtomicTest
     if ($LASTEXITCODE -ne 0) { throw 'SPU reservation publication/polling regression failed.' }
+    $coherencyLockTest = Join-Path $root 'local/test_coherency_lock.exe'
+    & $clang /nologo /W0 /O2 /std:c11 /clang:-msse4.1 "/I$sdk/include" "/Fe$coherencyLockTest" "/Fo$root/local/" "$sdk/runtime/spu/tests/test_coherency_lock.c" "$sdk/runtime/spu/spu_coherency.c"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU coherence lock test compilation failed.' }
+    & $coherencyLockTest
+    if ($LASTEXITCODE -ne 0) { throw 'SPU coherence lock exclusion/publication regression failed.' }
     $idleTest = Join-Path $root 'local/test_spu_idle_wait.exe'
     & $clang /nologo /W0 /O2 /clang:-msse4.1 "/I$sdk/runtime/spu" "/Fe$idleTest" "/Fo$root/local/" "$root/tests/test_spu_idle_wait.c" "$sdk/runtime/spu/spu_coherency.c"
     if ($LASTEXITCODE -ne 0) { throw 'Haze SPU idle wait test compilation failed.' }

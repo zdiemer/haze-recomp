@@ -8,8 +8,9 @@
 static bool focused=true;
 static bool keys[256];
 static ULONGLONG ticks=100;
-static unsigned graphics_reloads;
+static unsigned graphics_reloads,overlay_cycles;
 void haze_graphics_request_reload() { ++graphics_reloads; }
+void haze_graphics_request_overlay_cycle() { ++overlay_cycles; }
 std::string haze_graphics_notice() { return {}; }
 static SHORT test_key(int vk) { return keys[vk] ? (SHORT)0x8000 : 0; }
 static HWND test_foreground() { return focused ? (HWND)1 : nullptr; }
@@ -109,6 +110,10 @@ int main() {
     window_proc((HWND)1,WM_KEYDOWN,VK_F6,0);
     window_proc((HWND)1,WM_KEYDOWN,VK_F6,1ll<<30);
     assert(graphics_reloads==1 && message_keys[VK_F6]==0);
+    const auto captures_before_overlay=capture_calls;
+    window_proc((HWND)1,WM_KEYDOWN,VK_F7,0);
+    window_proc((HWND)1,WM_KEYDOWN,VK_F7,1ll<<30);
+    assert(overlay_cycles==1 && message_keys[VK_F7]==0 && capture_calls==captures_before_overlay);
     _set_error_mode(_OUT_TO_STDERR);
     _set_abort_behavior(0,_CALL_REPORTFAULT);
     window=(HWND)1;
@@ -205,6 +210,35 @@ int main() {
     assert(haze_input_take_mouse(dx,dy,speed,inverse) && dy==8 && inverse);
     CellPadHostInput other{}; assert(poll(1,&other,nullptr)==0);
     captured=0; invert_y=false;
+    // Physical key state can lead queued window messages. Menus must not
+    // report the physical tap and then replay its queued press as a second tap.
+    haze_input_menu_state(true);
+    for (int vk : {VK_UP,VK_DOWN,VK_SPACE,int('X')}) {
+        clear_keys(); keys[vk]=true;
+        assert(!sample().buttons);
+        keys[vk]=false;
+        assert(!sample().buttons);
+        window_proc(window,WM_KEYDOWN,vk,0);
+        window_proc(window,WM_KEYUP,vk,0);
+        const auto tap=sample().buttons;
+        assert(tap && !(tap&(tap-1)));
+        assert(!sample().buttons);
+    }
+    // Hold stays continuous; Windows auto-repeat must not add press edges.
+    window_proc(window,WM_KEYDOWN,VK_DOWN,0);
+    for (int i=0;i<100;++i) {
+        window_proc(window,WM_KEYDOWN,VK_DOWN,1ll<<30);
+        assert(sample().buttons==CELL_PAD_CTRL_DOWN);
+    }
+    window_proc(window,WM_KEYUP,VK_DOWN,0);
+    assert(!sample().buttons);
+    // A key still held after a transition cannot reactivate the next menu.
+    window_proc(window,WM_KEYDOWN,VK_SPACE,0);
+    clear_keys();
+    window_proc(window,WM_KEYDOWN,VK_SPACE,1ll<<30);
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYUP,VK_SPACE,0);
+    haze_input_menu_state(false); sample();
     // A quick tap between pad polls reaches one report, without stretching
     // a released confirm across subsequent menus.
     window_proc(window,WM_KEYDOWN,VK_SPACE,0);
@@ -294,9 +328,26 @@ int main() {
     assert(haze_input_take_mouse(dx,dy,speed,inverse) && dx==0 && dy==0);
     // Keyboard navigation cancels pointer ownership without stale activation.
     haze_input_menu_state(true);
+    // The desktop cursor has already reached a different row while older
+    // movement messages are still queued. Hover must publish the current XY
+    // immediately, including when no more physical movement follows.
+    cursor_position={960,540};
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(320,180));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.x==.75f && pointer_packet.y==.75f);
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(640,360));
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(960,540));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.x==.75f && pointer_packet.y==.75f);
     window_proc(window,WM_LBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
     window_proc(window,WM_KEYDOWN,VK_DOWN,0);
     assert(!haze_input_take_pointer().active);
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    assert(!haze_input_take_pointer().active); // Stationary synthetic move cannot steal focus.
+    cursor_position={640,360};
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(900,500));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.x==.5f && pointer_packet.y==.5f);
     window_proc(window,WM_KEYUP,VK_DOWN,0);
     haze_input_menu_state(false); sample();
     // Every button can press and release, including all four face buttons.
@@ -403,6 +454,52 @@ int main() {
     assert(!sample().buttons);
     window_proc(window,WM_LBUTTONUP,0,MAKELPARAM(cursor_position.x,cursor_position.y)); assert(!sample().buttons);
     bindings[0].vk=old_cross;
+    // Escape skips videos without requesting pause, and remains consumed across
+    // STOP, a menu transition, focus loss, repeats, and eventual key release.
+    pause_requested=false; clear_keys();
+    startup_skip.playback(123,uri,true,ticks); ticks+=350;
+    keys[VK_ESCAPE]=true;
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(!pause_requested && sample().buttons==CELL_PAD_CTRL_CROSS);
+    startup_skip.playback(123,uri,false,ticks);
+    haze_input_menu_state(true);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,1ll<<30);
+    assert(!sample().buttons && !pause_requested);
+    focused=false; assert(!sample().buttons);
+    focused=true; ticks+=10; haze_input_update(); assert(!sample().buttons);
+    keys[VK_ESCAPE]=false; window_proc(window,WM_KEYUP,VK_ESCAPE,0);
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(sample().buttons==CELL_PAD_CTRL_START);
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    haze_input_menu_state(false);
+    // Manual video skipping is not limited to the automatic-skip whitelist.
+    const char* story="x-cell-fs:///dev_bdvd/PS3_GAME/USRDIR/movies/story.pam";
+    startup_skip.configure(true,true);
+    assert(startup_skip.playback(789,story,true,ticks)); ticks+=400;
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(sample().buttons==CELL_PAD_CTRL_CROSS && !pause_requested);
+    startup_skip.playback(789,story,false,ticks);
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    // Static slides consume the same manual keys without injecting any guest
+    // buttons. Automatic slides also work unfocused and in controller-only mode.
+    startup_skip.configure(false,false);
+    assert(!haze_input_splash(456,0));
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(!sample().buttons && !pause_requested && haze_input_splash(456,0));
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    assert(!haze_input_splash(456,1)); // A fresh press is needed for the next slide.
+    keys['J']=true; assert(!sample().buttons && haze_input_splash(456,1));
+    haze_input_splash_end(456); haze_input_menu_state(true);
+    assert(!sample().buttons && !haze_input_take_pointer().pressed);
+    keys['J']=false; assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,'J',0); assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    window_proc(window,WM_KEYUP,'J',0); sample(); haze_input_menu_state(false);
+    startup_skip.configure(true,false); enabled=false; focused=false;
+    assert(haze_input_splash(456,0) && !sample().buttons);
+    haze_input_splash_end(456); focused=true; enabled=true;
+    ticks+=10; haze_input_update(); sample();
     DeleteFileA(config_path);
     HazeStartupSkip isolated;
     const uint16_t cross=CELL_PAD_CTRL_CROSS, start=CELL_PAD_CTRL_START;
@@ -421,7 +518,10 @@ int main() {
     assert(isolated.filter(1100,0,true,cross)==cross);
     assert(isolated.filter(10900,0,false,cross)==cross); // Slow loading remains skippable.
     isolated.playback(123,uri,true,20000);
-    assert(!isolated.playback(123,"story.pam",true,20100));
+    assert(isolated.playback(123,"story.pam",true,20100));
+    assert(!isolated.filter(20500,0,true,cross)); // Unknown streams never auto-skip.
+    assert(isolated.filter(20500,cross|start,true,cross)==cross);
+    isolated.playback(123,"story.pam",false,20500);
     assert(!isolated.filter(20500,cross|start,true,cross));
     assert(!isolated.filter(20501,0,true,cross));
     assert(isolated.filter(20502,start,true,cross)==start);
@@ -445,7 +545,7 @@ int main() {
     assert(!isolated.filter(450,0,true,cross));
     assert(isolated.filter(450,cross,true,cross)==cross);
     isolated.playback(123,demo.c_str(),false,900);
-    assert(!isolated.playback(123,(std::string(prefix)+"story.pam").c_str(),true,1000));
+    assert(isolated.playback(123,(std::string(prefix)+"story.pam").c_str(),true,1000));
     assert(!isolated.filter(1050,0,true,cross));
     assert(!isolated.filter(1400,0,true,cross));
     // Exercise production attachment/update/capture against a deterministic

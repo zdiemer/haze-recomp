@@ -16,7 +16,7 @@ inline std::string haze_key_name(int key) {
         {VK_BACK,"Backspace"},{VK_DELETE,"Delete"},{VK_INSERT,"Insert"},{VK_HOME,"Home"},{VK_END,"End"},
         {VK_PRIOR,"PageUp"},{VK_NEXT,"PageDown"}};
     for (const auto& item:names) if (item.key==key) return item.name;
-    if (key>=VK_F2 && key<=VK_F12 && key!=VK_F6) return "F"+std::to_string(key-VK_F1+1);
+    if (key>=VK_F2 && key<=VK_F12 && key!=VK_F6 && key!=VK_F7) return "F"+std::to_string(key-VK_F1+1);
     return {};
 }
 inline int haze_key_code(const char* text) {

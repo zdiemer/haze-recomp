@@ -1,4 +1,21 @@
-Haze Recomp 0.1.3 for Windows x64
+Haze Recomp 0.1.5 for Windows x64
+
+Reduces CPU contention by letting Windows SPU workers block on a shared lock
+instead of spinning (#118). Matched opening-deck tests showed fewer frames over
+50 ms; busy-jungle tests also improved. Large hitches remain, including one
+192 ms outlier in the candidate comparison. This is an incremental improvement,
+not a stutter-free release or a stable 144 FPS claim (#110).
+
+Adds an optional corner FPS/performance overlay and improves the readability
+of native settings over bright scenes.
+
+Fixes misplaced fog and smoke-like silhouettes overlapping characters and world
+geometry (#109). Packed scene depth now preserves the original surface's sample
+layout, so effects read depth at the correct screen position. The fix applies to
+the shared renderer throughout gameplay and keeps fog and particles enabled.
+
+Also includes corrected mouse hover and keyboard navigation in menus, plus
+complete diagnostic trace export when quitting through the native menu.
 
 Includes native task-readiness wakeups, GPU vertex decoding and vertex-program
 batching, enabled by default alongside the existing PC controls and graphics

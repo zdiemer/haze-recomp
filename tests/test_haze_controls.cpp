@@ -39,6 +39,7 @@ int main() {
     auto invalid=initial.values; invalid["Mouse.Sensitivity"]="nan"; assert(!haze_control_save(initial,invalid,message) && bytes()==original);
     invalid=initial.values; invalid["Controller.MoveX"]="raw:b0"; assert(!haze_control_validate(invalid,message));
     invalid=initial.values; invalid["Bindings.Cross"]="F1"; assert(!haze_control_validate(invalid,message));
+    invalid=initial.values; invalid["Bindings.Cross"]="F7"; assert(!haze_control_validate(invalid,message));
     invalid=initial.values; invalid["ControllerBindings.Cross"]="a";
     assert(haze_control_conflicts(invalid,"ControllerBindings.Circle","south").size()==1);
     haze_controls_menu_register(); registered.begin();

@@ -42,6 +42,8 @@ if ($AssetFree) {
 }
 & $Python "$root/tests/test_title_prompt_patch.py" "$assets/generated/ppu/ppu_recomp_002.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Title prompt patch guard failed.' }
+& $Python "$root/tests/test_startup_splash_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp" "$clang" "$sdk"
+if ($LASTEXITCODE -ne 0) { throw 'Startup splash transition regression failed.' }
 & $Python "$root/tests/test_menu_page_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp" "$clang"
 if ($LASTEXITCODE -ne 0) { throw 'Menu page patch guard failed.' }
 & $Python "$root/tests/test_native_menu_material_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp"

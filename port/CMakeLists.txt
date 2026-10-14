@@ -150,10 +150,13 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
         add_custom_command(OUTPUT "${HAZE_MOVIE_PATCHED}"
             COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" movie-poll
                 "${HAZE_SAVE_PATCHED}" "${HAZE_MOVIE_PATCHED}"
+            COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" startup-splash
+                "${HAZE_MOVIE_PATCHED}" "${HAZE_MOVIE_PATCHED}"
             DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_SAVE_PATCHED}"
             VERBATIM)
         list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
-        list(APPEND RECOMP_SOURCES "${HAZE_MOVIE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_movie_guest.cpp")
+        list(APPEND RECOMP_SOURCES "${HAZE_MOVIE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_movie_guest.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/haze_startup_guest.cpp")
         set_property(SOURCE "${HAZE_MOVIE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
         set(HAZE_MAIN_LOOP_PATCHED "${HAZE_MOVIE_PATCHED}")
     endif()
@@ -292,10 +295,22 @@ if(WIN32)
     # SDK 562bfac GPU pulling shares the existing fenced vertex-upload ring;
     # decoded geometry caches do not depend on live sampler/effect settings.
     # Dedicated packed-depth descriptors remain owned by the renderer.
-    if(NOT HAZE_RSX_HASH STREQUAL "95d8e710e7da97dc8809636afa71ce04a946f720b0e69d786fc05046f37be1e9")
+    # SDK d6a543a preserves producer AA metadata and corrects packed-depth
+    # sample coordinates/bounds. Resource and descriptor ownership is unchanged.
+    if(NOT HAZE_RSX_HASH STREQUAL "0f6f593a68c38a7dc1e248ec529b776c2f0ec12c55b753faacc956301018fa1d")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
+    string(REPLACE "    g.ready = 1;" "    g.ready = 1;\n    haze_overlay_start();"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(REPLACE "    ld_flush(LD_FLUSH_MOVIE_PRESENT);" "    haze_overlay_draw(bbi);\n    ld_flush(LD_FLUSH_MOVIE_PRESENT);"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    # Match only the final presentation flush, not settings/readback flushes.
+    string(REPLACE "    ld_flush(LD_FLUSH_PRESENT);\n    {" "    haze_overlay_draw(bbi);\n    ld_flush(LD_FLUSH_PRESENT);\n    {"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(REPLACE "    rsx_postprocess_destroy(&g_ld_postprocess);"
+        "    haze_overlay_destroy();\n    rsx_postprocess_destroy(&g_ld_postprocess);"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     string(REPLACE "ld_flush(LD_FLUSH_MOVIE_PRESENT);"
         "ld_flush(LD_FLUSH_MOVIE_PRESENT);\n    haze_movie_capture_backbuffer(bbi);"
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")

@@ -13,7 +13,6 @@
 #include "cellPad.h"
 #include "cellSail.h"
 #include "haze_startup.h"
-#include "haze_startup_prompt.h"
 #include "haze_input_key.h"
 #include "haze_quit.h"
 #include "haze_quit_menu.h"
@@ -49,10 +48,6 @@ double sensitivity = 0.10;
 bool invert_y;
 HazeStartupSkip startup_skip;
 ULONGLONG startup_epoch=0;
-HazeStartupPrompt startup_prompt;
-std::string skip_hint;
-ULONGLONG next_hint_check=0;
-HazeInputFamily hint_family=HazeInputFamily::Keyboard;
 enum { KEY_HELD=1, KEY_PENDING=2 };
 std::atomic<unsigned> message_keys[256];
 std::atomic<bool> capture_click;
@@ -117,7 +112,13 @@ bool down(int vk) {
     // Buffer an otherwise missed tap for one host report, rather than holding
     // released buttons for 120ms. The SDK caches that report between pad reads.
     const unsigned state=message_keys[vk].fetch_and(~unsigned(KEY_PENDING));
-    return (state & (KEY_HELD|KEY_PENDING)) || (GetAsyncKeyState(vk) & 0x8000);
+    // In menus, use one ordered source for a key's press and release. Sampling
+    // the physical key first and later replaying its queued messages can turn
+    // one tap into two presses, restarting the guest's navigation repeat.
+    // Presentation release draining must still see physical keys after focus
+    // loss clears the message buffer and the following menu becomes active.
+    return (state & (KEY_HELD|KEY_PENDING)) ||
+        ((!menu_active || startup_skip.owns_input()) && (GetAsyncKeyState(vk) & 0x8000));
 }
 void clear_keys() {
     for (auto& key : message_keys) key=0;
@@ -188,10 +189,15 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
-        if (haze_menu_capture_key(int(wp))) return 0;
-        if (haze_quit_menu_key(int(wp),(lp&(1ll<<30))!=0)) { capture(false); return 0; }
+        if (!startup_skip.owns_input()) {
+            if (haze_menu_capture_key(int(wp))) return 0;
+            if (haze_quit_menu_key(int(wp),(lp&(1ll<<30))!=0)) { capture(false); return 0; }
+        }
         if (wp == VK_F6) { if (!(lp & (1ll<<30))) haze_graphics_request_reload(); return 0; }
-        record_key((int)wp,true,GetTickCount64());
+        if (wp == VK_F7) { if (!(lp & (1ll<<30))) haze_graphics_request_overlay_cycle(); return 0; }
+        // Repeats do not start a new press after a focus/menu transition has
+        // cleared the held state. The guest owns repeat timing for held keys.
+        if (!(lp & (1ll<<30))) record_key((int)wp,true,GetTickCount64());
         if (!enabled) break;
         if (wp == VK_F1) {
             if (!(lp & (1ll<<30)) && !menu_active && !pause_requested) {
@@ -204,13 +210,14 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         if (wp == VK_ESCAPE) {
+            if (startup_skip.owns_input()) return 0; // Skip must not also request pause.
             if (!menu_active) { pause_request_time=GetTickCount64(); pause_requested=true; }
             capture(false); return 0;
         } // Pause, rather than SDK's quit.
         {
             std::lock_guard<std::mutex> lock(settings_mutex);
             for (const auto& b : bindings)
-                if (b.button==CELL_PAD_CTRL_START && b.vk==(int)wp) {
+                if (b.button==CELL_PAD_CTRL_START && b.vk==(int)wp && !startup_skip.owns_input()) {
                     if (!menu_active) { pause_request_time=GetTickCount64(); pause_requested=true; }
                     capture(false);
                 }
@@ -219,6 +226,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_KEYUP: case WM_SYSKEYUP:
         record_key((int)wp,false,GetTickCount64()); break;
     case WM_LBUTTONDOWN:
+        if (startup_skip.owns_input()) {
+            record_key(VK_LBUTTON,true,GetTickCount64()); return 0;
+        }
         if (haze_menu_capture_key(VK_LBUTTON)) return 0;
         if (!enabled) break;
         last_family=HazeInputFamily::Keyboard;
@@ -234,10 +244,6 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             suppress_mouse_buttons=true;
             return 0;
         }
-        if (startup_skip.showing()) {
-            record_key(VK_LBUTTON,true,GetTickCount64());
-            return 0;
-        }
         if (!captured && GetForegroundWindow() == hwnd) {
             capture_click=true;
             capture_policy.manual_release=false;
@@ -247,6 +253,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         record_key(VK_LBUTTON,true,GetTickCount64());
         break;
     case WM_LBUTTONUP:
+        if (startup_skip.owns_input()) {
+            record_key(VK_LBUTTON,false,GetTickCount64()); capture_click=false; return 0;
+        }
         if (menu_active && enabled) {
             pointer_event_position(hwnd,lp);
             {
@@ -260,6 +269,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         record_key(VK_LBUTTON,false,GetTickCount64());
         capture_click=false; break;
     case WM_RBUTTONDOWN: case WM_RBUTTONUP:
+        if (startup_skip.owns_input()) {
+            record_key(VK_RBUTTON,msg==WM_RBUTTONDOWN,GetTickCount64()); return 0;
+        }
         if (msg==WM_RBUTTONDOWN && haze_menu_capture_key(VK_RBUTTON)) return 0;
         if (menu_active && enabled) {
             pointer_event_position(hwnd,lp);
@@ -324,7 +336,10 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (!GetCursorPos(&position)) break;
         if (enabled && menu_active && GetForegroundWindow()==hwnd &&
             (position.x!=last_pointer.x || position.y!=last_pointer.y)) {
-            pointer_event_position(hwnd,lp); pointer_mode(true);
+            // Movement messages may lag behind the cursor. Since the activity
+            // check uses its current position, publish that same position;
+            // otherwise later queued moves are discarded with stale hover XY.
+            pointer_position(hwnd); pointer_mode(true);
             last_family=HazeInputFamily::Keyboard;
             capture_policy.use_keyboard();
         }
@@ -380,7 +395,13 @@ int poll(u32 port, CellPadHostInput* input, void*) {
         // A stale neutral controller snapshot from focus loss must not release
         // the transition gate before the window thread samples the held pad.
         const bool ready=focused && (!gamepad_initialized || controller_sample_focused);
+        const bool owned=startup_skip.owns_input();
         input->buttons=startup_skip.filter(now,input->buttons,ready,CELL_PAD_CTRL_CROSS);
+        if (owned) {
+            input->lx=input->ly=input->rx=input->ry=128;
+            input->l2=input->r2=0;
+            mouse_motion.clear(); InterlockedExchange(&wheel,0);
+        }
         return 1;
     };
     if (!foreground || foreground != window.load()) {
@@ -404,6 +425,7 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     // tap once, then share the same snapshot across all bindings in this report.
     bool sampled[256]={}, states[256]={};
     const bool movie=startup_skip.showing();
+    const bool presentation_input=startup_skip.owns_input();
     auto key_down=[&](int vk) {
         if (vk <= 0 || vk >= 256) return false;
         if (!sampled[vk]) { states[vk]=down(vk); sampled[vk]=true; }
@@ -411,12 +433,13 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     };
     for (const auto& b : bindings) {
         if (b.vk >= VK_LBUTTON && b.vk <= VK_XBUTTON2 &&
-            ((!captured && !movie) || menu_active || pause_requested || (suppress_mouse_buttons && !movie))) continue;
+            (!presentation_input && (!captured || menu_active || pause_requested || suppress_mouse_buttons))) continue;
         if (b.vk == VK_LBUTTON && capture_click) continue;
         if (key_down(b.vk)) input->buttons |= b.button;
     }
-    // Escape always pauses and releases mouse capture, even with Start rebound.
-    if (key_down(VK_ESCAPE)) input->buttons |= CELL_PAD_CTRL_START;
+    // Escape is confirm only during an owned presentation. During release
+    // draining it still counts as held input, even when Start is rebound.
+    if (key_down(VK_ESCAPE)) input->buttons |= movie ? CELL_PAD_CTRL_CROSS : CELL_PAD_CTRL_START;
     const int horizontal=(int)key_down(movement[3])-(int)key_down(movement[2]);
     const int vertical=(int)key_down(movement[1])-(int)key_down(movement[0]);
     if (horizontal) input->lx=(u8)(128+127*horizontal);
@@ -467,11 +490,15 @@ void load_keyboard_config() {
     invert_y=GetPrivateProfileIntA("Mouse","InvertY",0,path)!=0;
     const bool logos=startup_setting("AutoSkipLogos"), demo=startup_setting("AutoSkipAttract");
     startup_skip.configure(logos,demo);
-    fprintf(stderr,"[startup] Automatic logos=%s, idle demo=%s. Confirm skips movies manually.\n",
+    fprintf(stderr,"[startup] Automatic logos=%s, idle demo=%s. Escape or confirm skips startup screens and movies manually.\n",
             logos ? "on" : "off",demo ? "on" : "off");
     clear_keys(); mouse_motion.clear();
 }
 }
+bool haze_input_splash(uint32_t scene, int screen) {
+    return startup_skip.splash(scene,screen,GetTickCount64());
+}
+void haze_input_splash_end(uint32_t scene) { startup_skip.splash_end(scene); }
 void haze_input_initialize() {
     startup_epoch=GetTickCount64();
     const char* mode=getenv("HAZE_INPUT");
@@ -564,34 +591,14 @@ void haze_input_update() {
     if (haze_menu_active() || haze_quit_menu_active() || haze_quit_offer().available) capture(false);
     // Give menu actions first ownership of a new controller press. Publishing
     // it to the guest before opening Quit could also activate the retail page.
-    haze_menu_update(window.load(),latest);
-    haze_quit_menu_update(window.load(),latest);
+    if (!startup_skip.owns_input()) {
+        haze_menu_update(window.load(),latest);
+        haze_quit_menu_update(window.load(),latest);
+    }
     {
         std::lock_guard<std::mutex> lock(settings_mutex);
         controller_state=latest; controller_sample_focused=sample_focused;
     }
-    if (startup_skip.showing()) {
-        const auto family=last_family.load();
-        if (now>=next_hint_check || family!=hint_family) {
-            hint_family=family; next_hint_check=now+500;
-            char value[128];
-            const bool kb=family==HazeInputFamily::Keyboard;
-            GetPrivateProfileStringA(kb ? "Bindings" : "ControllerBindings","Cross",
-                                     kb ? "Space" : "south",value,sizeof(value),config_path);
-            const char* label=value;
-            if (!kb) {
-                const char* positions[]={"south","east","west","north","start","back"};
-                const char* xbox[]={"A","B","X","Y","Menu","View"};
-                const char* ps[]={"Cross","Circle","Square","Triangle","Start / Options","Select / Share"};
-                const char* sw[]={"B","A","Y","X","+","-"};
-                for (int i=0;i<6;i++) if (!_stricmp(value,positions[i]))
-                    label=family==HazeInputFamily::Xbox ? xbox[i] : family==HazeInputFamily::Switch ? sw[i] : ps[i];
-            }
-            skip_hint=!_stricmp(value,"none") ? "Skip is unbound. Enable automatic logo skipping in input.ini."
-                : std::string("Press ")+label+" to skip";
-        }
-    }
-    startup_prompt.update(window.load(),startup_skip.showing(),skip_hint);
 }
 void haze_input_menu_state(bool active) {
     if (active) pause_requested=false;
@@ -635,6 +642,10 @@ HazeMenuPointer haze_input_take_pointer() {
         if (!menu_pop) return {}; // Game control options retains its retail page.
         HazeMenuPointer back; back.active=true; back.back=true;
         return back;
+    }
+    if (startup_skip.owns_input()) {
+        menu_pointer={}; menu_delivered={}; menu_right_held=false;
+        return {};
     }
     auto result=menu_pointer;
     result.active=(result.active || menu_pointer.scroll!=0) && enabled && menu_active &&
@@ -687,7 +698,6 @@ unsigned haze_input_menu_button(int virtual_key) {
 void haze_input_shutdown() {
     haze_quit_menu_shutdown();
     haze_menu_shutdown(true);
-    startup_prompt.close();
     capture_policy.ready=false;
     capture(false);
     if (GetCapture()==window.load()) ReleaseCapture();

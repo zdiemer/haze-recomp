@@ -35,6 +35,7 @@ static int QueryPerformanceCounter(LARGE_INTEGER* value)
 }
 
 static HANDLE GetCurrentThread() { return reinterpret_cast<HANDLE>(1); }
+static unsigned GetCurrentThreadId() { return 37; }
 
 static FILETIME mock_filetime(std::uint64_t value)
 {
@@ -218,6 +219,7 @@ static bool test_ring_wrap_and_dump()
     }
     std::fclose(csv);
     std::remove(path);
+    std::remove("pump_intervals_ring_test.csv.waits.csv");
     CHECK(rows == HazePumpProfile::capacity);
     CHECK(last_frame == total);
 
@@ -282,6 +284,107 @@ static bool test_wait_mode_reporting_clocks_only_on_change()
     return true;
 }
 
+static bool test_environment_paths_are_owned()
+{
+    const char* csv_path="pump_intervals_owned_path.csv";
+    const char* control_path="pump_intervals_owned_control.txt";
+    const char* replacement_csv="pump_intervals_replacement.csv";
+    const char* replacement_control="pump_intervals_replacement_control.txt";
+    std::remove(csv_path);
+    std::remove((std::string(csv_path)+".waits.csv").c_str());
+    std::remove(control_path);
+    CHECK(_putenv_s("HAZE_PUMP_CSV",csv_path)==0);
+    CHECK(_putenv_s("HAZE_FIFO_WAIT_FILE",control_path)==0);
+    CHECK(_putenv_s("HAZE_PUMP_PROFILE","")==0);
+    auto* p=new HazePumpProfile();
+    CHECK(p->enabled && p->csv_path && p->wait_control);
+    CHECK(std::strcmp(p->csv_path,csv_path)==0);
+    CHECK(std::strcmp(p->wait_control,control_path)==0);
+
+    // Later CRT environment changes may relocate the environment block. The
+    // profile must retain copies for both its export path and live control.
+    CHECK(_putenv_s("HAZE_PUMP_CSV",replacement_csv)==0);
+    CHECK(_putenv_s("HAZE_FIFO_WAIT_FILE",replacement_control)==0);
+    CHECK(std::strcmp(p->csv_path,csv_path)==0);
+    CHECK(std::strcmp(p->wait_control,control_path)==0);
+
+    FILE* control=std::fopen(control_path,"wb");
+    CHECK(control!=nullptr);
+    std::fputs("0\n",control);
+    std::fclose(control);
+    p->frequency=1000;
+    p->epoch=0;
+    p->wait_ms=1;
+    g_mock_qpc=2000;
+    p->report();
+    CHECK(p->wait_ms==0); // read the original control file after env mutation
+
+    p->intervals.previous=100;
+    p->intervals.previous_cpu=1000;
+    p->intervals.previous_cpu_valid=true;
+    g_mock_qpc=200;
+    g_mock_cpu_100ns=2000;
+    p->add_fifo(10);
+    p->finish_present(150,1,1);
+    CHECK(p->recorded==1);
+    p->dump();
+    FILE* csv=std::fopen(csv_path,"rb");
+    CHECK(csv!=nullptr);
+    char line[1024];
+    CHECK(std::fgets(line,sizeof(line),csv)!=nullptr);
+    CHECK(std::fgets(line,sizeof(line),csv)!=nullptr);
+    std::fclose(csv);
+    std::remove(csv_path);
+    std::remove((std::string(csv_path)+".waits.csv").c_str());
+    std::remove(control_path);
+    delete p;
+    CHECK(_putenv_s("HAZE_PUMP_CSV","")==0);
+    CHECK(_putenv_s("HAZE_FIFO_WAIT_FILE","")==0);
+    return true;
+}
+
+static bool test_slow_wait_retention()
+{
+    auto* p=new HazePumpProfile();
+    p->csv_path=nullptr;
+    p->record_wait(0,10,1,false,true);
+    CHECK(p->wait_sequence==0 && p->slow_wait_count==0);
+    p->csv_path="pump_slow_wait_test.csv";
+    p->frequency=1000;
+    p->record_wait(0,2,0,false,false); // exactly 2 ms is not retained
+    CHECK(p->wait_sequence==1 && p->slow_wait_count==0);
+    const unsigned total=HazePumpProfile::capacity+2;
+    for(unsigned i=0;i<total;++i)
+        p->record_wait(10+i*4,13+i*4,i%4,i%2!=0,i%2==0);
+    CHECK(p->slow_wait_count==total && p->wait_sequence==total+1);
+    CHECK(p->last_discarded_wait_end==17);
+    p->dump_waits();
+    FILE* csv=std::fopen("pump_slow_wait_test.csv.waits.csv","rb");
+    CHECK(csv!=nullptr);
+    char line[512];
+    CHECK(std::fgets(line,sizeof(line),csv)!=nullptr);
+    CHECK(std::strstr(line,"overwritten,2,max_discarded_end_qpc,17")!=nullptr);
+    CHECK(std::fgets(line,sizeof(line),csv)!=nullptr); // columns
+    unsigned rows=0;
+    while(std::fgets(line,sizeof(line),csv)) {
+        unsigned long long sequence;
+        long long begin,end;
+        unsigned tid,timeout,result,before,after;
+        CHECK(std::sscanf(line,"%llu,%lld,%lld,%u,%u,%u,%u,%u",
+            &sequence,&begin,&end,&tid,&timeout,&result,&before,&after)==8);
+        const unsigned i=rows+2;
+        CHECK(sequence==i+2 && begin==10+i*4 && end==13+i*4);
+        CHECK(tid==37 && timeout==1 && result==i%4);
+        CHECK(before==i%2 && after==1-i%2);
+        ++rows;
+    }
+    std::fclose(csv);
+    std::remove("pump_slow_wait_test.csv.waits.csv");
+    CHECK(rows==HazePumpProfile::capacity);
+    delete p;
+    return true;
+}
+
 int main()
 {
     if (!test_startup_partial_and_consecutive()) return 1;
@@ -290,6 +393,8 @@ int main()
     if (!test_ring_wrap_and_dump()) return 1;
     if (!test_wait_outcomes_partition_and_reset()) return 1;
     if (!test_wait_mode_reporting_clocks_only_on_change()) return 1;
+    if (!test_environment_paths_are_owned()) return 1;
+    if (!test_slow_wait_retention()) return 1;
     std::puts("pump interval accounting: PASS");
     return 0;
 }
