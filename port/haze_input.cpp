@@ -117,7 +117,11 @@ bool down(int vk) {
     // Buffer an otherwise missed tap for one host report, rather than holding
     // released buttons for 120ms. The SDK caches that report between pad reads.
     const unsigned state=message_keys[vk].fetch_and(~unsigned(KEY_PENDING));
-    return (state & (KEY_HELD|KEY_PENDING)) || (GetAsyncKeyState(vk) & 0x8000);
+    // In menus, use one ordered source for a key's press and release. Sampling
+    // the physical key first and later replaying its queued messages can turn
+    // one tap into two presses, restarting the guest's navigation repeat.
+    return (state & (KEY_HELD|KEY_PENDING)) ||
+        (!menu_active && (GetAsyncKeyState(vk) & 0x8000));
 }
 void clear_keys() {
     for (auto& key : message_keys) key=0;
@@ -191,7 +195,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (haze_menu_capture_key(int(wp))) return 0;
         if (haze_quit_menu_key(int(wp),(lp&(1ll<<30))!=0)) { capture(false); return 0; }
         if (wp == VK_F6) { if (!(lp & (1ll<<30))) haze_graphics_request_reload(); return 0; }
-        record_key((int)wp,true,GetTickCount64());
+        // Repeats do not start a new press after a focus/menu transition has
+        // cleared the held state. The guest owns repeat timing for held keys.
+        if (!(lp & (1ll<<30))) record_key((int)wp,true,GetTickCount64());
         if (!enabled) break;
         if (wp == VK_F1) {
             if (!(lp & (1ll<<30)) && !menu_active && !pause_requested) {
@@ -324,7 +330,10 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (!GetCursorPos(&position)) break;
         if (enabled && menu_active && GetForegroundWindow()==hwnd &&
             (position.x!=last_pointer.x || position.y!=last_pointer.y)) {
-            pointer_event_position(hwnd,lp); pointer_mode(true);
+            // Movement messages may lag behind the cursor. Since the activity
+            // check uses its current position, publish that same position;
+            // otherwise later queued moves are discarded with stale hover XY.
+            pointer_position(hwnd); pointer_mode(true);
             last_family=HazeInputFamily::Keyboard;
             capture_policy.use_keyboard();
         }

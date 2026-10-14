@@ -205,6 +205,35 @@ int main() {
     assert(haze_input_take_mouse(dx,dy,speed,inverse) && dy==8 && inverse);
     CellPadHostInput other{}; assert(poll(1,&other,nullptr)==0);
     captured=0; invert_y=false;
+    // Physical key state can lead queued window messages. Menus must not
+    // report the physical tap and then replay its queued press as a second tap.
+    haze_input_menu_state(true);
+    for (int vk : {VK_UP,VK_DOWN,VK_SPACE,int('X')}) {
+        clear_keys(); keys[vk]=true;
+        assert(!sample().buttons);
+        keys[vk]=false;
+        assert(!sample().buttons);
+        window_proc(window,WM_KEYDOWN,vk,0);
+        window_proc(window,WM_KEYUP,vk,0);
+        const auto tap=sample().buttons;
+        assert(tap && !(tap&(tap-1)));
+        assert(!sample().buttons);
+    }
+    // Hold stays continuous; Windows auto-repeat must not add press edges.
+    window_proc(window,WM_KEYDOWN,VK_DOWN,0);
+    for (int i=0;i<100;++i) {
+        window_proc(window,WM_KEYDOWN,VK_DOWN,1ll<<30);
+        assert(sample().buttons==CELL_PAD_CTRL_DOWN);
+    }
+    window_proc(window,WM_KEYUP,VK_DOWN,0);
+    assert(!sample().buttons);
+    // A key still held after a transition cannot reactivate the next menu.
+    window_proc(window,WM_KEYDOWN,VK_SPACE,0);
+    clear_keys();
+    window_proc(window,WM_KEYDOWN,VK_SPACE,1ll<<30);
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYUP,VK_SPACE,0);
+    haze_input_menu_state(false); sample();
     // A quick tap between pad polls reaches one report, without stretching
     // a released confirm across subsequent menus.
     window_proc(window,WM_KEYDOWN,VK_SPACE,0);
@@ -294,9 +323,26 @@ int main() {
     assert(haze_input_take_mouse(dx,dy,speed,inverse) && dx==0 && dy==0);
     // Keyboard navigation cancels pointer ownership without stale activation.
     haze_input_menu_state(true);
+    // The desktop cursor has already reached a different row while older
+    // movement messages are still queued. Hover must publish the current XY
+    // immediately, including when no more physical movement follows.
+    cursor_position={960,540};
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(320,180));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.x==.75f && pointer_packet.y==.75f);
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(640,360));
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(960,540));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.x==.75f && pointer_packet.y==.75f);
     window_proc(window,WM_LBUTTONDOWN,0,MAKELPARAM(cursor_position.x,cursor_position.y));
     window_proc(window,WM_KEYDOWN,VK_DOWN,0);
     assert(!haze_input_take_pointer().active);
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(cursor_position.x,cursor_position.y));
+    assert(!haze_input_take_pointer().active); // Stationary synthetic move cannot steal focus.
+    cursor_position={640,360};
+    window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(900,500));
+    pointer_packet=haze_input_take_pointer();
+    assert(pointer_packet.active && pointer_packet.x==.5f && pointer_packet.y==.5f);
     window_proc(window,WM_KEYUP,VK_DOWN,0);
     haze_input_menu_state(false); sample();
     // Every button can press and release, including all four face buttons.
