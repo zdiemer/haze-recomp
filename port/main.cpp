@@ -472,6 +472,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                     rsx_live_draw_dump_present_samples();
                     haze_video_stop(2000);
                 }
+                g_pump_profile.dump();
                 SetThreadExecutionState(ES_CONTINUOUS);
                 fprintf(stderr,"[quit] Native shutdown complete; audio=%s.\n",audio_stopped ? "stopped" : "process teardown");
                 fflush(NULL);

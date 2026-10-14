@@ -1,19 +1,39 @@
 #pragma once
 #include "haze_pump_intervals.h"
 #ifdef _WIN32
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 struct HazePumpProfile {
-    const char* csv_path=getenv("HAZE_PUMP_CSV");
-    bool enabled = getenv("HAZE_PUMP_PROFILE") != nullptr || csv_path!=nullptr;
+    std::string csv_path_storage;
+    std::string wait_control_storage;
+    const char* csv_path=nullptr;
+    const char* wait_control=nullptr;
+    bool csv_requested=false;
+    bool enabled=false;
     LONGLONG frequency=0, epoch=0, wait=0, fifo=0, present=0, tick=0;
     unsigned drains=0, presents=0;
     unsigned waits=0, queued_waits=0, wait_ms=1;
     int reported_wait_ms=-1;
-    const char* wait_control=getenv("HAZE_FIFO_WAIT_FILE");
     HazePumpIntervals intervals;
     static constexpr unsigned capacity=16384;
     HazePumpInterval rows[capacity]{};
     uint64_t recorded=0;
     HazePumpProfile() {
+        const char* csv=getenv("HAZE_PUMP_CSV");
+        csv_requested=csv!=nullptr;
+        if(csv) {
+            csv_path_storage=csv;
+            csv_path=csv_path_storage.c_str();
+        }
+        const char* profile=getenv("HAZE_PUMP_PROFILE");
+        enabled=profile!=nullptr || csv_requested;
+        const char* control=getenv("HAZE_FIFO_WAIT_FILE");
+        if(control) {
+            wait_control_storage=control;
+            wait_control=wait_control_storage.c_str();
+        }
         LARGE_INTEGER f; QueryPerformanceFrequency(&f); frequency=f.QuadPart;
         epoch=now();
     }
