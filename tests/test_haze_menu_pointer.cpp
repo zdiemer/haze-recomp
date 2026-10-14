@@ -7,6 +7,16 @@ std::unordered_map<uint64_t,uint32_t> memory;
 HazeMenuPointer pointer;
 bool menu;
 constexpr uint32_t manager=0x495e0020,context=0x495b82c0,input=0x495cc250;
+constexpr uint32_t page=0x49700000,tutorial=0x49701000;
+constexpr uint32_t page_handle=0x00100001,tutorial_handle=0x00200001;
+void menu_fixture(uint32_t owner,uint32_t root) {
+    memory[owner+0x1f0]=owner+0x1000;
+    memory[owner+0x1f4]=3; memory[owner+0x1f8]=8;
+    memory[owner+0x1008]=root; memory[owner+0x100c]=page_handle;
+    memory[owner+0x1010]=tutorial; memory[owner+0x1014]=tutorial_handle;
+    memory[owner+0x28c]=1; memory[owner+0x290]=owner+0x2000;
+    memory[owner+0x2000]=page_handle;
+}
 float test_float(uint32_t address) {
     auto bits=memory[address]; float result; std::memcpy(&result,&bits,4); return result;
 }
@@ -62,13 +72,16 @@ int main() {
     haze_menu_initialize(); assert(!haze_menu_gameplay_allowed());
     memory[0x30d398]=0x8063028c; memory[0x30cee0]=0x80630048;
     memory[0x2e0dd8]=0xf821ff61; memory[0xe16e94]=0xf48dd4;
+    memory[0x30d070]=0x38830044; memory[0x31a2c4]=0x981d019c;
+    memory[0x4d2da4]=0x800900c0; memory[0x4d2dc0]=0x88030168;
+    memory[0x4d2dcc]=0x88030169; memory[0xe176b8]=0x100eac8;
     memory[0xdd5408]=0xe3a630; memory[0xe3a630]=0x95ea8;
     memory[0x95ea8]=0xf821feb1; memory[0xe0b2ec]=0xbf800000;
     haze_menu_initialize();
     assert(tab_hook);
     memory[0xf48dd4]=manager; memory[manager+0x48]=context;
     assert(haze_menu_gameplay_allowed());
-    memory[context+0x28c]=1;
+    menu_fixture(context,page);
     memory[context+0x170]=input;
     assert(!haze_menu_gameplay_allowed()); // Live state, before publication.
     haze_menu_context(context); assert(menu);
@@ -116,5 +129,63 @@ int main() {
     assert(memory[input+0x5c]==0 && memory[input+0x5d]==1);
     memory[context+0x28c]=0; haze_menu_context(context);
     assert(!menu && haze_menu_gameplay_allowed());
+
+    // The retail tutorial host is also used for nonblocking gameplay tips.
+    menu_fixture(context,page);
+    memory[context+0x44]=page_handle;
+    memory[page+0x60]=1; memory[page+0x64]=page+0x2000;
+    memory[page+0x2000]=tutorial_handle;
+    memory[tutorial]=0xde6e88;
+    haze_menu_context(context);
+    assert(!menu && haze_menu_gameplay_allowed());
+    pointer.active=true; pointer.released=true;
+    haze_menu_pointer_before(input); haze_menu_pointer_after(input);
+    assert(memory[input+0x5c]==0); // A tip cannot acquire the menu pointer.
+    memory[tutorial+0x19c]=1;
+    assert(!haze_menu_gameplay_allowed()); // Blocking tutorial, before dispatch.
+    haze_menu_context(context); assert(menu);
+    memory[tutorial+0x19c]=0;
+    haze_menu_context(context); assert(!menu && haze_menu_gameplay_allowed());
+
+    // Local-player ownership survives an empty/unrelated last GUI dispatch.
+    constexpr uint32_t players=0x48000000,player=0x48100000,other=0x48200000;
+    memory[0xf48c3c]=players; memory[players+0x2a0]=1;
+    memory[players+0xc0]=player; memory[player+0x9c]=2;
+    memory[player+0x168]=memory[player+0x169]=1;
+    memory[player+0x1c]=context;
+    memory[tutorial+0x19c]=1;
+    memory[manager+0x48]=0;
+    haze_menu_context(other);
+    assert(menu && !haze_menu_gameplay_allowed());
+    memory[tutorial+0x19c]=0;
+    haze_menu_context(other); assert(!menu && haze_menu_gameplay_allowed());
+    menu_fixture(other,0x49900000);
+    haze_menu_context(other); assert(!menu && haze_menu_gameplay_allowed());
+    memory[other+0x28c]=0; // An unrelated context cannot steal local ownership.
+
+    // A tip must not hide a real pause/settings page in the same stack.
+    memory[context+0x28c]=2;
+    memory[context+0x1f4]=4;
+    memory[context+0x1018]=0x49800000; memory[context+0x101c]=0x00300001;
+    memory[context+0x2008]=0x00300001;
+    haze_menu_context(other); assert(menu && !haze_menu_gameplay_allowed());
+    memory[context+0x28c]=1;
+    haze_menu_context(other); assert(!menu && haze_menu_gameplay_allowed());
+
+    // Independent guest pause reasons also block direct camera writes.
+    memory[0x100eac8]=0x100; assert(!haze_menu_gameplay_allowed());
+    memory[0x100eac8]=0;
+    // Reused/stale widget handles cannot be mistaken for a passive tip.
+    memory[context+0x1014]=tutorial_handle+1;
+    haze_menu_context(other); assert(menu && !haze_menu_gameplay_allowed());
+    memory[context+0x1014]=tutorial_handle;
+    memory[tutorial]=0xde5ca8; // Another dialog on this host is not a tip.
+    assert(!haze_menu_gameplay_allowed());
+    memory[tutorial]=0xde6e88;
+    memory[context+0x44]=0; haze_menu_context(context); assert(menu);
+    memory[player+0x169]=0; // Player no longer owns local input.
+    haze_menu_context_reset(context);
+    assert(haze_menu_gameplay_allowed());
+    memory[context+0x28c]=0; haze_menu_context(other); assert(!menu);
     puts("Menu ownership, native pointer packet, drag/release and capture lifecycle passed.");
 }

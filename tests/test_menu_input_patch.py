@@ -28,6 +28,11 @@ class MenuPatchTests(unittest.TestCase):
         self.assertIn('haze_menu_pointer_before(input);', patched)
         self.assertIn('haze_menu_pointer_after(input);', patched)
         self.assertEqual(patched.count('if (!haze_menu_pointer_confirm('), 1)
+        wrapper = patched[patched.index('void func_0031B9C0(ppu_context* ctx) {'):]
+        wrapper = wrapper[:wrapper.index('\nvoid ')]
+        self.assertEqual(wrapper.count('haze_menu_context(context);'), 2)
+        self.assertLess(wrapper.index('haze_menu_context(context);'), wrapper.index('haze_original_0031B9C0(ctx);'))
+        self.assertGreater(wrapper.rindex('haze_menu_context(context);'), wrapper.index('haze_native_menu_tick(ctx);'))
 
 
 if __name__ == '__main__':

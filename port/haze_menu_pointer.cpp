@@ -22,10 +22,62 @@ uint32_t current_context() {
     const auto manager=vm_read32(0xf48dd4);
     return valid(manager) ? vm_read32(manager+0x48) : 0;
 }
+uint32_t resolve_widget(uint32_t context,uint32_t handle) {
+    // Read-only form of 0030CF48: handles include a slot generation.
+    const auto index=handle>>20;
+    const auto data=vm_read32(context+0x1f0),stride=vm_read32(context+0x1f8);
+    if (!handle || index>=vm_read32(context+0x1f4) || stride<8 || stride>0x100 || !valid(data)) return 0;
+    const uint64_t slot=uint64_t(data)+uint64_t(index)*stride;
+    if (slot+8>=0xc0000000 || vm_read32(slot+4)!=handle) return 0;
+    const auto widget=vm_read32(slot);
+    return valid(widget) ? widget : 0;
+}
+bool passive_tutorial(uint32_t context,uint32_t page) {
+    // 0031A070 attaches tutorialBox to the reusable page at context+44.
+    // Its +19c byte distinguishes a blocking tutorial from an in-game tip.
+    // Both activate the same page and therefore increase the GUI stack count.
+    if (page!=resolve_widget(context,vm_read32(context+0x44))) return false;
+    const auto count=vm_read32(page+0x60),data=vm_read32(page+0x64);
+    if (!count || count>256 || !valid(data) || uint64_t(data)+count*8>=0xc0000000) return false;
+    bool found=false;
+    for (uint32_t i=0;i<count;++i) {
+        const auto child=resolve_widget(context,vm_read32(data+i*8));
+        if (!child) continue;
+        if (vm_read32(child)!=0x00de6e88) return false;
+        if (vm_read8(child+0x19c)) return false;
+        found=true;
+    }
+    return found;
+}
 bool has_menu(uint32_t context) {
-    // CGui context's live menu stack, also checked by its input dispatcher
-    // 0031B9C0 before calling the input object's virtual update.
-    return valid(context) && vm_read32(context+0x28c)!=0;
+    if (!valid(context)) return false;
+    const auto count=vm_read32(context+0x28c),data=vm_read32(context+0x290);
+    if (!count) return false;
+    if (count>256 || !valid(data) || uint64_t(data)+count*8>=0xc0000000) return true;
+    for (uint32_t i=0;i<count;++i) {
+        const auto page=resolve_widget(context,vm_read32(data+i*8));
+        if (page && !passive_tutorial(context,page)) return true;
+    }
+    return false;
+}
+bool owns_input() {
+    // 004D2D48 enumerates these live local players. A later empty GUI dispatch
+    // must not overwrite a pause/tutorial menu owned by another context.
+    const auto players=vm_read32(0xf48c3c);
+    bool local=false;
+    if (valid(players) && vm_read8(players+0x2a0)) {
+        for (unsigned i=0;i<32;++i) {
+            const auto player=vm_read32(players+0xc0+i*4);
+            if (valid(player) && vm_read32(player+0x9c) &&
+                vm_read8(player+0x168) && vm_read8(player+0x169)) {
+                local=true;
+                if (has_menu(vm_read32(player+0x1c))) return true;
+            }
+        }
+    }
+    // Frontend/startup has no local player yet. Its current context may be
+    // temporary, so retain the last dispatched one until reset/destruction.
+    return !local && (has_menu(current_context()) || has_menu(active_context));
 }
 float read_float(uint32_t address) {
     auto bits=vm_read32(address); float value; std::memcpy(&value,&bits,4); return value;
@@ -82,7 +134,13 @@ void haze_menu_initialize() {
     supported=vm_read32(0x30d398)==0x8063028c &&
               vm_read32(0x30cee0)==0x80630048 &&
               vm_read32(0x2e0dd8)==0xf821ff61 &&
-              vm_read32(0xe16e94)==0xf48dd4;
+              vm_read32(0xe16e94)==0xf48dd4 &&
+              vm_read32(0x30d070)==0x38830044 &&
+              vm_read32(0x31a2c4)==0x981d019c &&
+              vm_read32(0x4d2da4)==0x800900c0 &&
+              vm_read32(0x4d2dc0)==0x88030168 &&
+              vm_read32(0x4d2dcc)==0x88030169 &&
+              vm_read32(0xe176b8)==0x100eac8;
     std::fprintf(stderr,"[input] Guest menu pointer bridge %s\n",supported ? "enabled" : "unavailable: unsupported layout");
     // 00095EA8 is virtual-only in the audited lift (vtable DD5408).
     if (supported && vm_read32(0xdd5408)==0xe3a630 &&
@@ -93,21 +151,28 @@ void haze_menu_initialize() {
 bool haze_menu_gameplay_allowed() {
     // Called on the guest simulation thread, immediately before camera writes.
     // Check live ownership even if the window thread has not processed release.
-    // The manager clears its temporary current-context slot between GUI calls.
-    // Keep checking the last dispatched context's live stack in that interval.
-    return supported && !has_menu(current_context()) && !has_menu(active_context);
+    // Use persistent local-player contexts between temporary GUI dispatches.
+    return supported && !owns_input() && vm_read32(0x100eac8)==0;
 }
 void haze_menu_context(uint32_t context) {
     if (!supported) return;
     active_context=context;
-    haze_input_menu_state(has_menu(context));
+    const bool owned=owns_input();
+    haze_input_menu_state(owned);
     if (trace) {
         static uint32_t previous_context=0,previous_count=~0u;
+        static bool previous_owned=false;
         const auto count=valid(context) ? vm_read32(context+0x28c) : 0;
-        if (previous_context!=context || previous_count!=count)
-            std::fprintf(stderr,"[menu] context=%08X stack=%u input=%08X\n",context,count,
-                valid(context) ? vm_read32(context+0x170) : 0);
-        previous_context=context; previous_count=count;
+        if (previous_context!=context || previous_count!=count || previous_owned!=owned)
+            std::fprintf(stderr,"[menu] context=%08X stack=%u input=%08X owned=%d\n",context,count,
+                valid(context) ? vm_read32(context+0x170) : 0,owned);
+        previous_context=context; previous_count=count; previous_owned=owned;
+    }
+}
+void haze_menu_context_reset(uint32_t context) {
+    if (active_context==context) {
+        active_context=0;
+        pointer_owned=pointer_released=false;
     }
 }
 void haze_menu_pointer_before(uint32_t input) {

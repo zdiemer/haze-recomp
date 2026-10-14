@@ -67,7 +67,8 @@ def patch(source):
             wrapper = f'''
 {entry}
     extern void haze_menu_context(uint32_t);
-    haze_menu_context(static_cast<uint32_t>(ctx->gpr[3]));
+    const uint32_t context = static_cast<uint32_t>(ctx->gpr[3]);
+    haze_menu_context(context);
     {original}(ctx);
     DRAIN_TRAMPOLINE(ctx);
     // The manager's current-context slot is valid only during GUI dispatch.
@@ -75,6 +76,8 @@ def patch(source):
     haze_audio_guest_tick(ctx);
     extern void haze_native_menu_tick(ppu_context*);
     haze_native_menu_tick(ctx);
+    // Publish pops/activations performed by this dispatch before simulation.
+    haze_menu_context(context);
 }}
 '''
         source = source[:begin] + body + wrapper + source[end:]

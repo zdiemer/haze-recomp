@@ -42,6 +42,20 @@ after GUI input at `0031B9C0`. The manager's current-context slot at `+48` is on
 valid during GUI dispatch. Native calls preserve the complete PPU context and
 trampoline, using a private stack area.
 
+Mouse capture and direct camera input use the live local-player GUI contexts,
+enumerated by the same fields as guest `004D2D48`, rather than whichever context
+was dispatched last. Ownership is published before and after GUI input so page
+activation and dismissal clear pending mouse motion promptly. Context destruction
+also invalidates the pointer bridge's cached context.
+
+The reusable tutorial page at context `+44` is shared by blocking tutorials and
+gameplay tips. `0031A070` sets tutorial widget `+19c` when it blocks the player;
+`0031A770` clears that state on dismissal. Only this known tutorial host with
+nonblocking tutorial children is exempt from menu ownership. Other pages on the
+same stack still block gameplay. Widget handles are resolved with generation
+checks, matching `0030CF48`. The camera additionally respects the guest pause
+reasons at `0100EAC8`, including pauses that precede GUI dispatch.
+
 The resource parser uses `007AD8D0`, `0078D878`, `0078CE58`, `0078C6C8`,
 `0078D6B0`, `0078AB58` and factory `002BC7B0`. Parser input includes two trailing
 NUL bytes. Boolean resource values must be quoted. Text release events are

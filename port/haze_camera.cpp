@@ -191,7 +191,7 @@ void update_look(ppu_context* ctx) {
             }
         }
 #ifdef _WIN32
-        if (benchmark.path && *benchmark.path && vm_read8(motor+0xa0))
+        if (benchmark.path && *benchmark.path && haze_menu_gameplay_allowed() && vm_read8(motor+0xa0))
             benchmark_applied=benchmark.apply(motor);
 #endif
     }

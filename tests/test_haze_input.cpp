@@ -560,8 +560,14 @@ int main() {
     for (int i=0;i<10;i++) { ticks+=10; haze_input_update(); }
     assert(!captured && capture_calls==1); // Startup cannot undo F1.
     window_proc(window,WM_KEYDOWN,VK_F1,0); assert(captured);
+    // A nonblocking tip publishes gameplay ownership and must preserve counts.
+    mouse_motion.add(12,-34);
+    haze_input_menu_state(false); ticks+=10; haze_input_update(); assert(captured);
+    assert(haze_input_take_mouse(dx,dy,speed,inverse) && dx==12 && dy==-34);
+    mouse_motion.add(56,78);
     haze_input_menu_state(true); ticks+=10; haze_input_update();
     assert(!captured);
+    assert(!haze_input_take_mouse(dx,dy,speed,inverse) && dx==0 && dy==0);
     window_proc(window,WM_KEYDOWN,VK_F1,0); assert(!captured);
     cursor_position={320,540}; window_proc(window,WM_MOUSEMOVE,0,MAKELPARAM(cursor_position.x,cursor_position.y));
     auto mapped=haze_input_take_pointer();

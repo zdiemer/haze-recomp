@@ -58,9 +58,9 @@ int main() {
     memory[controls]=0xdd9f78; memory[motor+0xa0]=0; installed(&ctx);
     assert(observed_yaw==0 && dx==0); // Inactive player discards pending counts.
     memory[motor+0xa0]=1; installed(&ctx); assert(observed_yaw==0);
-    gameplay=false; dx=900; installed(&ctx);
-    assert(observed_yaw==0 && dx==0); // Menus discard motion even if captured.
-    gameplay=true; installed(&ctx); assert(observed_yaw==0);
+    gameplay=false; dx=900; dy=900; installed(&ctx);
+    assert(observed_yaw==0 && observed_pitch==0 && dx==0 && dy==0); // Both axes discarded, even if captured.
+    gameplay=true; installed(&ctx); assert(observed_yaw==0 && observed_pitch==0);
     assert(original_calls==101);
     puts("Native camera: same-frame rotation, no deadzone/cap/drift, distance invariance, limits and gating passed.");
 }
