@@ -93,6 +93,18 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Native VP consumer FIFO/wrapper/diagnostic boundary tests failed.' }
     & $python "$root/tests/test_fifo_slow_drain.py" --compiler $clang --sdk $sdk --output-dir "$root/build/fifo-slow-drain"
     if ($LASTEXITCODE -ne 0) { throw 'FIFO slow-drain lock/body diagnostic regression failed.' }
+    & $python "$sdk/libs/video/tests/test_gcm_location_resolution.py" --compiler $clang
+    if ($LASTEXITCODE -ne 0) { throw 'Known-location GCM address resolution regression failed.' }
+    & $python "$sdk/runtime/spu/tests/test_signal_wake.py" --compiler $clang
+    if ($LASTEXITCODE -ne 0) { throw 'SPU atomic signal wake/lifetime regression failed.' }
+    & $python "$sdk/libs/spurs/tests/test_taskset_guest_fields.py" --compiler $clang --output-dir "$root/build/taskset-guest-fields"
+    if ($LASTEXITCODE -ne 0) { throw 'Taskset shutdown/destroy guest-memory regression failed.' }
+    & $python "$sdk/tools/test_spu_interpreter_ilh.py" --compiler $clang --output-dir "$root/build/spu-interpreter-upstream"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU interpreter ILH replication regression failed.' }
+    & $python "$sdk/tools/test_spu_interpreter_ri10.py" --compiler $clang --output-dir "$root/build/spu-interpreter-upstream"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU interpreter RI10 byte/halfword regression failed.' }
+    & $python "$sdk/tools/test_spu_disasm_ri10.py"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU RI10 decoder/table generation regression failed.' }
     & $python "$root/tests/test_fifo_recycle_trace.py" --compiler $clang --sdk $sdk --output-dir "$root/build/fifo-recycle-trace"
     if ($LASTEXITCODE -ne 0) { throw 'FIFO recycle acknowledgement diagnostic regression failed.' }
     & $python -m unittest tests.test_analyze_fifo_recycles
