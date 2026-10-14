@@ -96,7 +96,7 @@ struct HazePumpProfile {
         ++slow_wait_count;
     }
     void dump_waits() const {
-        const std::string path=csv_path_storage+".waits.csv";
+        const std::string path=std::string(csv_path)+".waits.csv";
         FILE* csv=fopen(path.c_str(),"wb");
         if (!csv) { fprintf(stderr,"[pump-csv] cannot open wait output\n"); return; }
         const uint64_t first=slow_wait_count>capacity ? slow_wait_count-capacity : 0;
