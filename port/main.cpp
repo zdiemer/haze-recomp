@@ -263,6 +263,24 @@ static const uint8_t* live_guest_ptr(void*, uint32_t location, uint32_t offset, 
     if (!ea || ea == UINT32_MAX || (uint64_t)ea + size > 0x100000000ull) return nullptr;
     return vm_base + ea;
 }
+
+static void dump_shutdown_profiles(void)
+{
+    spu_float_native_summary();
+    haze_vp_upload_summary();
+    g_pump_profile.dump();
+    cellGcm_fifo_slow_drain_dump();
+    cellGcm_vp_burst_dump();
+    haze_job_profile_dump();
+    haze_job_trace_dump();
+    haze_job_wait_dump_counts();
+    /* These are pre-teardown snapshots, not totals after joining every guest
+     * worker. Native quit parks the producer, while window-close shutdown may
+     * still have the producer and other workers live. */
+    haze_slot_copy_dump_stats();
+    haze_producer_profile::haze_producer_profile_dump();
+    haze_job0_capture_dump();
+}
 #endif
 
 static void present_frame(void)
@@ -438,19 +456,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                 haze_movie_shutdown();
                 haze_movie_present_tick();
                 if (s_rsx_live) rsx_live_draw_dump_present_samples();
-                spu_float_native_summary();
-                haze_vp_upload_summary();
-                g_pump_profile.dump();
-                cellGcm_fifo_slow_drain_dump();
-                cellGcm_vp_burst_dump();
-                haze_job_profile_dump();
-                haze_job_trace_dump();
-                haze_job_wait_dump_counts();
-                // Guest threads are still live: these are shutdown snapshots,
-                // not guaranteed final totals after a producer join.
-                haze_slot_copy_dump_stats();
-                haze_producer_profile::haze_producer_profile_dump();
-                haze_job0_capture_dump();
+                dump_shutdown_profiles();
                 if (s_rsx_live) rsx_live_draw_dump_shader_cache();
 #endif
                 // Closing the native game window ends the host, including its
@@ -472,7 +478,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                     rsx_live_draw_dump_present_samples();
                     haze_video_stop(2000);
                 }
-                g_pump_profile.dump();
+                dump_shutdown_profiles();
                 SetThreadExecutionState(ES_CONTINUOUS);
                 fprintf(stderr,"[quit] Native shutdown complete; audio=%s.\n",audio_stopped ? "stopped" : "process teardown");
                 fflush(NULL);
