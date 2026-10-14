@@ -6,8 +6,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from summarize_waits import load_names, summarize
-from summarize_spurs_queues import summarize as summarize_queues
+from diagnostics.summarize_waits import load_names, summarize
+from diagnostics.summarize_spurs_queues import summarize as summarize_queues
 
 
 class WaitTimelineTests(unittest.TestCase):

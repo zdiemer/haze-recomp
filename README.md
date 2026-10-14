@@ -150,6 +150,9 @@ Run regression checks with `.\scripts\build.ps1 -Test`, or use
 For a bounded diagnostic run, use `.\scripts\run.ps1 -Seconds 90`;
 logs and captures go to `local/runs`.
 
+See the [script guide](scripts/README.md) for diagnostics, microbenchmarks,
+build internals and command migrations.
+
 Worktrees can reuse a prepared checkout's SDK, Python environment, generated
 translations, and game assets while keeping their own builds and logs:
 
@@ -184,7 +187,7 @@ Native FFmpeg movie playback is not part of the experimental browser build.
 
 Use `scripts/playtest-wasm.py --profile-after 30` with your normal playtest
 arguments to record worker CPU profiles. Summarize a run with
-`py -3 scripts/summarize_browser_cpu.py local/wasm-tests/<run>`.
+`py -3 scripts/diagnose.py browser-cpu local/wasm-tests/<run>`.
 The report ranks self samples per worker and shows callers from leaf to root;
 `--top`, `--stack-depth`, and `--json` control the output. It also accepts raw
 Chromium `.cpuprofile` files. Counts are samples, not elapsed time; idle and wait

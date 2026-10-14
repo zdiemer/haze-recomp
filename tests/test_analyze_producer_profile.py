@@ -7,7 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "analyze_producer_profile", ROOT / "scripts/analyze_producer_profile.py")
+    "analyze_producer_profile", ROOT / "scripts/diagnostics/analyze_producer_profile.py")
 analyzer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(analyzer)
 

@@ -5,7 +5,7 @@ import sys
 import unittest
 
 root = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('patch_menu_input', root / 'scripts/patch_menu_input.py')
+spec = importlib.util.spec_from_file_location('patch_menu_input', root / 'scripts/patches/patch_menu_input.py')
 patcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patcher)
 

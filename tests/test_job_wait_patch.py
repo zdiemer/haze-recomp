@@ -5,8 +5,8 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from patch_job_wait import patch,CALL,DIGESTS,PROFILE_ENTRY,PROFILE_CALLS
-from patch_guest_pacer import patch as patch_pacer
+from patches.patch_job_wait import patch,CALL,DIGESTS,PROFILE_ENTRY,PROFILE_CALLS
+from patches.patch_guest_pacer import patch as patch_pacer
 
 class JobWaitPatch(unittest.TestCase):
     @classmethod

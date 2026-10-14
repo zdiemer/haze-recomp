@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from summarize_spu_job_modes import summarize
+from diagnostics.summarize_spu_job_modes import summarize
 
 
 def job(begin, execute, end, cycles=100, image=40):

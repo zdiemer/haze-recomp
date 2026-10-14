@@ -9,8 +9,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from extract_bulk_fill_oracle import fixture_functions
-from patch_bulk_fill import CALLER_FUNCTION, patch, verify_caller
+from patches.extract_bulk_fill_oracle import fixture_functions
+from patches.patch_bulk_fill import CALLER_FUNCTION, patch, verify_caller
 
 
 FIXTURE = r'''

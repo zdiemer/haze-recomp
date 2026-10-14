@@ -220,7 +220,7 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Haze SPU idle wait predicate/publication test failed.' }
     if (-not $RuntimeOnly) {
         $tripletOracle = Join-Path $root 'local/triplet_oracle.c'
-        & $python "$root/scripts/prepare_triplet_oracle.py" "$assets/generated/spu/spu_0041_at_00F2E380/spu_recomp.c" $tripletOracle
+        & $python "$root/scripts/patch.py" oracle-triplet "$assets/generated/spu/spu_0041_at_00F2E380/spu_recomp.c" $tripletOracle
         if ($LASTEXITCODE -ne 0) { throw 'Audited triplet-copy oracle extraction failed.' }
         $tripletTest = Join-Path $root 'local/test_spu_triplet_copy.exe'
         & $clang /nologo /W0 /O2 /clang:-msse4.1 "/I$sdk/runtime/spu" "/I$root/port" "/Fe$tripletTest" "/Fo$root/local/" "$root/tests/test_spu_triplet_copy.c" $tripletOracle
@@ -230,7 +230,7 @@ if ($Test) {
         & $python "$root/tests/test_spu_triplet_patch.py"
         if ($LASTEXITCODE -ne 0) { throw 'Native triplet-copy patch guards failed.' }
         $cursorOracle = Join-Path $root 'local/cursor_oracle.c'
-        & $python "$root/scripts/prepare_cursor_oracle.py" "$assets/generated/spu/spu_0039_at_00F1C100/spu_recomp.c" $cursorOracle
+        & $python "$root/scripts/patch.py" oracle-cursor "$assets/generated/spu/spu_0039_at_00F1C100/spu_recomp.c" $cursorOracle
         if ($LASTEXITCODE -ne 0) { throw 'Native cursor oracle extraction failed.' }
         $cursorTest = Join-Path $root 'local/test_native_cursor.exe'
         & $clang /nologo /W0 /O2 @fiFlags "/I$sdk/runtime/spu" "/I$root/port" "/Fe$cursorTest" "/Fo$root/local/" "$root/tests/test_native_cursor.c" $cursorOracle
@@ -240,7 +240,7 @@ if ($Test) {
         & $python "$root/tests/test_native_cursor_patch.py"
         if ($LASTEXITCODE -ne 0) { throw 'Native cursor patch guard tests failed.' }
         $job0Oracle = Join-Path $root 'local/job0_oracle.c'
-        & $python "$root/scripts/prepare_job0_oracle.py" "$assets/generated/spu/spu_0029_at_00EC9A80/spu_recomp.c" $job0Oracle
+        & $python "$root/scripts/patch.py" oracle-job0 "$assets/generated/spu/spu_0029_at_00EC9A80/spu_recomp.c" $job0Oracle
         if ($LASTEXITCODE -ne 0) { throw 'Job-0 compute oracle extraction failed.' }
         $job0Flags = @('/DSPU_FLOAT_NATIVE_RUNTIME=1', '/clang:-ffp-contract=off') + $fiFlags
         & $clang /nologo /W0 /O2 /Ob1 @job0Flags "/I$sdk/runtime/spu" "/I$root/port" "/Fe$root/local/test_job0_compute.exe" "/Fo$root/local/" "$root/tests/test_job0_compute.c" $job0Oracle "$sdk/runtime/spu/spu_float_native.c"
@@ -362,7 +362,7 @@ if ($Test) {
         if ($LASTEXITCODE -ne 0) { throw 'Main producer phase recorder regression failed.' }
         & $python "$root/tests/test_vp_packet_oracle.py"
         if ($LASTEXITCODE -ne 0) { throw 'Vertex-program packet oracle guard tests failed.' }
-        & $python "$root/scripts/extract_vp_packet_oracle.py" "$assets/generated/ppu/ppu_recomp_003.cpp" "$root/local/vp_packet_reference.inc"
+        & $python "$root/scripts/patch.py" oracle-vp-packet "$assets/generated/ppu/ppu_recomp_003.cpp" "$root/local/vp_packet_reference.inc"
         if ($LASTEXITCODE -ne 0) { throw 'Vertex-program packet oracle extraction failed.' }
         & $clang /nologo /EHsc /W0 /O2 /std:c++17 "/I$root/port" "/I$root/local" "/Fe$root/local/test_vp_packets.exe" "/Fo$root/local/test_vp_packets.obj" "$root/tests/test_vp_packets.cpp"
         if ($LASTEXITCODE -ne 0) { throw 'Vertex-program packet test compilation failed.' }

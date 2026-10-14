@@ -5,7 +5,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from patch_guest_pacer import patch, ENTRY, SITE
+from patches.patch_guest_pacer import patch, ENTRY, SITE
 
 
 class GuestPacerPatch(unittest.TestCase):

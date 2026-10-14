@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from analyze_job_trace import join_async_jobs
-from analyze_job_wait_frames import (attribute_wait_intervals, map_to_frames,
+from diagnostics.analyze_job_trace import join_async_jobs
+from diagnostics.analyze_job_wait_frames import (attribute_wait_intervals, map_to_frames,
                                     validate_retained_ring, validate_trace_window_coverage)
 
 

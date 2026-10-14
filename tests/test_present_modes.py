@@ -12,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from benchmark_present_modes import report, verify_process_observation
+from diagnostics.benchmark_present_modes import report, verify_process_observation
 
 
 class PresentWindows(unittest.TestCase):

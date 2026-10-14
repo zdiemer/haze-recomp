@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from analyze_slow_draws import (RESOURCE_KINDS, STAGES,
+from diagnostics.analyze_slow_draws import (RESOURCE_KINDS, STAGES,
                                 TEXTURE_SKIP_DETAIL_FIELDS, analyze,
                                 validate_rows)
 

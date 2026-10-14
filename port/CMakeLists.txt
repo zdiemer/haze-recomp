@@ -67,6 +67,11 @@ endif()
 list(LENGTH RECOMP_SOURCES RECOMP_SOURCE_COUNT)
 message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 
+# All transformations share a CLI and may import other audited patch modules.
+set(HAZE_PATCH_TOOL "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch.py")
+file(GLOB HAZE_PATCH_MODULES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patches/*.py")
+set(HAZE_PATCH_DEPENDS "${HAZE_PATCH_TOOL}" ${HAZE_PATCH_MODULES})
+
 # Restore the audited local jump table in a build-local copy of the old lift.
 # Fresh lifter output is deliberately rejected until its changed body is audited.
 set(HAZE_DISPATCH_SOURCE "${RECOMP_DIR}/ppu_recomp_000.cpp")
@@ -74,9 +79,9 @@ if(EXISTS "${HAZE_DISPATCH_SOURCE}")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_DISPATCH_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_local_dispatch/ppu_recomp_000.cpp")
     add_custom_command(OUTPUT "${HAZE_DISPATCH_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_local_dispatch.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" local-dispatch
             "${HAZE_DISPATCH_SOURCE}" "${HAZE_DISPATCH_PATCHED}"
-        DEPENDS "${HAZE_DISPATCH_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_local_dispatch.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_DISPATCH_SOURCE}"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_DISPATCH_SOURCE}")
     list(APPEND RECOMP_SOURCES "${HAZE_DISPATCH_PATCHED}")
@@ -89,56 +94,52 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_PACER_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_guest_pacer/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_PACER_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_guest_pacer.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" guest-pacer
             "${HAZE_PACER_SOURCE}" "${HAZE_PACER_PATCHED}"
-        DEPENDS "${HAZE_PACER_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_guest_pacer.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_PACER_SOURCE}"
         VERBATIM)
     set(HAZE_JOB_WAIT_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job_wait/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_JOB_WAIT_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_wait.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" job-wait
             "${HAZE_PACER_PATCHED}" "${HAZE_JOB_WAIT_PATCHED}"
-        DEPENDS "${HAZE_PACER_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_wait.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_PACER_PATCHED}"
         VERBATIM)
     set(HAZE_VP_UPLOAD_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_vp_upload/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_VP_UPLOAD_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_vp_upload.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" vp-upload
             "${HAZE_JOB_WAIT_PATCHED}" "${HAZE_VP_UPLOAD_PATCHED}"
-        DEPENDS "${HAZE_JOB_WAIT_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_vp_upload.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/extract_vp_packet_oracle.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_JOB_WAIT_PATCHED}"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PACER_SOURCE}")
     set(HAZE_JOB_TRACE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job_trace/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_JOB_TRACE_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_dispatch_trace.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" job-dispatch-trace
             "${HAZE_VP_UPLOAD_PATCHED}" "${HAZE_JOB_TRACE_PATCHED}"
-        DEPENDS "${HAZE_VP_UPLOAD_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_dispatch_trace.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_VP_UPLOAD_PATCHED}"
         VERBATIM)
     set(HAZE_SLOT_COPY_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_slot_copy/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_SLOT_COPY_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_slot_copy.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" slot-copy
             "${HAZE_JOB_TRACE_PATCHED}" --memmove-source "${RECOMP_DIR}/ppu_recomp_005.cpp"
             "${HAZE_SLOT_COPY_PATCHED}"
-        DEPENDS "${HAZE_JOB_TRACE_PATCHED}" "${RECOMP_DIR}/ppu_recomp_005.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_slot_copy.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_JOB_TRACE_PATCHED}" "${RECOMP_DIR}/ppu_recomp_005.cpp"
         VERBATIM)
     set(HAZE_PRODUCER_PROFILE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_producer_profile/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_PRODUCER_PROFILE_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_producer_profile.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" producer-profile
             "${HAZE_SLOT_COPY_PATCHED}" "${HAZE_PRODUCER_PROFILE_PATCHED}"
-        DEPENDS "${HAZE_SLOT_COPY_PATCHED}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_producer_profile.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_SLOT_COPY_PATCHED}"
         VERBATIM)
     list(APPEND RECOMP_SOURCES "${HAZE_PRODUCER_PROFILE_PATCHED}")
     set_property(SOURCE "${HAZE_PRODUCER_PROFILE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
     # Compose with the performance patches; compile one copy of this translation unit.
     set(HAZE_SAVE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_save/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_SAVE_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" save-status
             "${HAZE_PRODUCER_PROFILE_PATCHED}" "${HAZE_SAVE_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_audio_tick.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" audio-tick
             "${HAZE_SAVE_PATCHED}" "${HAZE_SAVE_PATCHED}"
-        DEPENDS "${HAZE_PRODUCER_PROFILE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_audio_tick.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_PRODUCER_PROFILE_PATCHED}"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PRODUCER_PROFILE_PATCHED}")
     list(APPEND RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
@@ -147,9 +148,9 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
     if(WIN32)
         set(HAZE_MOVIE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_movie/ppu_recomp_003.cpp")
         add_custom_command(OUTPUT "${HAZE_MOVIE_PATCHED}"
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_movie_poll.py"
+            COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" movie-poll
                 "${HAZE_SAVE_PATCHED}" "${HAZE_MOVIE_PATCHED}"
-            DEPENDS "${HAZE_SAVE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_movie_poll.py"
+            DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_SAVE_PATCHED}"
             VERBATIM)
         list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
         list(APPEND RECOMP_SOURCES "${HAZE_MOVIE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_movie_guest.cpp")
@@ -166,10 +167,10 @@ if(EXISTS "${HAZE_BULK_FILL_SOURCE}")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_BULK_FILL_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_bulk_fill/ppu_recomp_006.cpp")
     add_custom_command(OUTPUT "${HAZE_BULK_FILL_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_bulk_fill.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" bulk-fill
             "${HAZE_BULK_FILL_SOURCE}" "${HAZE_BULK_FILL_PATCHED}"
             --caller-source "${RECOMP_DIR}/ppu_recomp_003.cpp"
-        DEPENDS "${HAZE_BULK_FILL_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_bulk_fill.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_BULK_FILL_SOURCE}"
             "${RECOMP_DIR}/ppu_recomp_003.cpp"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_BULK_FILL_SOURCE}")
@@ -185,9 +186,9 @@ if(EXISTS "${HAZE_MENU_SOURCE}")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_MENU_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_menu/ppu_recomp_001.cpp")
     add_custom_command(OUTPUT "${HAZE_MENU_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_input.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" menu-input
             "${HAZE_MENU_SOURCE}" "${HAZE_MENU_PATCHED}"
-        DEPENDS "${HAZE_MENU_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_input.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_MENU_SOURCE}"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_MENU_SOURCE}")
     list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}")
@@ -201,9 +202,9 @@ if(EXISTS "${HAZE_TITLE_SOURCE}")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_TITLE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_title/ppu_recomp_002.cpp")
     add_custom_command(OUTPUT "${HAZE_TITLE_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_title_prompt.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" title-prompt
             "${HAZE_TITLE_SOURCE}" "${HAZE_TITLE_PATCHED}"
-        DEPENDS "${HAZE_TITLE_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_title_prompt.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_TITLE_SOURCE}"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_TITLE_SOURCE}")
     list(APPEND RECOMP_SOURCES "${HAZE_TITLE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_title.cpp")
@@ -215,15 +216,13 @@ if(EXISTS "${RECOMP_DIR}/ppu_recomp_001.cpp")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_MENU_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_menu_pages/ppu_recomp_001.cpp")
     add_custom_command(OUTPUT "${HAZE_MENU_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_pages.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" menu-pages
             "${HAZE_MENU_SOURCE}" "${HAZE_MENU_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_material.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" menu-material
               "${HAZE_MENU_PATCHED}" "${HAZE_MENU_PATCHED}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_lifetime.py"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" menu-lifetime
               "${HAZE_MENU_PATCHED}" "${HAZE_MENU_PATCHED}"
-        DEPENDS "${HAZE_MENU_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_pages.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_material.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_lifetime.py"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_MENU_SOURCE}"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_MENU_SOURCE}")
     list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_menu_guest.cpp"
@@ -272,10 +271,9 @@ endif()
 if(WIN32)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(HAZE_SAVEDATA_SOURCE "${PS3RECOMP_DIR}/libs/system/cellSaveData.c")
-    set(HAZE_SAVEDATA_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_savedata.py")
     set(HAZE_SAVEDATA_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/haze_savedata/cellSaveData.c")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HAZE_SAVEDATA_SOURCE}" "${HAZE_SAVEDATA_PATCH}")
-    execute_process(COMMAND "${Python3_EXECUTABLE}" "${HAZE_SAVEDATA_PATCH}"
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HAZE_SAVEDATA_SOURCE}" ${HAZE_PATCH_DEPENDS})
+    execute_process(COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" savedata
         "${HAZE_SAVEDATA_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}" "${HAZE_SAVEDATA_OUTPUT}"
         RESULT_VARIABLE HAZE_SAVEDATA_RESULT)
     if(NOT HAZE_SAVEDATA_RESULT EQUAL 0)
@@ -395,11 +393,10 @@ if(PORT_ENABLE_SPU)
             find_package(Python3 COMPONENTS Interpreter REQUIRED)
             set(HAZE_IDLE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_spu_idle/spu_recomp.c")
             add_custom_command(OUTPUT "${HAZE_IDLE_PATCHED}"
-                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_spu_idle.py"
+                COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" spu-idle
                     "${HAZE_IDLE_SOURCE}" "${HAZE_IDLE_PATCHED}"
                     --registration "${SPU_DIR}/spu_workloads.c"
-                DEPENDS "${HAZE_IDLE_SOURCE}" "${SPU_DIR}/spu_workloads.c"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_spu_idle.py"
+                DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_IDLE_SOURCE}" "${SPU_DIR}/spu_workloads.c"
                 VERBATIM)
             list(REMOVE_ITEM SPU_LIFTED "${HAZE_IDLE_SOURCE}")
             list(APPEND SPU_LIFTED "${HAZE_IDLE_PATCHED}")
@@ -411,11 +408,10 @@ if(PORT_ENABLE_SPU)
             find_package(Python3 COMPONENTS Interpreter REQUIRED)
             set(HAZE_TRIPLET_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_spu_triplet/spu_recomp.c")
             add_custom_command(OUTPUT "${HAZE_TRIPLET_PATCHED}"
-                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_spu_triplet_copy.py"
+                COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" spu-triplet-copy
                     "${HAZE_TRIPLET_SOURCE}" "${HAZE_TRIPLET_PATCHED}"
                     --registration "${SPU_DIR}/spu_workloads.c"
-                DEPENDS "${HAZE_TRIPLET_SOURCE}" "${SPU_DIR}/spu_workloads.c"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_spu_triplet_copy.py"
+                DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_TRIPLET_SOURCE}" "${SPU_DIR}/spu_workloads.c"
                 VERBATIM)
             list(REMOVE_ITEM SPU_LIFTED "${HAZE_TRIPLET_SOURCE}")
             list(APPEND SPU_LIFTED "${HAZE_TRIPLET_PATCHED}")
@@ -427,11 +423,10 @@ if(PORT_ENABLE_SPU)
             find_package(Python3 COMPONENTS Interpreter REQUIRED)
             set(HAZE_CURSOR_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_native_cursor/spu_recomp.c")
             add_custom_command(OUTPUT "${HAZE_CURSOR_PATCHED}"
-                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_native_cursor.py"
+                COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" native-cursor
                     "${HAZE_CURSOR_SOURCE}" "${HAZE_CURSOR_PATCHED}"
                     --registration "${SPU_DIR}/spu_workloads.c"
-                DEPENDS "${HAZE_CURSOR_SOURCE}" "${SPU_DIR}/spu_workloads.c"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_native_cursor.py"
+                DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_CURSOR_SOURCE}" "${SPU_DIR}/spu_workloads.c"
                 VERBATIM)
             list(REMOVE_ITEM SPU_LIFTED "${HAZE_CURSOR_SOURCE}")
             list(APPEND SPU_LIFTED "${HAZE_CURSOR_PATCHED}")
@@ -443,13 +438,10 @@ if(PORT_ENABLE_SPU)
             find_package(Python3 COMPONENTS Interpreter REQUIRED)
             set(HAZE_JOB0_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job0_capture/spu_recomp.c")
             add_custom_command(OUTPUT "${HAZE_JOB0_PATCHED}"
-                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job0_kernel.py"
+                COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" job0-kernel
                     "${HAZE_JOB0_SOURCE}" "${HAZE_JOB0_PATCHED}"
                     --registration "${SPU_DIR}/spu_workloads.c"
-                DEPENDS "${HAZE_JOB0_SOURCE}" "${SPU_DIR}/spu_workloads.c"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job0_capture.py"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job0_kernel.py"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/prepare_job0_oracle.py"
+                DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_JOB0_SOURCE}" "${SPU_DIR}/spu_workloads.c"
                 VERBATIM)
             list(REMOVE_ITEM SPU_LIFTED "${HAZE_JOB0_SOURCE}")
             list(APPEND SPU_LIFTED "${HAZE_JOB0_PATCHED}")

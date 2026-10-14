@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from benchmark_thread_priority import OwnedThreadPriority, record
+from diagnostics.benchmark_thread_priority import OwnedThreadPriority, record
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'Requires Windows thread handles')
@@ -60,7 +60,7 @@ class ThreadPriority(unittest.TestCase):
                 priorities=[-1], cpu_work=1283, output=output)
             # Only the Haze process clock is replaced. Ownership checks, OS
             # priority mutation, exception restoration and handles are real.
-            with patch('benchmark_thread_priority.process_clock',
+            with patch('diagnostics.benchmark_thread_priority.process_clock',
                        return_value=(fail_after_priority_change, lambda: closed.append(True))):
                 with self.assertRaisesRegex(RuntimeError, 'injected CPU-clock'):
                     record(args)

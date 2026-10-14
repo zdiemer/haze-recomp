@@ -11,8 +11,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT / "scripts"))
-from extract_slot_copy_oracle import extract
-from patch_slot_copy import (
+from patches.extract_slot_copy_oracle import extract
+from patches.patch_slot_copy import (
     FUNCTION, MEMMOVE_FUNCTION, expected_traced_caller, function_body, patch, verify_caller,
 )
 

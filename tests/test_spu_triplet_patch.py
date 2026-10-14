@@ -4,7 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from patch_spu_triplet_copy import patch, ENTRY, INSERT
+from patches.patch_spu_triplet_copy import patch, ENTRY, INSERT
 
 
 class TripletPatch(unittest.TestCase):

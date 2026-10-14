@@ -7,7 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from summarize_pump import summarize
+from diagnostics.summarize_pump import summarize
 
 
 PUMP_FIELDS = [

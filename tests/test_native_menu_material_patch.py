@@ -1,9 +1,9 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from patch_menu_material import patch, ENTRY
-from patch_menu_pages import patch as pages
-from patch_menu_input import patch as input_patch
+from patches.patch_menu_material import patch, ENTRY
+from patches.patch_menu_pages import patch as pages
+from patches.patch_menu_input import patch as input_patch
 
 source = Path(sys.argv[1]).read_bytes().replace(b'\r\n', b'\n').decode('latin1')
 changed = patch(source)

@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from frame_stall_trigger import FrameStallTrigger
+from diagnostics.frame_stall_trigger import FrameStallTrigger
 
 
 class StallTriggerTests(unittest.TestCase):

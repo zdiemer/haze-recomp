@@ -1,10 +1,10 @@
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from patch_audio_tick import patch, DECL, CALL, ENTRY
-from patch_guest_pacer import patch as pacing
-from patch_save_status import patch as saves
-from patch_producer_profile import patch as profile, strip_profile
+from patches.patch_audio_tick import patch, DECL, CALL, ENTRY
+from patches.patch_guest_pacer import patch as pacing
+from patches.patch_save_status import patch as saves
+from patches.patch_producer_profile import patch as profile, strip_profile
 source=Path(sys.argv[1]).read_bytes().replace(b'\r\n',b'\n').decode('latin1')
 base=saves(pacing(source)); modified=patch(base)
 assert modified.count(DECL)==1 and modified.count(CALL)==1

@@ -11,7 +11,7 @@ child = subprocess.Popen([str(fixture), '8'], stdout=subprocess.PIPE, text=True)
 try:
     tid = int(child.stdout.readline())
     data = json.loads(subprocess.check_output([
-        sys.executable, str(root / 'scripts' / 'profile_native_cpu.py'),
+        sys.executable, str(root / 'scripts/diagnose.py'), 'native-cpu',
         str(child.pid), '3', '--tid', str(tid), '--symbol-path', str(fixture.parent),
         '--stack-depth', '12', '--stack-every', '1',
         '--timeline-output', str(timeline_path), '--timeline-limit', '16'], text=True))
@@ -59,7 +59,7 @@ for mode, seconds in (('progress', 4), ('stall', 5)):
         tid = int(child.stdout.readline())
         triggered_path = fixture.parent / f'oracle-{mode}-timeline.json'
         data = json.loads(subprocess.check_output([
-            sys.executable, str(root / 'scripts' / 'profile_native_cpu.py'),
+            sys.executable, str(root / 'scripts/diagnose.py'), 'native-cpu',
             str(child.pid), str(seconds-1), '--tid', str(tid),
             '--symbol-path', str(fixture.parent), '--stack-depth', '12',
             '--interval-ms', '5', '--stall-ms', '50', '--stall-samples', '2',

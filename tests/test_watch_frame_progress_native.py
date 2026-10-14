@@ -14,7 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 ORACLE = ROOT / "local" / "profiler-stack-oracle" / "HazeRecomp.exe"
-WATCHER = ROOT / "scripts" / "watch_frame_progress.py"
+WATCHER = ROOT / "scripts/diagnose.py"
 
 
 @unittest.skipUnless(sys.platform == "win32", "native PDB observer requires Windows")
@@ -36,7 +36,7 @@ class NativeFrameProgressWatcherTests(unittest.TestCase):
                 watcher = subprocess.run(
                     [
                         sys.executable,
-                        str(WATCHER),
+                        str(WATCHER), "watch-frames",
                         str(fixture.pid),
                         "--exe", str(ORACLE),
                         "--symbol-path", str(ORACLE.parent),

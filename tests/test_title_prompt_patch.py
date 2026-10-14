@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import patch_title_prompt as patcher
+from patches import patch_title_prompt as patcher
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('source', type=Path)

@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from correlate_pump_waits import correlate, summarize_windows
+from diagnostics.correlate_pump_waits import correlate, summarize_windows
 
 
 PUMP_FIELDS = [

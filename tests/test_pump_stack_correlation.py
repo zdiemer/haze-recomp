@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from correlate_pump_stacks import correlate
+from diagnostics.correlate_pump_stacks import correlate
 
 
 def capture():

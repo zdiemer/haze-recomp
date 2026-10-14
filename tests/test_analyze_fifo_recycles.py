@@ -7,7 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "analyze_fifo_recycles", ROOT / "scripts/analyze_fifo_recycles.py")
+    "analyze_fifo_recycles", ROOT / "scripts/diagnostics/analyze_fifo_recycles.py")
 analyzer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(analyzer)
 

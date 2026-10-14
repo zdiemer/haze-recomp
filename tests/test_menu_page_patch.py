@@ -4,8 +4,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from patch_menu_pages import patch, ENTRY, NOTIFY
-from patch_menu_input import patch as pointer_patch
+from patches.patch_menu_pages import patch, ENTRY, NOTIFY
+from patches.patch_menu_input import patch as pointer_patch
 source=Path(sys.argv[1]).read_bytes().replace(b'\r\n',b'\n').decode('latin1')
 modified=patch(source)
 assert modified.count('haze_menu_page_loaded(ctx,haze_page);')==2

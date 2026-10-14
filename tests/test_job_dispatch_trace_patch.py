@@ -5,10 +5,10 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import patch_job_dispatch_trace as trace
-from patch_guest_pacer import patch as pacer
-from patch_job_wait import patch as wait
-from patch_vp_upload import patch as vp
+from patches import patch_job_dispatch_trace as trace
+from patches.patch_guest_pacer import patch as pacer
+from patches.patch_job_wait import patch as wait
+from patches.patch_vp_upload import patch as vp
 
 
 class DispatchTracePatch(unittest.TestCase):

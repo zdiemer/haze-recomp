@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from analyze_job_trace import summarize_window, union_ticks, join_async_jobs, summarize_async, summarize_wait_phases
+from diagnostics.analyze_job_trace import summarize_window, union_ticks, join_async_jobs, summarize_async, summarize_wait_phases
 
 
 class JobTraceAnalysis(unittest.TestCase):

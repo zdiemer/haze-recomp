@@ -8,7 +8,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from validate_camera_sweep import validate_camera_sweep
+from diagnostics.validate_camera_sweep import validate_camera_sweep
 
 
 class CameraSweepEvidence(unittest.TestCase):

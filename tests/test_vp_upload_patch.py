@@ -3,9 +3,9 @@ import sys
 import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from patch_vp_upload import patch,DECL,BEGIN,END
-from patch_guest_pacer import patch as pacer
-from patch_job_wait import patch as job_wait
+from patches.patch_vp_upload import patch,DECL,BEGIN,END
+from patches.patch_guest_pacer import patch as pacer
+from patches.patch_job_wait import patch as job_wait
 
 class UploadPatch(unittest.TestCase):
     @classmethod

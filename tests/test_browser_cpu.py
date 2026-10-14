@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from summarize_browser_cpu import summarize
+from diagnostics.summarize_browser_cpu import summarize
 
 
 def profile():
@@ -64,7 +64,7 @@ class BrowserCPU(unittest.TestCase):
             (folder / 'cpu-01.json').write_text(json.dumps({'profile': profile()}))
             (folder / 'worker.cpuprofile').write_text(json.dumps(profile()))
             (folder / 'unrelated.json').write_text('{}')
-            command = [sys.executable, str(ROOT / 'scripts/summarize_browser_cpu.py'), temp, '--json']
+            command = [sys.executable, str(ROOT / 'scripts/diagnose.py'), 'browser-cpu', temp, '--json']
             run = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual(len(json.loads(run.stdout)), 2)

@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from extract_vp_packet_oracle import extract
+from patches.extract_vp_packet_oracle import extract
 
 class PacketOracle(unittest.TestCase):
     @classmethod

@@ -5,7 +5,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "scripts"))
-from patch_savedata import patch
+from patches.patch_savedata import patch
 
 source = Path(sys.argv[1])
 original = source.read_bytes()

@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from patch_save_status import patch, DIGESTS
-from patch_guest_pacer import patch as pacing
+from patches.patch_save_status import patch, DIGESTS
+from patches.patch_guest_pacer import patch as pacing
 source=Path(sys.argv[1]).read_bytes().replace(b'\r\n',b'\n').decode('latin1')
 modified=patch(source)
 restored=modified

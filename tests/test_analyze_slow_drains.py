@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import analyze_slow_drains as analyzer
+from diagnostics import analyze_slow_drains as analyzer
 
 
 FREQ = 1000

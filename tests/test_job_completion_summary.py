@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from summarize_job_completion import read_rows,summarize,PHASES
+from diagnostics.summarize_job_completion import read_rows,summarize,PHASES
 
 
 def row(begin,end,depth=0):

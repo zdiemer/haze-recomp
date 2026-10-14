@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "analyze_texture_misses", ROOT / "scripts" / "analyze_texture_misses.py"
+    "analyze_texture_misses", ROOT / "scripts" / 'diagnostics' / "analyze_texture_misses.py"
 )
 ANALYZER = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from patch_job0_capture import patch
-from prepare_job0_oracle import prepare
-from patch_job0_kernel import patch as kernel_patch
+from patches.patch_job0_capture import patch
+from patches.prepare_job0_oracle import prepare
+from patches.patch_job0_kernel import patch as kernel_patch
 
 
 class Job0Patch(unittest.TestCase):

@@ -8,15 +8,15 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import patch_guest_pacer
-import patch_producer_profile as producer_profile
-import patch_job_wait
-import patch_vp_upload
-import patch_job_dispatch_trace
-import patch_slot_copy
-import patch_save_status
-import patch_audio_tick
-import patch_movie_poll
+from patches import patch_guest_pacer
+from patches import patch_producer_profile as producer_profile
+from patches import patch_job_wait
+from patches import patch_vp_upload
+from patches import patch_job_dispatch_trace
+from patches import patch_slot_copy
+from patches import patch_save_status
+from patches import patch_audio_tick
+from patches import patch_movie_poll
 
 
 class ProducerProfilePatchTests(unittest.TestCase):

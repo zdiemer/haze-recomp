@@ -12,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import patch_local_dispatch as local_dispatch
+from patches import patch_local_dispatch as local_dispatch
 
 DEFAULT_SOURCE_PATH = ROOT / 'generated/ppu/ppu_recomp_000.cpp'
 EXPECTED_CALLS = (

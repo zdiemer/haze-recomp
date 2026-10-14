@@ -4,7 +4,7 @@ import importlib.util
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('movie_patch', root / 'scripts/patch_movie_poll.py')
+spec = importlib.util.spec_from_file_location('movie_patch', root / 'scripts/patches/patch_movie_poll.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 parser = argparse.ArgumentParser(description=__doc__)
