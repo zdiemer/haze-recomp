@@ -344,6 +344,15 @@ bool build(ppu_context* ctx,const HazeMenuView& view) {
         "style = \"\"\ntexture-colour [] {0.0,0.0,0.0,0.0}\n",true);
     if (!host) return false;
     vm_write32(host+0x30,vm_read32(host+0x30)|3u);
+    // Draw behind the rows/choices and notices, above the retail page's
+    // translucent background. Keep the layout host transparent: its bounds
+    // extend past the footer prompts, which the backing must not cover.
+    const auto backing=cached(ctx,cache,"backing","container",
+        props(id(host),0,"0.0, 0.0, 100.0, 63.0","k_visible|k_enabled")+
+        "texture-colour [] {0.0,0.0,0.0,1.0}\n",true);
+    if (!backing) return false;
+    popup_panels.insert(backing);
+    vm_write32(backing+0x30,vm_read32(backing+0x30)|3u);
     for (unsigned i=0;i<2;++i) {
         const auto column=cached(ctx,cache,"column"+std::to_string(i),"listcontainer",
             props(id(host),50-int(i),i ? "53.0, 0.0, 47.0, 60.0" : "0.0, 0.0, 47.0, 60.0","k_visible|k_enabled")+
@@ -368,7 +377,7 @@ bool build(ppu_context* ctx,const HazeMenuView& view) {
         label(ctx,target_page,view.title);
         const auto panel=cached(ctx,cache,"popup-panel","container",
             props(id(host),32,"15.0, 12.0, 70.0, 46.0","k_visible|k_enabled")+
-            "texture-colour [] {0.0,0.0,0.0,0.96}\n",true);
+            "texture-colour [] {0.0,0.0,0.0,1.0}\n",true);
         if (!panel) return false;
         popup_panels.insert(panel);
         vm_write32(panel+0x30,vm_read32(panel+0x30)|3u);

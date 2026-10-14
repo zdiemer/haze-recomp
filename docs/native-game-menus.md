@@ -49,7 +49,9 @@ created before their owner and declared in the owner's resource so the native
 event array has capacity. One private `callbackWithMenu` dispatcher is registered
 through `0030E688`, using gateway `FFFE7300`.
 
-Widgets are pooled under a transparent native host. The prompt bar is attached
+Widgets are pooled under a transparent native host with an opaque brushed-metal
+backing behind the rows, values, choices and notices. The backing stops above
+the footer so it cannot cover the page's prompts. The prompt bar is attached
 directly to the page, as required by its native parent-page lookup. Reused widgets
 keep their native layout state; only unused widgets are hidden. Retail children are temporarily detached from traversal because hidden native widgets still update their prompts and animated panels. Original child ownership is restored on Back and before context destruction. Child handles
 are installed in reverse visual order with ascending sort keys, matching native
@@ -72,14 +74,27 @@ patch. The page hook also checks supported guest instructions before dispatch.
 `patch_menu_material.py` wraps the native background draw at `002F1538`. After
 the original nine-slice background, `haze_native_popup_material` draws subtle
 horizontal grain and vertical sheen with native textured quads (`006F5768`).
-Coverage is limited to native dialog vtable `DE5CA8` and registered PC popup
-containers. Opacity multiplies the widget alpha and inherited opacity. Native
+Coverage is limited to native dialog vtable `DE5CA8` and registered PC page and
+popup containers. PC backings and popups use full material alpha; inherited opacity
+still follows native menu transitions. Native
 text and selection highlights retain their original drawing order.
 
 The material is procedural; no extracted game texture is redistributed. The
 existing hex-pattern menu background is not used for the popup interior.
 
 ## Validation
+
+For #107, the native build and `scripts/test-input.ps1` passed against the
+pinned SDK. A private-desktop run with copied saves checked Video, Audio and
+Controls over the dark main menu and the bright carrier checkpoint, including
+choice lists and footer coverage. The screenshots below include normal text,
+the selected Quality preset, and a disabled Window size row (its native enabled
+flag was temporarily cleared in the probe, then restored). The settings interior
+at pixels `(180,180)` through `(1100,600)` is identical in both captures. Hiding
+only the new backing reproduced the bright-scene washout.
+
+![Settings text states over the dark main menu](images/settings-contrast-dark.png)
+![Settings text states over bright gameplay](images/settings-contrast-bright.png)
 
 The executable builds, and `scripts/test-input.ps1` passes: controller CTests,
 provider transactions, input/camera/title/graphics, display preview rollback and
