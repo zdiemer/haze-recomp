@@ -1,7 +1,6 @@
 #include "haze_steam.h"
 #include "haze_menu.h"
 #include "haze_quit.h"
-#include "haze_quit_menu.h"
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -49,8 +48,6 @@ std::string profile_label(const HazeSteamProfile& profile) {
     return "Account "+profile.account_id+(profile.persona_name.empty() ? "" : " - "+profile.persona_name);
 }
 std::vector<HazeMenuRow> rows() {
-    HazeMenuRow quit; quit.key="quit"; quit.label="Quit to Desktop"; quit.action=true;
-    quit.hint="Open the quit confirmation. Cancel keeps Haze open.";
     HazeMenuRow account; account.key="profile"; account.label="Steam profile"; account.value=selected;
     account.hint=discovery.empty() ? "Choose the local Steam account to update. No account is selected automatically." : discovery;
     account.choices.push_back({"","Choose a profile"});
@@ -59,7 +56,7 @@ std::vector<HazeMenuRow> rows() {
     launcher.hint="Target: "+utf8(target.launcher)+". The executable launcher must be installed before adding Haze.";
     HazeMenuRow artwork; artwork.key="artwork"; artwork.label="Library artwork"; artwork.value="From local disc";
     artwork.hint="Uses local game artwork. Existing custom covers, banners and logos are retained.";
-    return {quit,account,launcher,artwork};
+    return {account,launcher,artwork};
 }
 HazeMenuApply apply(std::string& notice) {
     if (!current()) { notice="Return to the main menu and reopen this page."; return HazeMenuApply::Failed; }
@@ -85,31 +82,23 @@ void choose(int index) {
     const auto result=haze_steam_install(*profile,target);
     message(result.success ? "Steam shortcut ready" : "Could not add to Steam",result.message);
 }
-bool open() {
-    const auto offer=haze_quit_offer(); if (!offer.available || offer.gameplay || haze_quit_menu_active()) return false;
-    menu_generation=offer.generation; return haze_menu_request(HazeMenuPage::Desktop);
-}
+
 }
 void haze_steam_menu_register() {
     using namespace steam_menu;
     HazeMenuProvider provider;
-    provider.title="DESKTOP OPTIONS"; provider.begin=steam_menu::refresh; provider.defaults=steam_menu::refresh; provider.rows=steam_menu::rows;
+    provider.title="ADD TO STEAM"; provider.begin=[] { menu_generation=haze_quit_offer().generation; steam_menu::refresh(); }; provider.defaults=steam_menu::refresh; provider.rows=steam_menu::rows;
     provider.change=[](const std::string& key,const std::string& value) {
         if (key!="profile") return;
         if (value.empty() || std::any_of(profiles.begin(),profiles.end(),[&](const auto& p){return p.account_id==value;})) steam_menu::selected=value;
     };
     provider.apply=steam_menu::apply; provider.modal=[] {return steam_menu::dialog;}; provider.modal_choose=steam_menu::choose;
-    provider.activate=[](const std::string& key) {
-        if (key=="quit" && steam_menu::current()) {
-            const auto offer=haze_quit_offer(); haze_menu_retail(); haze_quit_request(false,offer.generation);
-        }
-    };
     provider.update=[](bool focused) { if (confirming && !focused) { steam_menu::dialog={}; confirming=false; } };
     provider.actions={"Add to Steam","Refresh","Back"};
     provider.footer_hint="Exit Steam, select the intended account, then choose Add to Steam. Haze remains usable without Steam.";
     provider.defaults_notice="Steam profiles refreshed. Choose an account before adding Haze.";
     provider.guest_back=false;
-    haze_menu_register(HazeMenuPage::Desktop,std::move(provider)); haze_quit_menu_main_action(steam_menu::open);
+    haze_menu_register(HazeMenuPage::Desktop,std::move(provider));
 }
 #else
 void haze_steam_menu_register() {}

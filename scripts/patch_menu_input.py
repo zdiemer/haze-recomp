@@ -75,6 +75,8 @@ def patch(source):
     // The manager's current-context slot is valid only during GUI dispatch.
     extern void haze_audio_guest_tick(ppu_context*);
     haze_audio_guest_tick(ctx);
+    extern void haze_native_menu_tick(ppu_context*);
+    haze_native_menu_tick(ctx);
 }}
 '''
         source = source[:begin] + body + wrapper + source[end:]

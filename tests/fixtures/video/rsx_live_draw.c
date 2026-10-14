@@ -78,7 +78,23 @@ static fake_swap swap_chain={&swap_vtable};
 enum { LD_SWAP_BUFFERS=2,DXGI_FORMAT_R8G8B8A8_UNORM=28 };
 static const unsigned IID_ID3D12Resource=1;
 static unsigned rtv_handle(unsigned index) { return index; }
+typedef struct {
+    unsigned Type;
+    struct { fake_resource* pResource; unsigned Subresource,StateBefore,StateAfter; } Transition;
+} D3D12_RESOURCE_BARRIER;
+enum { D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+    D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, LD_FLUSH_READBACK };
+struct fake_list;
+typedef struct { void (*ResourceBarrier)(struct fake_list*,unsigned,D3D12_RESOURCE_BARRIER*); } list_methods;
+typedef struct fake_list { list_methods* lpVtbl; } fake_list;
+typedef struct { fake_resource* tex; unsigned w,h,fmt; } surface_t;
+static int g_ld_movie_composite_ui,g_ld_movie_mode;
+static void rsx_live_draw_set_movie_mode(int on) { g_ld_movie_mode=on; }
+static void ld_movie_capture_overlay(void) {}
+static void rsx_live_draw_present_rgba(const uint8_t*,uint32_t,uint32_t) {}
+static u64 ld_dump_surface_ppm(const char*,surface_t*) { return 0; }
 static struct { int ready; fake_device* dev; unsigned n_samplers,smp_ring_used;
+    fake_list* list;
     unsigned long long smp_keys[4]; unsigned smp_ring_slots[4][4];
     fake_queue* queue; fake_fence* fence; fake_swap* swap; u64 fence_value; HANDLE fence_event; fake_resource* backbuf[2]; } g;
 static HWND g_ld_display_hwnd;

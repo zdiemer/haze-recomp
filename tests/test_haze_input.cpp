@@ -81,6 +81,8 @@ void haze_prompts_initialize(const char*) {}
 void haze_prompts_update(HazeInputFamily) {}
 static bool native_menu_active;
 bool haze_menu_active() { return native_menu_active; }
+bool haze_menu_blocks_input() { return native_menu_active; }
+bool haze_menu_capture_key(int) { return false; }
 bool haze_menu_has_focus() { return false; }
 void haze_menu_update(void*,const HazeGamepadState&) {}
 static bool menu_exiting_process;
@@ -89,6 +91,7 @@ void haze_video_menu_register() {}
 void haze_audio_menu_register() {}
 void haze_controls_menu_register() {}
 void haze_steam_menu_register() {}
+void haze_quit_menu_register() {}
 static bool quit_active=false,close_accepted=false;
 bool haze_quit_menu_active() { return quit_active; }
 bool haze_quit_menu_has_focus() { return false; }
@@ -154,6 +157,16 @@ int main() {
     assert(!haze_input_take_pointer().back && !menu_return_pending);
     close_accepted=true; forwarded_message=0; window_proc(window,WM_CLOSE,0,0);
     assert(forwarded_message!=WM_CLOSE);
+    quit_active=true;
+    for (int i=0;i<12;++i) {
+        const auto pause=sample();
+        assert(pause.buttons==CELL_PAD_CTRL_START && pause.lx==128 && pause.ly==128);
+    }
+    assert(!sample().buttons); // One held Start burst, never repeated toggles.
+    window_proc(window,WM_CLOSE,0,0); menu_active=true;
+    assert(!sample().buttons && !quit_pause_polls); // Stop once a native menu opens.
+    menu_active=false; window_proc(window,WM_CLOSE,0,0); quit_active=false;
+    assert(!sample().buttons && !quit_pause_polls); // Cancel drops pending injection.
     close_accepted=false; window_proc(window,WM_CLOSE,0,0); assert(forwarded_message==WM_CLOSE);
     keys['W']=keys['D']=keys[VK_SPACE]=true;
     auto p=sample(); assert(p.lx==255 && p.ly==1 && (p.buttons&CELL_PAD_CTRL_CROSS));

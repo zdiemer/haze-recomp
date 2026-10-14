@@ -5,6 +5,8 @@
 #include <cstring>
 #include <cstdio>
 
+void haze_native_menu_page(ppu_context*,uint32_t);
+
 void haze_menu_page_loaded(ppu_context* ctx,uint32_t page) {
     if (!page || page>UINT32_MAX-0x28) return;
     // Supported BLUS30094 page activator. Page IDs are fixed 16-byte strings,
@@ -13,6 +15,7 @@ void haze_menu_page_loaded(ppu_context* ctx,uint32_t page) {
         0xfb210088,0xfbc100b0,0xfbe100b8,0xfb410090};
     for (unsigned i=0;i<8;++i) if (vm_read32(0x319c68+i*4)!=code[i]) return;
     haze_quit_guest_page(ctx);
+    haze_native_menu_page(ctx,page);
     char name[17]{};
     for (unsigned i=0;i<16;++i) name[i]=char(vm_read8(page+0x18+i));
     HazeMenuPage kind=HazeMenuPage::None;

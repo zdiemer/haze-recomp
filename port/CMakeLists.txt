@@ -145,11 +145,18 @@ if(EXISTS "${RECOMP_DIR}/ppu_recomp_001.cpp")
     add_custom_command(OUTPUT "${HAZE_MENU_PATCHED}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_pages.py"
             "${HAZE_MENU_SOURCE}" "${HAZE_MENU_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_material.py"
+              "${HAZE_MENU_PATCHED}" "${HAZE_MENU_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_lifetime.py"
+              "${HAZE_MENU_PATCHED}" "${HAZE_MENU_PATCHED}"
         DEPENDS "${HAZE_MENU_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_pages.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_material.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_menu_lifetime.py"
         VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_MENU_SOURCE}")
     list(APPEND RECOMP_SOURCES "${HAZE_MENU_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_menu_guest.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_guest.cpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_guest.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/haze_native_menu.cpp")
     set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 

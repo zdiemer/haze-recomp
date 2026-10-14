@@ -41,75 +41,42 @@ HazeSteamResult haze_steam_install(const HazeSteamProfile& profile,const HazeSte
     assert(target.arguments=="--shared-root \"C:/Haze data\" --savedata \"C:/My saves\"");
     return {install_success,install_success,0x80000042u,{},install_success ? "Haze Recomp was added. Start Steam to see it in the selected library." : "Exit Steam using Steam > Exit, wait for it to close, then retry."};
 }
-static void frame(HWND owner,unsigned buttons=0) {
-    HazeGamepadState pad; pad.input.buttons=(u16)buttons; haze_menu_update(owner,pad); haze_quit_menu_update(owner,pad);
+static HWND owner;
+static void frame() { haze_menu_update(owner,{}); }
+static void send(HazeMenuCommandKind kind,const std::string& key={},const std::string& value={},int choice=0) {
+    const auto view=haze_menu_view();
+    haze_menu_command({view.generation,kind,key,value,choice,view.modal.revision}); frame();
 }
-static void key(int vk) { SendMessage(panel,WM_KEYDOWN,vk,0); SendMessage(panel,WM_KEYUP,vk,0); }
-static void click(HWND hwnd,RECT rect) { SendMessage(hwnd,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM((rect.left+rect.right)/2,(rect.top+rect.bottom)/2)); SendMessage(hwnd,WM_LBUTTONUP,0,0); }
-static void action(int index) { click(panel,action_rect(index)); }
-static void screenshot(const char* path) {
-    HDC screen=GetDC(nullptr),dc=CreateCompatibleDC(screen); BITMAPINFO info{};
-    info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth=width; info.bmiHeader.biHeight=-height;
-    info.bmiHeader.biPlanes=1; info.bmiHeader.biBitCount=32; void* pixels=nullptr;
-    auto bitmap=CreateDIBSection(screen,&info,DIB_RGB_COLORS,&pixels,nullptr,0); assert(bitmap && pixels); auto previous=SelectObject(dc,bitmap);
-    SendMessage(panel,WM_PRINTCLIENT,(WPARAM)dc,PRF_CLIENT); GdiFlush();
-    BITMAPFILEHEADER header{}; header.bfType=0x4d42; header.bfOffBits=sizeof(header)+sizeof(BITMAPINFOHEADER); header.bfSize=header.bfOffBits+width*height*4;
-    std::ofstream output(path,std::ios::binary); output.write((char*)&header,sizeof(header)); output.write((char*)&info.bmiHeader,sizeof(info.bmiHeader)); output.write((char*)pixels,width*height*4); assert(output.good());
-    SelectObject(dc,previous); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(nullptr,screen);
-}
+static void open() { assert(haze_menu_request(HazeMenuPage::Desktop)); frame(); }
 int main() {
+    using K=HazeMenuCommandKind;
     const auto fixture=std::filesystem::absolute("local/steam-menu-"+std::to_string(GetCurrentProcessId()));
     std::filesystem::create_directories(fixture); const auto launcher=fixture/L"Haze Launcher \u00e9.exe";
     { std::ofstream file(launcher); file<<"fixture"; }
     SetEnvironmentVariableW(L"HAZE_LAUNCHER_PATH",launcher.c_str());
     SetEnvironmentVariableW(L"HAZE_LAUNCHER_ARGUMENTS",L"--shared-root \"C:/Haze data\" --savedata \"C:/My saves\"");
-    auto owner=CreateWindowA("STATIC","Steam menu fixture",WS_POPUP,0,0,1920,1080,nullptr,nullptr,GetModuleHandle(nullptr),nullptr); assert(owner);
-    foreground=owner; haze_steam_menu_register(); frame(owner);
-    // A real footer click may temporarily activate its own popup window.
-    foreground=quit_ui::button;
-    assert(SendMessage(quit_ui::button,WM_MOUSEACTIVATE,0,0)==MA_NOACTIVATE);
-    click(quit_ui::button,RECT{0,0,10,10}); frame(owner);
-    assert(foreground==panel);
-    assert(haze_menu_active() && !haze_quit_menu_active() && current==HazeMenuPage::Desktop);
-    assert(steam_menu::selected.empty()); action(0); assert(!installs && notice_error);
-    const auto accounts=steam_menu::rows()[1].choices;
+    owner=reinterpret_cast<HWND>(uintptr_t(1)); foreground=owner;
+    haze_steam_menu_register(); open();
+    assert(haze_menu_view().rows.size()==3 && haze_menu_view().title=="ADD TO STEAM");
+    assert(steam_menu::selected.empty()); send(K::Apply); assert(!installs && haze_menu_view().error);
+    const auto accounts=steam_menu::rows()[0].choices;
     assert(accounts[1].value=="42" && accounts[1].label=="Account 42 - Zo\xc3\xab");
     assert(accounts[2].value=="7" && accounts[2].label=="Account 7 - Zo\xc3\xab");
-    auto unnamed=steam_menu::profiles[0]; unnamed.persona_name.clear();
-    assert(steam_menu::profile_label(unnamed)=="Account 42");
-    screenshot("local/steam-desktop-options.bmp");
-    key(VK_UP); key(VK_UP); key(VK_UP); key(VK_RIGHT); assert(steam_menu::selected=="42");
-    action(0); frame(owner); assert(steam_menu::confirming && modal_selected==0);
-    assert(steam_menu::dialog.message.find("Account 42 - Zo\xc3\xab")!=std::string::npos);
-    screenshot("local/steam-add-confirm.bmp");
-    key(VK_ESCAPE); assert(!installs && !steam_menu::dialog.revision && haze_menu_active());
-    action(0); frame(owner); key('K'); assert(!installs && !steam_menu::dialog.revision);
-    action(0); frame(owner); SendMessage(panel,WM_CLOSE,0,0); assert(!installs && !steam_menu::dialog.revision);
-    action(0); frame(owner); key(VK_RETURN); assert(!installs && !steam_menu::dialog.revision); // Cancel default
-    action(0); frame(owner); foreground=nullptr; frame(owner); assert(!installs && !steam_menu::dialog.revision);
-    foreground=panel; frame(owner); action(0); frame(owner); key(VK_RIGHT); key(VK_RETURN);
-    assert(installs==1 && installed_account=="42" && steam_menu::dialog.title=="Steam shortcut ready"); key(VK_RETURN);
-    action(1); assert(steam_menu::selected.empty()); // Refresh never silently reselects.
-    key(VK_ESCAPE); assert(!haze_menu_active() && guest_backs==0 && retail_returns==1);
-    frame(owner); frame(owner,CELL_PAD_CTRL_SELECT); frame(owner,CELL_PAD_CTRL_SELECT|CELL_PAD_CTRL_CROSS);
-    assert(haze_menu_active() && !haze_quit_menu_active()); frame(owner); // neutral after opening
-    frame(owner,CELL_PAD_CTRL_DOWN); frame(owner); frame(owner,CELL_PAD_CTRL_RIGHT); frame(owner);
-    assert(steam_menu::selected=="42"); action(0); frame(owner,CELL_PAD_CTRL_CROSS); assert(installs==1);
-    frame(owner); frame(owner,CELL_PAD_CTRL_CIRCLE); assert(!steam_menu::dialog.revision && installs==1);
-    install_success=false; action(0); frame(owner); click(panel,modal_action_rect(1,2));
-    assert(installs==2 && steam_menu::dialog.title=="Could not add to Steam"); key(VK_RETURN);
-    // Stale main-menu generation cannot authorize writing.
-    action(0); ++offer.generation; frame(owner); key(VK_RIGHT); key(VK_RETURN); assert(installs==2); key(VK_RETURN);
-    key(VK_ESCAPE); frame(owner); assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
-    key(VK_RETURN); frame(owner); // Quit action goes to the normal Cancel-first confirmation.
-    assert(!haze_menu_active() && haze_quit_state().phase==HazeQuitPhase::Confirm && quit_ui::selected==0);
-    SendMessage(quit_ui::dialog,WM_KEYDOWN,VK_RETURN,0); frame(owner); assert(!haze_quit_menu_active());
-    // Missing launcher and missing Steam are actionable, with zero installer calls.
-    std::filesystem::remove(launcher); assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
-    key(VK_DOWN); key(VK_RIGHT); action(0); assert(steam_menu::dialog.title=="Launcher required" && installs==2); key(VK_RETURN);
-    steam_available=false; action(1); action(0); assert(notice.find("Steam was not found")!=std::string::npos && installs==2); key(VK_ESCAPE);
-    offer.gameplay=true; frame(owner); assert(haze_quit_menu_key(VK_TAB,false)); frame(owner);
-    assert(haze_quit_menu_active() && !haze_menu_active()); SendMessage(quit_ui::dialog,WM_KEYDOWN,VK_ESCAPE,0);
-    haze_quit_menu_shutdown(); haze_menu_shutdown(); DestroyWindow(owner); std::filesystem::remove_all(fixture);
-    std::puts("Steam menu: explicit account selection, keyboard/mouse/controller access, held-input gate, Cancel/default/Back/focus handling, missing dependencies, failures, stale menu and main/pause Quit routing passed.");
+    send(K::Change,"profile","42"); send(K::Apply);
+    assert(steam_menu::confirming && haze_menu_view().modal.cancel_choice==0);
+    send(K::Back); assert(!installs && !haze_menu_view().modal.revision && haze_menu_active());
+    send(K::Apply); foreground=nullptr; frame(); assert(!installs && !haze_menu_view().modal.revision);
+    foreground=owner; send(K::Apply); send(K::Modal,{}, {},1);
+    assert(installs==1 && installed_account=="42" && haze_menu_view().modal.title=="Steam shortcut ready");
+    send(K::Modal); send(K::Defaults); assert(steam_menu::selected.empty());
+    send(K::Back); assert(!haze_menu_active() && !haze_menu_view().pop);
+    open(); send(K::Change,"profile","42"); install_success=false; send(K::Apply); send(K::Modal,{}, {},1);
+    assert(installs==2 && haze_menu_view().modal.title=="Could not add to Steam"); send(K::Modal);
+    send(K::Apply); ++offer.generation; send(K::Modal,{}, {},1); assert(installs==2); send(K::Modal); send(K::Back);
+    std::filesystem::remove(launcher); open(); send(K::Change,"profile","42"); send(K::Apply);
+    assert(haze_menu_view().modal.title=="Launcher required" && installs==2); send(K::Modal);
+    steam_available=false; send(K::Defaults); send(K::Apply);
+    assert(haze_menu_view().notice.find("Steam was not found")!=std::string::npos && installs==2);
+    send(K::Back); haze_menu_shutdown(); std::filesystem::remove_all(fixture);
+    std::puts("Native Steam provider: account selection, confirmation/cancel, focus loss, refresh, failures, stale menu and missing dependencies passed.");
 }

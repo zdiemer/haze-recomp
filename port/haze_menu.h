@@ -1,13 +1,14 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <functional>
 #include <array>
 #include "haze_gamepad.h"
 
-enum class HazeMenuPage { None, Video, Audio, Controls, Desktop };
+enum class HazeMenuPage { None, Video, Audio, Controls, Desktop, Quit };
 enum class HazeMenuApply { Applied, Pending, Failed };
-struct HazeMenuChoice { std::string value,label; };
+struct HazeMenuChoice { std::string value,label; bool operator==(const HazeMenuChoice&) const = default; };
 struct HazeMenuRow {
     std::string key,label,value,hint;
     std::vector<HazeMenuChoice> choices;
@@ -16,6 +17,7 @@ struct HazeMenuRow {
     bool action=false;
     std::string prompt_binding;
     HazeInputFamily prompt_family=HazeInputFamily::Keyboard;
+    bool operator==(const HazeMenuRow&) const = default;
 };
 struct HazeMenuModal {
     unsigned revision=0;
@@ -23,6 +25,7 @@ struct HazeMenuModal {
     std::vector<std::string> choices;
     bool capturing=false;
     int cancel_choice=-1; // -1 keeps the existing convention: last choice cancels
+    bool operator==(const HazeMenuModal&) const = default;
 };
 struct HazeMenuProvider {
     std::string title;
@@ -54,9 +57,37 @@ void haze_menu_update(void* owner,const HazeGamepadState& pad);
 // display cleanup and must not start another preview rollback/GPU wait.
 void haze_menu_shutdown(bool exiting_process=false);
 void haze_menu_retail();
+// Window-thread status dialog that leaves the current provider/transaction alive.
+// An empty dialog restores that provider's own modal and pending Apply state.
+void haze_menu_interrupt(HazeMenuModal dialog,std::function<void(int)> choose={});
 void haze_video_menu_register();
 void haze_controls_menu_register();
 void haze_steam_menu_register();
+
+// Providers stay on the window thread. The guest GUI receives immutable
+// snapshots and posts commands tagged with the page generation it displayed.
+struct HazeMenuView {
+    uint64_t generation=0,revision=0;
+    HazeMenuPage page=HazeMenuPage::None;
+    std::string title,notice;
+    std::vector<HazeMenuRow> rows;
+    std::array<std::string,3> actions{};
+    HazeMenuModal modal;
+    bool applying=false,error=false,pop=false;
+};
+enum class HazeMenuCommandKind { Change, Activate, Apply, Defaults, Back, Modal, Key, Departed };
+struct HazeMenuCommand {
+    uint64_t generation=0;
+    HazeMenuCommandKind kind=HazeMenuCommandKind::Back;
+    std::string key,value;
+    int choice=0;
+    unsigned modal_revision=0;
+};
+HazeMenuView haze_menu_view();
+void haze_menu_command(HazeMenuCommand command);
+void haze_menu_presented(uint64_t generation);
+bool haze_menu_blocks_input();
+bool haze_menu_capture_key(int key);
 
 #include <cstdint>
 

@@ -24,7 +24,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Controller tests failed.' }
 $clang=Join-Path $vs 'VC/Tools/Llvm/x64/bin/clang-cl.exe'
 New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
 $ErrorActionPreference='Continue' # Windows PowerShell promotes native stderr warnings.
-foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test_haze_graphics','test_haze_video_backend','test_haze_display_preview','test_haze_menu_guest','test_haze_menu','test_haze_menu_pointer','test_haze_save_status','test_haze_controls','test_haze_quit','test_haze_audio_shutdown','test_haze_quit_ui','test_haze_profile_transaction')) {
+foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test_haze_graphics','test_haze_video_backend','test_haze_display_preview','test_haze_menu_guest','test_haze_menu','test_haze_menu_pointer','test_haze_save_status','test_haze_controls','test_haze_quit','test_haze_audio_shutdown','test_haze_quit_ui','test_haze_steam_menu','test_haze_profile_transaction')) {
     $extraFlags=@()
     if ($test -eq 'test_haze_profile_transaction') { $extraFlags += '/EHsc' }
     & $clang /nologo /W4 /O1 /std:c++20 @extraFlags "/I$root/tests/fixtures/camera" "/I$root/tests/fixtures/video" "/I$root/tests/fixtures/audio" "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/I$sdk/libs/video" "/I$sdk/libs/system" "/Fe$root/local/$test.exe" "/Fo$root/local/$test.obj" "$root/tests/$test.cpp" /link user32.lib gdi32.lib comdlg32.lib
@@ -36,6 +36,10 @@ foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test
 if ($LASTEXITCODE -ne 0) { throw 'Title prompt patch guard failed.' }
 & "$assets/.venv/Scripts/python.exe" "$root/tests/test_menu_page_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp" "$clang"
 if ($LASTEXITCODE -ne 0) { throw 'Menu page patch guard failed.' }
+& "$assets/.venv/Scripts/python.exe" "$root/tests/test_native_menu_material_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp"
+if ($LASTEXITCODE -ne 0) { throw 'Native menu material patch guard failed.' }
+& "$assets/.venv/Scripts/python.exe" "$root/tests/test_native_menu_lifetime_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp"
+if ($LASTEXITCODE -ne 0) { throw 'Native menu lifetime patch guard failed.' }
 & "$assets/.venv/Scripts/python.exe" "$root/tests/test_save_status_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Save status patch guard failed.' }
 & "$assets/.venv/Scripts/python.exe" "$root/tests/test_audio_tick_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
