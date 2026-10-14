@@ -14,8 +14,9 @@ HRESULT CALLBACK dialog_icon(HWND window,UINT notification,WPARAM,LPARAM,LONG_PT
     if (notification==TDN_CREATED) haze_window_icon(window);
     return S_OK;
 }
-int failure(const std::wstring& message,const std::wstring& repair,const fs::path& logs) {
+int failure(const std::wstring& message,const std::wstring& repair,const fs::path& logs,bool setup=false) {
     std::vector<TASKDIALOG_BUTTON> buttons;
+    if (setup) buttons.push_back({102,L"Set up from disc ISO..."});
     if (!repair.empty()) buttons.push_back({100,L"Choose location..."});
     if (!logs.empty()) buttons.push_back({101,L"Open session logs"});
     TASKDIALOGCONFIG dialog{}; dialog.cbSize=sizeof(dialog); dialog.dwFlags=TDF_SIZE_TO_CONTENT|TDF_ALLOW_DIALOG_CANCELLATION;
@@ -27,6 +28,23 @@ int failure(const std::wstring& message,const std::wstring& repair,const fs::pat
     int chosen=IDCLOSE;
     if (FAILED(TaskDialogIndirect(&dialog,&chosen,nullptr,nullptr))) MessageBoxW(nullptr,content.c_str(),L"Haze Recomp",MB_OK|MB_ICONERROR);
     return chosen;
+}
+bool prepare(const fs::path& script) {
+    wchar_t system[32768]{};
+    if (!GetSystemDirectoryW(system,32768)) throw std::runtime_error("Cannot locate Windows PowerShell.");
+    const auto shell=fs::path(system)/L"WindowsPowerShell/v1.0/powershell.exe";
+    auto command=quote(shell.wstring())+L" -NoProfile -ExecutionPolicy Bypass -File "+quote(script.wstring());
+    STARTUPINFOW startup{}; startup.cb=sizeof(startup);
+    PROCESS_INFORMATION process{};
+    // Setup is an explicitly selected interactive flow: show its progress and
+    // file pickers, while each underlying preparation helper stays hidden.
+    if (!CreateProcessW(shell.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NEW_CONSOLE,nullptr,
+                        script.parent_path().parent_path().c_str(),&startup,&process))
+        throw std::runtime_error("Cannot start first-run setup. Run Setup.cmd in the installation folder.");
+    CloseHandle(process.hThread);
+    WaitForSingleObject(process.hProcess,INFINITE);
+    DWORD code=1; GetExitCodeProcess(process.hProcess,&code); CloseHandle(process.hProcess);
+    return code==0;
 }
 fs::path pick(const std::wstring& key) {
     Microsoft::WRL::ComPtr<IFileOpenDialog> dialog;
@@ -73,7 +91,13 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
             std::wstring repair; const auto problem=validate(plan,repair);
             if (problem.empty()) break;
             diagnostic(problem);
-            if (options.no_ui || options.check || failure(problem,repair,{})!=100) return 1;
+            if (options.no_ui || options.check) return 1;
+            const auto setup=fs::path(module).parent_path()/L"scripts/setup.ps1";
+            const bool can_setup=(repair==L"DiscDirectory" || repair==L"Firmware") &&
+                plan.config==setup.parent_path().parent_path()/L"launcher.ini" && fs::is_regular_file(setup);
+            const int choice=failure(problem,repair,{},can_setup);
+            if (choice==102) { if (!prepare(setup)) return 1; continue; }
+            if (choice!=100) return 1;
             const auto location=pick(repair); if (location.empty()) return 1;
             auto edited=options; edited.overrides[repair]=location.wstring();
             const auto candidate=resolve(fs::path(module),edited,inherited);
