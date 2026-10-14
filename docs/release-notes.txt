@@ -1,4 +1,7 @@
-Haze Recomp 0.1.1 for Windows x64
+Haze Recomp 0.1.2 for Windows x64
+
+Includes corrected release publication and PC settings/desktop actions integrated
+into Haze's native menus.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3
