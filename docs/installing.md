@@ -35,6 +35,8 @@ If preparation failed previously, rerun the installer with the ISO. Failed setup
 keeps previous configuration and saves, and leaves logs for diagnosis.
 
 Installer logs are under `%LOCALAPPDATA%\Haze Recomp\InstallerLogs`.
+Windows Installer's source MSI is retained under the adjacent `InstallerCache`
+folder so repair works after temporary preparation tools are removed.
 Preparation logs/data are under `local/user-data/setup-<id>` inside the installation.
 Each attempt has its own portable RPCS3 directory and does not change another
 RPCS3 installation. Do not delete the successful attempt referenced by launcher.ini.

@@ -52,6 +52,11 @@ def wix_source(stage: Path, output: Path, release_version: str) -> None:
                    InstallerVersion="500", Compressed="yes")
     node(package, "MajorUpgrade", DowngradeErrorMessage="A newer Haze Recomp is already installed.")
     node(package, "MediaTemplate", EmbedCab="yes")
+    saved = node(package, "Property", Id="SAVEDINSTALLFOLDER")
+    node(saved, "RegistrySearch", Id="SavedInstallFolder", Root="HKCU",
+         Key="Software\\HazeRecomp", Name="InstallFolder", Type="raw")
+    node(package, "SetProperty", Id="INSTALLFOLDER", Value="[SAVEDINSTALLFOLDER]",
+                    Before="CostInitialize", Sequence="both", Condition="SAVEDINSTALLFOLDER AND NOT INSTALLFOLDER")
     local = node(package, "StandardDirectory", Id="LocalAppDataFolder")
     programs = node(local, "Directory", Id="HazePrograms", Name="Programs")
     install = node(programs, "Directory", Id="INSTALLFOLDER", Name="Haze Recomp")
@@ -82,6 +87,7 @@ def wix_source(stage: Path, output: Path, release_version: str) -> None:
     component = node(menu, "Component", Id="StartMenu", Guid="*")
     node(component, "Shortcut", Id="Launch", Name="Haze Recomp", Target="[INSTALLFOLDER]HazeLauncher.exe", WorkingDirectory="INSTALLFOLDER")
     node(component, "RegistryValue", Root="HKCU", Key="Software\\HazeRecomp", Name="Installed", Value="1", Type="integer", KeyPath="yes")
+    node(component, "RegistryValue", Root="HKCU", Key="Software\\HazeRecomp", Name="InstallFolder", Value="[INSTALLFOLDER]", Type="string")
     node(feature, "ComponentRef", Id="StartMenu")
     ET.indent(tree)
     ET.ElementTree(tree).write(output, encoding="utf-8", xml_declaration=True)

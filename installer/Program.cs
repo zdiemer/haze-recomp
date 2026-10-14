@@ -4,6 +4,9 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -18,6 +21,22 @@ internal sealed class Installer : Form
     readonly ProgressBar progress = new ProgressBar();
     readonly string logDirectory;
     bool running, complete;
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)] static extern uint MsiOpenPackage(string path, out uint handle);
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)] static extern uint MsiGetProperty(uint handle, string name, StringBuilder value, ref uint length);
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)] static extern int MsiQueryProductState(string product);
+    [DllImport("msi.dll")] static extern uint MsiCloseHandle(uint handle);
+
+    static bool IsInstalled(string package)
+    {
+        uint handle;
+        if (MsiOpenPackage(package, out handle) != 0) throw new Exception("Cannot read the installer package.");
+        try {
+            var code = new StringBuilder(40); uint length = 40;
+            if (MsiGetProperty(handle, "ProductCode", code, ref length) != 0) throw new Exception("Cannot identify the installer package.");
+            return MsiQueryProductState(code.ToString()) == 5;
+        } finally { MsiCloseHandle(handle); }
+    }
 
     [STAThread]
     static int Main(string[] args)
@@ -66,6 +85,10 @@ internal sealed class Installer : Form
         Controls.Add(iso); Controls.Add(browse);
         Controls.Add(new Label { Text = "Install location", Left = 30, Top = 214, Width = 500 });
         destination.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Haze Recomp");
+        using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Software\\HazeRecomp")) {
+            string previous = key == null ? null : key.GetValue("InstallFolder") as string;
+            if (!String.IsNullOrEmpty(previous)) destination.Text = previous;
+        }
         destination.SetBounds(30, 240, 608, 28); Controls.Add(destination);
         reuse.Text = "Keep my existing prepared game and firmware";
         reuse.SetBounds(30, 276, 605, 25);
@@ -127,9 +150,20 @@ internal sealed class Installer : Form
                 Directory.CreateDirectory(temporary);
                 using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip"))
                 using (var archive = new ZipArchive(stream, ZipArchiveMode.Read)) archive.ExtractToDirectory(temporary);
+                // Windows Installer needs the original embedded cabinet for repair.
+                // Keep only the MSI in its package cache; setup tools remain temporary.
+                string extracted = Path.Combine(temporary, "HazeRecomp.msi"), hash;
+                using (var sha = SHA256.Create())
+                using (var stream = File.OpenRead(extracted)) hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "");
+                string cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Haze Recomp", "InstallerCache", hash);
+                Directory.CreateDirectory(cache);
+                string package = Path.Combine(cache, "HazeRecomp.msi");
+                File.Copy(extracted, package, true);
+                bool repair = IsInstalled(package);
                 Report("Installing the launcher and game files...");
                 var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
-                int result = Run(Path.Combine(system, "msiexec.exe"), "/i " + Quote(Path.Combine(temporary, "HazeRecomp.msi")) +
+                int result = Run(Path.Combine(system, "msiexec.exe"), "/i " + Quote(package) +
+                    (repair ? " REINSTALL=ALL REINSTALLMODE=vamus" : "") +
                     " /qn /norestart INSTALLFOLDER=" + Quote(target) + " /l*v " + Quote(Path.Combine(logDirectory, "msi.log")), "msi-process.log");
                 if (result != 0 && result != 3010) throw new Exception("Windows Installer failed (" + result + ").");
                 string defaults = Path.Combine(target, "defaults", "config");
