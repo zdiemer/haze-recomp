@@ -217,6 +217,11 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'SPU reservation publication test compilation failed.' }
     & $coherencyAtomicTest
     if ($LASTEXITCODE -ne 0) { throw 'SPU reservation publication/polling regression failed.' }
+    $coherencyLockTest = Join-Path $root 'local/test_coherency_lock.exe'
+    & $clang /nologo /W0 /O2 /std:c11 /clang:-msse4.1 "/I$sdk/include" "/Fe$coherencyLockTest" "/Fo$root/local/" "$sdk/runtime/spu/tests/test_coherency_lock.c" "$sdk/runtime/spu/spu_coherency.c"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU coherence lock test compilation failed.' }
+    & $coherencyLockTest
+    if ($LASTEXITCODE -ne 0) { throw 'SPU coherence lock exclusion/publication regression failed.' }
     $idleTest = Join-Path $root 'local/test_spu_idle_wait.exe'
     & $clang /nologo /W0 /O2 /clang:-msse4.1 "/I$sdk/runtime/spu" "/Fe$idleTest" "/Fo$root/local/" "$root/tests/test_spu_idle_wait.c" "$sdk/runtime/spu/spu_coherency.c"
     if ($LASTEXITCODE -ne 0) { throw 'Haze SPU idle wait test compilation failed.' }
