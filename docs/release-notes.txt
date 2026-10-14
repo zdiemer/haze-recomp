@@ -1,7 +1,14 @@
-Haze Recomp 0.1.2 for Windows x64
+Haze Recomp 0.1.3 for Windows x64
 
-Includes corrected release publication and PC settings/desktop actions integrated
-into Haze's native menus.
+Includes native task-readiness wakeups, GPU vertex decoding and vertex-program
+batching, enabled by default alongside the existing PC controls and graphics
+settings. These improve measured jungle performance; stable 144 FPS and
+consistent frame pacing remain work in progress.
+
+Fixes the installed-game black screen caused by truncated Windows game-data
+paths (#99). Incomplete data folders can now be repaired when the game accepts
+installation. Fresh installation, recovery and subsequent launch were validated;
+the fix preserves saves. Initial game-data installation can still take time.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3
