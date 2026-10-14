@@ -5,6 +5,9 @@ geometry (#109). Packed scene depth now preserves the original surface's sample
 layout, so effects read depth at the correct screen position. The fix applies to
 the shared renderer throughout gameplay and keeps fog and particles enabled.
 
+Also includes corrected mouse hover and keyboard navigation in menus, plus
+complete diagnostic trace export when quitting through the native menu.
+
 Includes native task-readiness wakeups, GPU vertex decoding and vertex-program
 batching, enabled by default alongside the existing PC controls and graphics
 settings. These improve measured jungle performance; stable 144 FPS and
