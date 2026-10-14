@@ -40,7 +40,7 @@ foreach ($key in $settings.Keys) {
 }
 try {
     Write-Host 'Movies play by default. Automatic logo/attract skipping is optional in input.ini [Startup].'
-    Write-Host 'Current Cross/confirm binding skips manually. Default controls: Enter starts; Space confirms; arrows navigate.'
+    Write-Host 'Escape or Cross/confirm skips startup screens and movies. Default controls: Enter starts; Space confirms; arrows navigate.'
     Write-Host 'WASD moves. Gameplay captures the mouse automatically; F1 releases it.'
     Write-Host 'Escape pauses. Menus use the pointer: left click selects, right click goes back.'
     Write-Host "Session logs: $session"

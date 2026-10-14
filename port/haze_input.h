@@ -4,6 +4,9 @@ void haze_input_initialize();
 void haze_input_attach(void* window);
 void haze_input_update();
 void haze_input_shutdown();
+// Audited static startup-slide update; all loading stays in the guest.
+bool haze_input_splash(uint32_t scene, int screen);
+void haze_input_splash_end(uint32_t scene);
 // Suppress held inputs across closing a PC page, then send its original Back.
 void haze_input_menu_return();
 // Release the PC overlay after neutral input without popping its retail page.

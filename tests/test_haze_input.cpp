@@ -454,6 +454,52 @@ int main() {
     assert(!sample().buttons);
     window_proc(window,WM_LBUTTONUP,0,MAKELPARAM(cursor_position.x,cursor_position.y)); assert(!sample().buttons);
     bindings[0].vk=old_cross;
+    // Escape skips videos without requesting pause, and remains consumed across
+    // STOP, a menu transition, focus loss, repeats, and eventual key release.
+    pause_requested=false; clear_keys();
+    startup_skip.playback(123,uri,true,ticks); ticks+=350;
+    keys[VK_ESCAPE]=true;
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(!pause_requested && sample().buttons==CELL_PAD_CTRL_CROSS);
+    startup_skip.playback(123,uri,false,ticks);
+    haze_input_menu_state(true);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,1ll<<30);
+    assert(!sample().buttons && !pause_requested);
+    focused=false; assert(!sample().buttons);
+    focused=true; ticks+=10; haze_input_update(); assert(!sample().buttons);
+    keys[VK_ESCAPE]=false; window_proc(window,WM_KEYUP,VK_ESCAPE,0);
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(sample().buttons==CELL_PAD_CTRL_START);
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    haze_input_menu_state(false);
+    // Manual video skipping is not limited to the automatic-skip whitelist.
+    const char* story="x-cell-fs:///dev_bdvd/PS3_GAME/USRDIR/movies/story.pam";
+    startup_skip.configure(true,true);
+    assert(startup_skip.playback(789,story,true,ticks)); ticks+=400;
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(sample().buttons==CELL_PAD_CTRL_CROSS && !pause_requested);
+    startup_skip.playback(789,story,false,ticks);
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    // Static slides consume the same manual keys without injecting any guest
+    // buttons. Automatic slides also work unfocused and in controller-only mode.
+    startup_skip.configure(false,false);
+    assert(!haze_input_splash(456,0));
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(!sample().buttons && !pause_requested && haze_input_splash(456,0));
+    window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    assert(!haze_input_splash(456,1)); // A fresh press is needed for the next slide.
+    keys['J']=true; assert(!sample().buttons && haze_input_splash(456,1));
+    haze_input_splash_end(456); haze_input_menu_state(true);
+    assert(!sample().buttons && !haze_input_take_pointer().pressed);
+    keys['J']=false; assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,'J',0); assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    window_proc(window,WM_KEYUP,'J',0); sample(); haze_input_menu_state(false);
+    startup_skip.configure(true,false); enabled=false; focused=false;
+    assert(haze_input_splash(456,0) && !sample().buttons);
+    haze_input_splash_end(456); focused=true; enabled=true;
+    ticks+=10; haze_input_update(); sample();
     DeleteFileA(config_path);
     HazeStartupSkip isolated;
     const uint16_t cross=CELL_PAD_CTRL_CROSS, start=CELL_PAD_CTRL_START;
@@ -472,7 +518,10 @@ int main() {
     assert(isolated.filter(1100,0,true,cross)==cross);
     assert(isolated.filter(10900,0,false,cross)==cross); // Slow loading remains skippable.
     isolated.playback(123,uri,true,20000);
-    assert(!isolated.playback(123,"story.pam",true,20100));
+    assert(isolated.playback(123,"story.pam",true,20100));
+    assert(!isolated.filter(20500,0,true,cross)); // Unknown streams never auto-skip.
+    assert(isolated.filter(20500,cross|start,true,cross)==cross);
+    isolated.playback(123,"story.pam",false,20500);
     assert(!isolated.filter(20500,cross|start,true,cross));
     assert(!isolated.filter(20501,0,true,cross));
     assert(isolated.filter(20502,start,true,cross)==start);
@@ -496,7 +545,7 @@ int main() {
     assert(!isolated.filter(450,0,true,cross));
     assert(isolated.filter(450,cross,true,cross)==cross);
     isolated.playback(123,demo.c_str(),false,900);
-    assert(!isolated.playback(123,(std::string(prefix)+"story.pam").c_str(),true,1000));
+    assert(isolated.playback(123,(std::string(prefix)+"story.pam").c_str(),true,1000));
     assert(!isolated.filter(1050,0,true,cross));
     assert(!isolated.filter(1400,0,true,cross));
     // Exercise production attachment/update/capture against a deterministic

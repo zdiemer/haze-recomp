@@ -13,7 +13,7 @@ Menus, opening-scene gameplay, audio output, and checkpoint saves have been
 tested. Keyboard/mouse and SDL controller support are implemented. Performance,
 rendering, and campaign compatibility are still in development. Full campaign
 completion is not validated; online co-op is not implemented. Native PAMF movies
-play with synchronized video and audio; the current confirm binding skips them.
+play with synchronized video and audio; Escape or the current confirm binding skips them.
 
 ## Install
 

@@ -149,10 +149,14 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
         add_custom_command(OUTPUT "${HAZE_MOVIE_PATCHED}"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_movie_poll.py"
                 "${HAZE_SAVE_PATCHED}" "${HAZE_MOVIE_PATCHED}"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_startup_splash.py"
+                "${HAZE_MOVIE_PATCHED}" "${HAZE_MOVIE_PATCHED}"
             DEPENDS "${HAZE_SAVE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_movie_poll.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_startup_splash.py"
             VERBATIM)
         list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
-        list(APPEND RECOMP_SOURCES "${HAZE_MOVIE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_movie_guest.cpp")
+        list(APPEND RECOMP_SOURCES "${HAZE_MOVIE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_movie_guest.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/haze_startup_guest.cpp")
         set_property(SOURCE "${HAZE_MOVIE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
         set(HAZE_MAIN_LOOP_PATCHED "${HAZE_MOVIE_PATCHED}")
     endif()

@@ -127,6 +127,8 @@ if ($Test) {
     if (-not $RuntimeOnly) {
         & $python "$root/tests/test_movie_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
         if ($LASTEXITCODE -ne 0) { throw 'Movie guest EOF patch regression failed.' }
+        & $python "$root/tests/test_startup_splash_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp" "$clang" "$sdk"
+        if ($LASTEXITCODE -ne 0) { throw 'Startup splash transition regression failed.' }
         & $cmake --build $build --target HazeMovieDecodeTest HazeMoviePlaybackTest HazeMovieSailTest HazeMoviePamfTest --parallel $Jobs
         if ($LASTEXITCODE -ne 0) { throw 'Movie test compilation failed.' }
         & "$exeOutput/HazeMovieSailTest.exe"
