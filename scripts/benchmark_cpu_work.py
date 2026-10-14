@@ -14,6 +14,13 @@ Bit 128 selects coherent row blits if GCM_ROW_BLIT_MODE_FILE uses the same file.
 Bit 256 selects specialized SIMD vertex attribute loops in the renderer.
 Bit 512 selects the full-content-verified vertex-program analysis cache.
 Bit 1024 selects bulk copying of validated triangle-list remap indices.
+Bit 2048 selects specialized signed-16 vertex loops.
+Bit 4096 selects registered native texture write tracking.
+With --mode-column vertex_cache or geometry_cache, flags instead select 0/1
+in RSX_VERTEX_CACHE_FILE or RSX_GEOMETRY_CACHE_FILE. Keep CPU-work flags fixed
+through a separate RSX_CPU_WORK_FILE when comparing those caches.
+With --mode-column vertex_workers, flags select 0..3 extra native workers
+through RSX_VERTEX_WORKERS_FILE; keep the renderer CPU-work file separate.
 The runner stays muted. Compare individual stage costs as well as FPS: guest
 work and NPC activity can drift even when the camera remains stationary.
 """
@@ -80,11 +87,17 @@ def main():
     p.add_argument('--flags', type=int, nargs='+', default=[0,1,0,2,0,4,0,7,0,7])
     p.add_argument('--warmup', type=int, default=80)
     p.add_argument('--frames', type=int, default=180)
+    p.add_argument('--mode-column', choices=['cpu_work', 'vertex_cache', 'geometry_cache', 'vertex_workers'], default='cpu_work',
+                   help='Set the corresponding RSX_CPU_WORK_FILE, RSX_VERTEX_CACHE_FILE, RSX_GEOMETRY_CACHE_FILE, or RSX_VERTEX_WORKERS_FILE control.')
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--pid',type=int,help='Optional native process CPU accounting, including warmup/propagation.')
     a = p.parse_args()
-    if any(f < 0 or f > 2047 for f in a.flags) or a.frames < 60 or a.warmup < 60:
-        p.error('Flags must be 0..2047; use at least 60 warmup and measured frames.')
+    if any(f < 0 or f > 8191 for f in a.flags) or a.frames < 60 or a.warmup < 60:
+        p.error('Flags must be 0..8191; use at least 60 warmup and measured frames.')
+    if a.mode_column in ('vertex_cache', 'geometry_cache') and any(f not in (0, 1) for f in a.flags):
+        p.error('Cache modes must be 0/1.')
+    if a.mode_column == 'vertex_workers' and any(f not in (0, 1, 2, 3) for f in a.flags):
+        p.error('Vertex worker count must be 0..3.')
     blocks = []
     cpu_clock,close_clock=process_clock(a.pid) if a.pid else (None,None)
     try:
@@ -100,7 +113,7 @@ def main():
                 if cpu_clock: cpu_clock()  # Detect an exited process before waiting out the block.
                 rows = tail_rows(a.csv)
                 matched = [r for r in rows if r['frame'] > previous
-                           and r['cpu_work'] == flags]
+                           and r[a.mode_column] == flags]
                 if matched and first is None:
                     first = int(matched[0]['frame']) + a.warmup
                 if first is not None and matched and matched[-1]['frame'] >= first+a.frames-1:
@@ -118,7 +131,7 @@ def main():
                             mean_cores=cpu_ms/1000/wall,
                             note='Includes mode propagation and warmup; distinct from measured frame bounds.')
                     blocks.append(block)
-                    a.output.write_text(json.dumps(dict(blocks=blocks, note=__doc__),indent=2))
+                    a.output.write_text(json.dumps(dict(blocks=blocks, mode_column=a.mode_column, note=__doc__),indent=2))
                     print(json.dumps(block), flush=True)
                     break
                 time.sleep(.25)

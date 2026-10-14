@@ -88,6 +88,15 @@ class PresentWindows(unittest.TestCase):
                 pacer_good.replace('enabled=1', 'enabled=0'),
                 pacer_good+'[haze-frame-pacer-mode] tid=37 enabled=0 qpc=150\n']:
                 with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+            windows['mode_column'] = 'fifo_recycle_wait'
+            args.windows.write_text(json.dumps(windows))
+            fifo_good = good.replace('spurs-queue-wait-mode', 'gcm-fifo-wait-mode')
+            run(fifo_good)
+            for invalid in [good, fifo_good.replace('tid=37', 'tid=38'),
+                fifo_good.replace('qpc=80', 'qpc=101'),
+                fifo_good.replace('native=1', 'native=0'),
+                fifo_good+'[gcm-fifo-wait-mode] tid=37 native=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
             windows['mode_column'] = 'usleep'
             sleep_good = good.replace('spurs-queue-wait-mode', 'usleep-mode').replace(
                 ' native=', ' guest_tid=8 timer=')
@@ -111,13 +120,126 @@ class PresentWindows(unittest.TestCase):
                 global_good.replace('enabled=1', 'enabled=0'),
                 global_good+'[haze-spu-triplet-mode] enabled=0 qpc=150\n']:
                 with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+            windows['mode_column'] = 'native_cursor'
+            args.windows.write_text(json.dumps(windows))
+            cursor_good=global_good.replace('haze-spu-triplet-mode','haze-native-cursor-mode')
+            run(cursor_good)
+            for invalid in ['', global_good, cursor_good.replace('qpc=80','qpc=101'),
+                cursor_good.replace('enabled=1','enabled=0'),
+                cursor_good+'[haze-native-cursor-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+            windows['mode_column'] = 'spu_float_native'
+            args.windows.write_text(json.dumps(windows))
+            float_good=cursor_good.replace('haze-native-cursor-mode','spu-float-native-mode')
+            run(float_good)
+            for invalid in ['', cursor_good, float_good.replace('qpc=80','qpc=101'),
+                float_good.replace('enabled=1','enabled=0'),
+                float_good+'[spu-float-native-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+
+            windows['mode_column'] = 'job0_kernel'
+            args.windows.write_text(json.dumps(windows))
+            kernel_good = '[haze-job0-kernel-mode] enabled=1 qpc=80\n'
+            run(kernel_good)
+            for invalid in ['', float_good, kernel_good.replace('qpc=80', 'qpc=101'),
+                kernel_good.replace('enabled=1', 'enabled=0'),
+                kernel_good+'[haze-job0-kernel-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+
+            windows['mode_column'] = 'spu_worker_reuse'
+            args.windows.write_text(json.dumps(windows))
+            kernel_good = '[spu-worker-reuse-mode] enabled=1 qpc=80\n'
+            run(kernel_good)
+            for invalid in ['', float_good, kernel_good.replace('qpc=80', 'qpc=101'),
+                kernel_good.replace('enabled=1', 'enabled=0'),
+                kernel_good+'[spu-worker-reuse-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+
+            windows['mode_column'] = 'gpu_vertex_pull'
+            args.windows.write_text(json.dumps(windows))
+            pull_good=float_good.replace('spu-float-native-mode','gpu-vertex-pull-mode')
+            run(pull_good)
+            for invalid in ['', float_good, pull_good.replace('qpc=80','qpc=101'),
+                pull_good.replace('enabled=1','enabled=0'),
+                pull_good+'[gpu-vertex-pull-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+            windows['blocks'][0]['flags'] = 2
+            args.windows.write_text(json.dumps(windows))
+            occurrence_good = pull_good.replace('enabled=1','enabled=2')
+            run(occurrence_good)
+            for invalid in [pull_good, occurrence_good.replace('qpc=80','qpc=101'),
+                occurrence_good+'[gpu-vertex-pull-mode] enabled=1 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError): run(invalid)
+            windows['mode_column']='job_wait'
+            windows['blocks'][0]['flags']=1
+            args.windows.write_text(json.dumps(windows))
+            job_good='[haze-job-wait-mode] enabled=1 qpc=80\n'
+            run(job_good)
+            for invalid in [pull_good,job_good.replace('qpc=80','qpc=101'),
+                job_good.replace('enabled=1','enabled=0'),
+                job_good+'[haze-job-wait-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid), self.assertRaises(ValueError):run(invalid)
+
+            windows['mode_column']='vp_packets'
+            args.windows.write_text(json.dumps(windows))
+            vp_good='[haze-vp-packet-mode] enabled=1 qpc=80\n'
+            run(vp_good)
+            for invalid in [job_good,vp_good.replace('qpc=80','qpc=101'),
+                vp_good.replace('enabled=1','enabled=0'),
+                vp_good+'[haze-vp-packet-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid),self.assertRaises(ValueError):run(invalid)
+            windows['mode_column']='vp_consumer'
+            args.windows.write_text(json.dumps(windows))
+            consumer_good='[rsx-vp-burst-mode] enabled=1 qpc=80\n'
+            run(consumer_good)
+            for invalid in [vp_good,consumer_good.replace('qpc=80','qpc=101'),
+                consumer_good.replace('enabled=1','enabled=0'),
+                consumer_good+'[rsx-vp-burst-mode] enabled=0 qpc=150\n']:
+                with self.subTest(log=invalid),self.assertRaises(ValueError):run(invalid)
+
+    def test_fifo_idle_wait_mode_covers_each_full_block(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / 'local') as folder:
+            root = Path(folder)
+            args = SimpleNamespace(csv=root/'p.csv', windows=root/'w.json',
+                output=root/'r.json', min_frames=60, queue_mode_log=root/'native.log')
+            windows = dict(complete=True, qpc_frequency=1000,
+                mode_column='fifo_idle_wait', blocks=[
+                    dict(flags=1, start_qpc=400, end_qpc=3000),
+                    dict(flags=0, start_qpc=3200, end_qpc=5800)])
+            args.windows.write_text(json.dumps(windows))
+            with args.csv.open('w', newline='') as stream:
+                stream.write('# qpc_frequency=1000\npresent_id,guest_frame,qpc\n')
+                for frame in range(151):
+                    stream.write(f'{frame+1},{frame},{frame*40}\n')
+
+            good = ('[fifo-idle-wait-mode] timeout_ms=1 qpc=100\n'
+                    '[fifo-idle-wait-mode] timeout_ms=0 qpc=3100\n')
+            def run(log):
+                args.queue_mode_log.write_text(log)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    report(args)
+
+            run(good)
+            self.assertEqual([b['flags'] for b in json.loads(args.output.read_text())['blocks']], [1, 0])
+
+            invalid = [
+                '',  # No startup event covering the first block.
+                good.replace('timeout_ms=1 qpc=100', 'timeout_ms=0 qpc=100'),
+                good.replace('timeout_ms=0 qpc=3100', ''),  # Second block is uncovered.
+                good.replace('qpc=3100', 'qpc=3000'),  # Change at the first block's end.
+                good.replace('qpc=3100', 'qpc=4000'),  # Change inside the second block.
+                good + '[fifo-idle-wait-mode] timeout_ms=1 qpc=4000\n',
+            ]
+            for log in invalid:
+                with self.subTest(log=log), self.assertRaises(ValueError):
+                    run(log)
 
     def test_modes_and_invalid_windows(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'local') as folder:
             root = Path(folder)
             args = SimpleNamespace(csv=root/'p.csv', windows=root/'w.json',
                                    output=root/'r.json', min_frames=60)
-            for column, modes in [('cpu_work', (259,1283)), ('shadow_compare',(0,1)), ('depth_export',(0,1)), ('window_position',(0,2)), ('depth_clear',(0,1))]:
+            for column, modes in [('cpu_work', (259,1283)), ('cpu_work',(1283,3331)), ('cpu_work',(1283,5379)), ('vertex_cache',(0,1)), ('geometry_cache',(0,1)), ('vertex_workers',(0,1)), ('vertex_workers',(1,3)), ('shadow_compare',(0,1)), ('depth_export',(0,1)), ('window_position',(0,2)), ('depth_clear',(0,1))]:
                 with self.subTest(column=column):
                     rows, ticks = [], 0
                     for i in range(202):

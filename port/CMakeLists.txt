@@ -67,6 +67,22 @@ endif()
 list(LENGTH RECOMP_SOURCES RECOMP_SOURCE_COUNT)
 message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 
+# Restore the audited local jump table in a build-local copy of the old lift.
+# Fresh lifter output is deliberately rejected until its changed body is audited.
+set(HAZE_DISPATCH_SOURCE "${RECOMP_DIR}/ppu_recomp_000.cpp")
+if(EXISTS "${HAZE_DISPATCH_SOURCE}")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HAZE_DISPATCH_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_local_dispatch/ppu_recomp_000.cpp")
+    add_custom_command(OUTPUT "${HAZE_DISPATCH_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_local_dispatch.py"
+            "${HAZE_DISPATCH_SOURCE}" "${HAZE_DISPATCH_PATCHED}"
+        DEPENDS "${HAZE_DISPATCH_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_local_dispatch.py"
+        VERBATIM)
+    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_DISPATCH_SOURCE}")
+    list(APPEND RECOMP_SOURCES "${HAZE_DISPATCH_PATCHED}")
+    set_property(SOURCE "${HAZE_DISPATCH_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+endif()
+
 # Keep the game-derived input untouched; fail closed on an unaudited main loop.
 set(HAZE_PACER_SOURCE "${RECOMP_DIR}/ppu_recomp_003.cpp")
 if(EXISTS "${HAZE_PACER_SOURCE}")
@@ -77,22 +93,57 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
             "${HAZE_PACER_SOURCE}" "${HAZE_PACER_PATCHED}"
         DEPENDS "${HAZE_PACER_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_guest_pacer.py"
         VERBATIM)
+    set(HAZE_JOB_WAIT_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job_wait/ppu_recomp_003.cpp")
+    add_custom_command(OUTPUT "${HAZE_JOB_WAIT_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_wait.py"
+            "${HAZE_PACER_PATCHED}" "${HAZE_JOB_WAIT_PATCHED}"
+        DEPENDS "${HAZE_PACER_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_wait.py"
+        VERBATIM)
+    set(HAZE_VP_UPLOAD_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_vp_upload/ppu_recomp_003.cpp")
+    add_custom_command(OUTPUT "${HAZE_VP_UPLOAD_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_vp_upload.py"
+            "${HAZE_JOB_WAIT_PATCHED}" "${HAZE_VP_UPLOAD_PATCHED}"
+        DEPENDS "${HAZE_JOB_WAIT_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_vp_upload.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/extract_vp_packet_oracle.py"
+        VERBATIM)
     list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PACER_SOURCE}")
-    list(APPEND RECOMP_SOURCES "${HAZE_PACER_PATCHED}")
-    set_property(SOURCE "${HAZE_PACER_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
-    # Compose with the pacing patch; compile one copy of this translation unit.
+    set(HAZE_JOB_TRACE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job_trace/ppu_recomp_003.cpp")
+    add_custom_command(OUTPUT "${HAZE_JOB_TRACE_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_dispatch_trace.py"
+            "${HAZE_VP_UPLOAD_PATCHED}" "${HAZE_JOB_TRACE_PATCHED}"
+        DEPENDS "${HAZE_VP_UPLOAD_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job_dispatch_trace.py"
+        VERBATIM)
+    set(HAZE_SLOT_COPY_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_slot_copy/ppu_recomp_003.cpp")
+    add_custom_command(OUTPUT "${HAZE_SLOT_COPY_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_slot_copy.py"
+            "${HAZE_JOB_TRACE_PATCHED}" --memmove-source "${RECOMP_DIR}/ppu_recomp_005.cpp"
+            "${HAZE_SLOT_COPY_PATCHED}"
+        DEPENDS "${HAZE_JOB_TRACE_PATCHED}" "${RECOMP_DIR}/ppu_recomp_005.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_slot_copy.py"
+        VERBATIM)
+    set(HAZE_PRODUCER_PROFILE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_producer_profile/ppu_recomp_003.cpp")
+    add_custom_command(OUTPUT "${HAZE_PRODUCER_PROFILE_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_producer_profile.py"
+            "${HAZE_SLOT_COPY_PATCHED}" "${HAZE_PRODUCER_PROFILE_PATCHED}"
+        DEPENDS "${HAZE_SLOT_COPY_PATCHED}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_producer_profile.py"
+        VERBATIM)
+    list(APPEND RECOMP_SOURCES "${HAZE_PRODUCER_PROFILE_PATCHED}")
+    set_property(SOURCE "${HAZE_PRODUCER_PROFILE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+    # Compose with the performance patches; compile one copy of this translation unit.
     set(HAZE_SAVE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_save/ppu_recomp_003.cpp")
     add_custom_command(OUTPUT "${HAZE_SAVE_PATCHED}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
-            "${HAZE_PACER_PATCHED}" "${HAZE_SAVE_PATCHED}"
+            "${HAZE_PRODUCER_PROFILE_PATCHED}" "${HAZE_SAVE_PATCHED}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_audio_tick.py"
             "${HAZE_SAVE_PATCHED}" "${HAZE_SAVE_PATCHED}"
-        DEPENDS "${HAZE_PACER_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
+        DEPENDS "${HAZE_PRODUCER_PROFILE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_save_status.py"
             "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_audio_tick.py"
         VERBATIM)
-    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PACER_PATCHED}")
+    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_PRODUCER_PROFILE_PATCHED}")
     list(APPEND RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
     set_property(SOURCE "${HAZE_SAVE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+    set(HAZE_MAIN_LOOP_PATCHED "${HAZE_SAVE_PATCHED}")
     if(WIN32)
         set(HAZE_MOVIE_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_movie/ppu_recomp_003.cpp")
         add_custom_command(OUTPUT "${HAZE_MOVIE_PATCHED}"
@@ -103,7 +154,27 @@ if(EXISTS "${HAZE_PACER_SOURCE}")
         list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_SAVE_PATCHED}")
         list(APPEND RECOMP_SOURCES "${HAZE_MOVIE_PATCHED}" "${CMAKE_CURRENT_SOURCE_DIR}/haze_movie_guest.cpp")
         set_property(SOURCE "${HAZE_MOVIE_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+        set(HAZE_MAIN_LOOP_PATCHED "${HAZE_MOVIE_PATCHED}")
     endif()
+
+endif()
+
+# Bounded native fill at an audited game boundary; original source stays local
+# and untouched, and changed generated function bodies fail closed.
+set(HAZE_BULK_FILL_SOURCE "${RECOMP_DIR}/ppu_recomp_006.cpp")
+if(EXISTS "${HAZE_BULK_FILL_SOURCE}")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HAZE_BULK_FILL_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_bulk_fill/ppu_recomp_006.cpp")
+    add_custom_command(OUTPUT "${HAZE_BULK_FILL_PATCHED}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_bulk_fill.py"
+            "${HAZE_BULK_FILL_SOURCE}" "${HAZE_BULK_FILL_PATCHED}"
+            --caller-source "${RECOMP_DIR}/ppu_recomp_003.cpp"
+        DEPENDS "${HAZE_BULK_FILL_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_bulk_fill.py"
+            "${RECOMP_DIR}/ppu_recomp_003.cpp"
+        VERBATIM)
+    list(REMOVE_ITEM RECOMP_SOURCES "${HAZE_BULK_FILL_SOURCE}")
+    list(APPEND RECOMP_SOURCES "${HAZE_BULK_FILL_PATCHED}")
+    set_property(SOURCE "${HAZE_BULK_FILL_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -166,11 +237,19 @@ endif()
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
 # Winsock/XInput imports -- the link then fails on every platform for a
 # different reason. add_subdirectory hands all of that over with the target.
-option(PS3RECOMP_NATIVE_FLOAT_RUNTIME "Build accelerated SPU arithmetic" ON)
+option(PS3RECOMP_NATIVE_FLOAT_RUNTIME "Build CPU-dispatched native SPU arithmetic" ON)
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 
 option(HAZE_RSX_PROFILE "Collect native renderer CPU/GPU timing counters" OFF)
+option(HAZE_JOB_DIAGNOSTICS "Collect Haze SPU job timing and trace diagnostics" OFF)
+if(HAZE_RSX_PROFILE OR HAZE_JOB_DIAGNOSTICS)
+    # Keep asynchronous SPU job hooks available without enabling the broader
+    # PPU, queue, and renderer instrumentation used by ProfileRenderer.
+    set_property(SOURCE "${PS3RECOMP_DIR}/runtime/spu/spu_workload.c"
+        DIRECTORY "${PS3RECOMP_DIR}" APPEND PROPERTY
+        COMPILE_DEFINITIONS YZ_PERF_PROFILE)
+endif()
 if(HAZE_RSX_PROFILE)
     set_property(SOURCE "${PS3RECOMP_DIR}/runtime/ppu/ppu_loader.cpp"
         "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"
@@ -178,8 +257,7 @@ if(HAZE_RSX_PROFILE)
         COMPILE_DEFINITIONS YZ_PERF_PROFILE)
     # PPU sources belong to HazeRecomp in this directory; the SPU and RSX
     # sources belong to the SDK target. Source properties are directory scoped.
-    set_property(SOURCE "${PS3RECOMP_DIR}/runtime/spu/spu_workload.c"
-        "${PS3RECOMP_DIR}/libs/spurs/cellSpursQueue.c"
+    set_property(SOURCE "${PS3RECOMP_DIR}/libs/spurs/cellSpursQueue.c"
         DIRECTORY "${PS3RECOMP_DIR}" APPEND PROPERTY
         COMPILE_DEFINITIONS YZ_PERF_PROFILE)
     set_property(SOURCE "${PS3RECOMP_DIR}/libs/video/rsx_live_draw.c"
@@ -206,13 +284,17 @@ if(WIN32)
     # The extension accesses private descriptor/resource state. Require an
     # explicit audit when the pinned renderer changes, including on LF checkouts.
     set(HAZE_RSX_SOURCE "${PS3RECOMP_DIR}/libs/video/rsx_live_draw.c")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HAZE_RSX_SOURCE}")
     file(READ "${HAZE_RSX_SOURCE}" HAZE_RSX_TEXT)
     string(REPLACE "\r\n" "\n" HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     string(SHA256 HAZE_RSX_HASH "${HAZE_RSX_TEXT}")
     # Packed depth adds renderer-owned resources and descriptor slots. The live
     # settings transaction still fences before sampler/postprocess changes;
     # display rollback only replaces scanout buffers. Neither owns depth copies.
-    if(NOT HAZE_RSX_HASH STREQUAL "3707dcdf73fc0f8dfefd57273845c1c7073a6a50d891d28c3f2140676d8e4721")
+    # SDK 562bfac GPU pulling shares the existing fenced vertex-upload ring;
+    # decoded geometry caches do not depend on live sampler/effect settings.
+    # Dedicated packed-depth descriptors remain owned by the renderer.
+    if(NOT HAZE_RSX_HASH STREQUAL "95d8e710e7da97dc8809636afa71ce04a946f720b0e69d786fc05046f37be1e9")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
@@ -282,6 +364,7 @@ endif()
 # ppu_recomp.h, so they can only be built against a particular lift.
 set(PS3RECOMP_SCAFFOLD
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_loader.cpp"
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_native_memory.cpp"
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp"
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_sysprx.cpp"
@@ -339,6 +422,40 @@ if(PORT_ENABLE_SPU)
             set_property(SOURCE "${HAZE_TRIPLET_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES
                 "${SPU_DIR}/spu_0041_at_00F2E380" "${CMAKE_CURRENT_SOURCE_DIR}")
         endif()
+        set(HAZE_CURSOR_SOURCE "${SPU_DIR}/spu_0039_at_00F1C100/spu_recomp.c")
+        if(EXISTS "${HAZE_CURSOR_SOURCE}")
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+            set(HAZE_CURSOR_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_native_cursor/spu_recomp.c")
+            add_custom_command(OUTPUT "${HAZE_CURSOR_PATCHED}"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_native_cursor.py"
+                    "${HAZE_CURSOR_SOURCE}" "${HAZE_CURSOR_PATCHED}"
+                    --registration "${SPU_DIR}/spu_workloads.c"
+                DEPENDS "${HAZE_CURSOR_SOURCE}" "${SPU_DIR}/spu_workloads.c"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_native_cursor.py"
+                VERBATIM)
+            list(REMOVE_ITEM SPU_LIFTED "${HAZE_CURSOR_SOURCE}")
+            list(APPEND SPU_LIFTED "${HAZE_CURSOR_PATCHED}")
+            set_property(SOURCE "${HAZE_CURSOR_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES
+                "${SPU_DIR}/spu_0039_at_00F1C100" "${CMAKE_CURRENT_SOURCE_DIR}")
+        endif()
+        set(HAZE_JOB0_SOURCE "${SPU_DIR}/spu_0029_at_00EC9A80/spu_recomp.c")
+        if(EXISTS "${HAZE_JOB0_SOURCE}")
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+            set(HAZE_JOB0_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job0_capture/spu_recomp.c")
+            add_custom_command(OUTPUT "${HAZE_JOB0_PATCHED}"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job0_kernel.py"
+                    "${HAZE_JOB0_SOURCE}" "${HAZE_JOB0_PATCHED}"
+                    --registration "${SPU_DIR}/spu_workloads.c"
+                DEPENDS "${HAZE_JOB0_SOURCE}" "${SPU_DIR}/spu_workloads.c"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job0_capture.py"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/patch_job0_kernel.py"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/prepare_job0_oracle.py"
+                VERBATIM)
+            list(REMOVE_ITEM SPU_LIFTED "${HAZE_JOB0_SOURCE}")
+            list(APPEND SPU_LIFTED "${HAZE_JOB0_PATCHED}")
+            set_property(SOURCE "${HAZE_JOB0_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES
+                "${SPU_DIR}/spu_0029_at_00EC9A80" "${CMAKE_CURRENT_SOURCE_DIR}")
+        endif()
         list(LENGTH SPU_LIFTED SPU_IMAGE_COUNT)
         message(STATUS "Lifted SPU:      ${SPU_IMAGE_COUNT} image(s)")
         # The musttail indirect-branch fast path. Excluded from the runtime
@@ -369,6 +486,16 @@ add_executable(${PROJECT_NAME}
     haze_camera.cpp
     haze_menu.cpp
     haze_guest_pacer.cpp
+    haze_job_wait.cpp
+    haze_bulk_fill.cpp
+    haze_slot_copy.cpp
+    haze_producer_profile.cpp
+    haze_job_profile.cpp
+    haze_job_trace.cpp
+    haze_vp_upload.cpp
+    haze_native_cursor.cpp
+    haze_job0_capture.cpp
+    haze_job0_kernel.cpp
     haze_spu_triplet_copy.cpp
     haze_graphics.cpp
     haze_graphics_live.cpp
@@ -460,6 +587,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${PS3RECOMP_DIR}/libs/codec"
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
+if(HAZE_RSX_PROFILE OR HAZE_JOB_DIAGNOSTICS)
+    set_property(SOURCE "${HAZE_MAIN_LOOP_PATCHED}" main.cpp haze_job_profile.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS HAZE_JOB_PROFILE)
+    set_property(SOURCE "${HAZE_MAIN_LOOP_PATCHED}" main.cpp haze_job_trace.cpp
+        haze_job0_capture.cpp "${HAZE_JOB0_PATCHED}"
+        APPEND PROPERTY COMPILE_DEFINITIONS HAZE_JOB_TRACE)
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ps3recomp_runtime
@@ -556,6 +690,20 @@ if(MSVC)
 else()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "-w;-ffp-contract=off")
+endif()
+
+# This unproven code-size tradeoff is excluded from ordinary builds entirely.
+# PPU_INLINE_READS only changes execution within a deliberately compiled probe.
+option(HAZE_EXPERIMENT_INLINE_READS "Compile the developer inline-read comparison" OFF)
+# Ordinary guest reads may be inlined into lifted host code. The runtime owns
+# the startup eligibility decision; special addresses and diagnostics retain
+# their original accessor. Never apply this remapping to runtime/HLE sources.
+if(HAZE_EXPERIMENT_INLINE_READS AND MSVC)
+    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+        "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
+elseif(HAZE_EXPERIMENT_INLINE_READS)
+    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+        "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
 endif()
 
 # ---------------------------------------------------------------------------

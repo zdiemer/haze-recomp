@@ -30,7 +30,7 @@ void func_0024D3A0(ppu_context*) {
     ++original_calls;
     observed_yaw=read_float(motor+0xb0); observed_pitch=read_float(motor+0xac);
 }
-static bool near(double a,double b) { return std::abs(a-b)<1e-5; }
+static bool near_value(double a,double b) { return std::abs(a-b)<1e-5; }
 int main() {
     haze_camera_initialize(); assert(!installed); // Fail closed on unknown ELF.
     memory[0x24d3a0]=0x7d800026; memory[0x24d3a4]=0xf821fed1;
@@ -43,14 +43,14 @@ int main() {
     ppu_context ctx{}; ctx.gpr[3]=motor;
     auto reset=[] { write_float(motor+0xb0,0); write_float(motor+0xac,0); };
     reset(); dx=1; dy=1; installed(&ctx);
-    assert(near(observed_yaw,-.00174532925) && near(observed_pitch,-.00174532925));
-    installed(&ctx); assert(near(observed_yaw,-.00174532925)); // No residual motion.
+    assert(near_value(observed_yaw,-.00174532925) && near_value(observed_pitch,-.00174532925));
+    installed(&ctx); assert(near_value(observed_yaw,-.00174532925)); // No residual motion.
     reset(); dx=900; installed(&ctx); const float fast=observed_yaw;
-    assert(near(fast,-1.57079632679)); // 90-degree flick in one update, uncapped.
+    assert(near_value(fast,-1.57079632679)); // 90-degree flick in one update, uncapped.
     reset(); for(int i=0;i<90;++i) { dx=10; installed(&ctx); }
-    assert(near(fast,observed_yaw)); // Distance, regardless of packet/frame count.
-    dy=10000; installed(&ctx); assert(near(observed_pitch,-1.25));
-    inversion=true; dy=10000; installed(&ctx); assert(near(observed_pitch,1.15));
+    assert(near_value(fast,observed_yaw)); // Distance, regardless of packet/frame count.
+    dy=10000; installed(&ctx); assert(near_value(observed_pitch,-1.25));
+    inversion=true; dy=10000; installed(&ctx); assert(near_value(observed_pitch,1.15));
     reset(); capture=false; dx=900; installed(&ctx); assert(observed_yaw==0);
     capture=true; memory[controls]=0xdeadbeef; dx=900;
     const auto before=consumptions; installed(&ctx);

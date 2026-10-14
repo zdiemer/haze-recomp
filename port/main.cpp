@@ -31,6 +31,31 @@
 /* The lifter's generated header, which declares ppu_context and the function
  * table. It comes first: everything below is written against that struct. */
 #include "ppu_recomp.h"
+#include "haze_job_profile.h"
+#include "haze_job_trace.h"
+#include "haze_producer_profile.h"
+void haze_job_wait_dump_counts();
+#include "haze_job0_capture.h"
+#include "spu_workload.h"
+#if defined(HAZE_JOB_TRACE) && defined(_WIN32)
+static void haze_spu_trace(unsigned phase, const spu_async_trace_snapshot* job,
+                           uint64_t begin, uint64_t end)
+{
+    if (phase < 1 || phase > 10 || !job) return;
+    uint64_t args[] = {
+        job->job_id, static_cast<uint32_t>(job->image_id) | (uint64_t(job->have_r3) << 32),
+        job->args_ea, (uint64_t(job->taskset_ea) << 32) | job->taskid,
+        job->r3[0], job->r3[1], job->r3[2], job->r3[3]
+    };
+    if (phase == SPU_ASYNC_TRACE_DISPATCH_DISCOVERY) {
+        args[4] = job->dispatch_cause;
+        args[5] = job->claim_qpc;
+        args[6] = job->ready_qpc;
+        args[7] = 0;
+    }
+    haze_job_trace_interval(phase + 6, begin, end, args, 8);
+}
+#endif
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
  * VirtualAlloc, the scalar typedefs -- from one place. On Windows this is a
@@ -129,6 +154,7 @@ unsigned cellGcm_flip_request_count(void);
 uint32_t cellGcmGetCurrentDisplayBufferId(void);
 void cellGcm_fifo_kick_wait(unsigned ms);
 int cellGcm_fifo_has_queued_work(void);
+unsigned cellGcm_fifo_kick_wait_result(unsigned);
 }
 
 void ps3_sampler_start(void); /* SDK profiler has C++ linkage. */
@@ -203,21 +229,30 @@ extern "C" int  rsx_null_backend_pump_messages(void);
  * The ticks are driven off real elapsed time rather than off how long present()
  * took. A hidden or occluded window makes present block hard, and pacing the
  * ticks behind it paces the whole game behind it. */
+extern "C" void spu_float_native_update(void);
+extern "C" void spu_float_native_summary(void);
+extern "C" void haze_vp_upload_summary(void);
 #ifdef _WIN32
 extern "C" {
 int rsx_live_draw_enabled(void);
 void rsx_live_draw_set_render_reference(uint32_t, uint32_t);
 void rsx_live_draw_set_shadow_reference(uint32_t);
+int rsx_live_draw_set_cpu_work(uint32_t);
+int rsx_live_draw_set_texture_write_watch(void*, size_t);
 int rsx_live_draw_init(void*, uint32_t, uint32_t,
     const uint8_t* (*)(void*, uint32_t, uint32_t, uint32_t), void*);
 void rsx_live_draw_present(uint32_t);
 void rsx_live_draw_dump_present_samples(void);
+void rsx_live_draw_dump_shader_cache(void);
 int rsx_null_backend_init(uint32_t, uint32_t, const char*);
 int rsx_null_backend_pump_messages(void);
 void* rsx_null_backend_get_hwnd(void);
 void rsx_null_backend_suppress_present(int);
 uint32_t cellGcmResolveLocated(int, uint32_t);
 uint32_t cellGcmResolveIO(uint32_t);
+void cellGcm_fifo_slow_drain_dump(void);
+void haze_slot_copy_dump_stats(void);
+void cellGcm_vp_burst_dump(void);
 }
 static bool s_rsx_live = false;
 static const uint8_t* live_guest_ptr(void*, uint32_t location, uint32_t offset, uint32_t size)
@@ -278,8 +313,8 @@ static void present_guest_frame(void)
                     presents, flip, duplicates, g_fifo_drains);
     }
     present_frame();
-    g_pump_profile.present += g_pump_profile.now()-profile_begin;
-    ++g_pump_profile.presents;
+    g_pump_profile.finish_present(profile_begin,(unsigned)g_frames_presented+1,
+                                 cellGcm_flip_request_count());
     /* This thread increments and guest threads read, so interlocked rather
      * than a volatile ++, which on arm64 is neither atomic nor a fence. */
     InterlockedIncrement(&g_frames_presented);
@@ -291,8 +326,7 @@ static void profile_fifo_drain(void)
 {
     const auto begin=g_pump_profile.now();
     cellGcm_rsx_process_fifo();
-    g_pump_profile.fifo+=g_pump_profile.now()-begin;
-    ++g_pump_profile.drains;
+    g_pump_profile.add_fifo(g_pump_profile.now()-begin);
 }
 static void drain_and_present(void)
 {
@@ -303,6 +337,7 @@ static void drain_and_present(void)
 
 static DWORD WINAPI frame_clock(LPVOID)
 {
+    spu_float_native_update();
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "Haze Recomp";
 
@@ -355,22 +390,27 @@ static DWORD WINAPI frame_clock(LPVOID)
         /* Haze also waits on RSX labels, which do not signal the REF kick.
          * Keep those render-pass dependencies responsive instead of adding
          * a four-millisecond host delay to every producer/consumer round trip. */
+        g_pump_profile.report_wait_mode();
         const auto wait_begin=g_pump_profile.now();
         if (g_pump_profile.enabled) {
-            ++g_pump_profile.waits;
-            g_pump_profile.queued_waits+=cellGcm_fifo_has_queued_work()!=0;
+            g_pump_profile.note_wait(cellGcm_fifo_has_queued_work()!=0);
+            const unsigned result=cellGcm_fifo_kick_wait_result(g_pump_profile.wait_ms);
+            const auto elapsed=g_pump_profile.now()-wait_begin;
+            g_pump_profile.add_wait(elapsed);
+            g_pump_profile.note_wait_result(result,elapsed,cellGcm_fifo_has_queued_work()!=0);
+        } else {
+            cellGcm_fifo_kick_wait(g_pump_profile.wait_ms);
         }
-        cellGcm_fifo_kick_wait(g_pump_profile.wait_ms);
-        g_pump_profile.wait+=g_pump_profile.now()-wait_begin;
 #endif
         ULONGLONG now = GetTickCount64();
+        spu_float_native_update();
 
         int fired = 0;
         while ((long long)(now - next_tick) >= 0 && fired < 240) {
             const auto tick_begin=g_pump_profile.now();
             cellGcmTickVBlank();
             cellGcmTickFlip();
-            g_pump_profile.tick+=g_pump_profile.now()-tick_begin;
+            g_pump_profile.add_tick(g_pump_profile.now()-tick_begin);
             /* Drain the FIFO every tick. This is what writes the RSX sync-fence
              * labels the game's per-frame logic blocks on, so it has to keep
              * advancing at 60 Hz even while present() throttles. */
@@ -393,10 +433,25 @@ static DWORD WINAPI frame_clock(LPVOID)
 
             if (pump_messages() != 0) {
                 haze_input_shutdown();
+                haze_camera_dump_benchmark();
 #ifdef _WIN32
                 haze_movie_shutdown();
                 haze_movie_present_tick();
                 if (s_rsx_live) rsx_live_draw_dump_present_samples();
+                spu_float_native_summary();
+                haze_vp_upload_summary();
+                g_pump_profile.dump();
+                cellGcm_fifo_slow_drain_dump();
+                cellGcm_vp_burst_dump();
+                haze_job_profile_dump();
+                haze_job_trace_dump();
+                haze_job_wait_dump_counts();
+                // Guest threads are still live: these are shutdown snapshots,
+                // not guaranteed final totals after a producer join.
+                haze_slot_copy_dump_stats();
+                haze_producer_profile::haze_producer_profile_dump();
+                haze_job0_capture_dump();
+                if (s_rsx_live) rsx_live_draw_dump_shader_cache();
 #endif
                 // Closing the native game window ends the host, including its
                 // guest workers, rather than leaving an invisible game running.
@@ -411,6 +466,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                 haze_movie_shutdown();
                 haze_movie_present_tick();
                 haze_input_shutdown();
+                haze_camera_dump_benchmark();
                 const int audio_stopped=haze_audio_stop_output(2000);
                 if (s_rsx_live) {
                     rsx_live_draw_dump_present_samples();
@@ -497,8 +553,22 @@ static bool alloc_guest_vm(void)
     fprintf(stderr, "[wasm-vm] aligned guest arena at 0x%llX, heap break 0x%llX\n",
             (unsigned long long)(uintptr_t)vm_base, (unsigned long long)(uintptr_t)sbrk(0));
 #elif defined(_WIN32)
+    // Haze's validated preparation paths are fixed startup policy. Registering
+    // write-watch below adds bit 4096 only when its reservation succeeds.
+    // A live RSX_CPU_WORK_FILE override is still available for experiments.
+    rsx_live_draw_set_cpu_work(1283u | 8192u);
     AddVectoredExceptionHandler(1, vm_commit_veh);
-    vm_base = (uint8_t*)VirtualAlloc(NULL, VM_SIZE, MEM_RESERVE, PAGE_READWRITE);
+    const char* watch_option = getenv("HAZE_TEXTURE_WRITE_WATCH");
+    const bool watch = watch_option && *watch_option == '1';
+    vm_base = (uint8_t*)VirtualAlloc(NULL, VM_SIZE,
+        MEM_RESERVE | (watch ? MEM_WRITE_WATCH : 0), PAGE_READWRITE);
+    if (!vm_base && watch) {
+        fprintf(stderr,"[texture-write-watch] reservation failed; using ordinary memory\n");
+        vm_base = (uint8_t*)VirtualAlloc(NULL, VM_SIZE, MEM_RESERVE, PAGE_READWRITE);
+    } else if (vm_base && watch) {
+        const int registered = rsx_live_draw_set_texture_write_watch(vm_base, VM_SIZE);
+        fprintf(stderr,"[texture-write-watch] reservation tracked=1 registered=%d bytes=%zu\n",registered,(size_t)VM_SIZE);
+    }
     ppu_vm_size = 0;              /* the whole space is backed; no OOB guard needed */
 #else
     /* No vectored exception handlers off Windows, so the arena is committed up
@@ -581,6 +651,40 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1,
 extern "C" int spu_float_native_set_mode(int requested);
 int main(int argc, char** argv)
 {
+#ifdef _WIN32
+    // Exact whole-image fingerprints; no generic/persistent controller jobs.
+    // Each invocation retains fresh context/LS and existing completion cleanup.
+    spu_workload_allow_worker_reuse(0xDB819079AF1D1346ULL, 30);
+    spu_workload_allow_worker_reuse(0xD7E7384CB7BEF175ULL, 32);
+    spu_workload_allow_worker_reuse(0x6840DFFCF7F63411ULL, 33);
+    spu_workload_allow_worker_reuse(0x6336AB246138D1D7ULL, 41);
+    spu_workload_allow_worker_reuse(0x3AAE86BBB6D9BAA1ULL, 43);
+#endif
+#if defined(HAZE_JOB_TRACE) && defined(_WIN32)
+    const char* job_trace_path = getenv("HAZE_JOB_TRACE_CSV");
+    if (job_trace_path && *job_trace_path)
+        spu_workload_set_async_trace_callback(haze_spu_trace);
+#endif
+#ifdef _WIN32
+    /* Haze's normal configuration uses the measured native paths. Explicit
+     * environment overrides remain available for diagnostic A/B comparisons.
+     * Hardware arithmetic checks CPU/OS support and falls back internally. */
+    static const char* native_defaults[][2] = {
+        {"HAZE_TEXTURE_WRITE_WATCH", "1"},
+        {"HAZE_NATIVE_CURSOR", "1"},
+        {"GCM_FIFO_WAIT_NATIVE", "1"},
+        {"SPURS_QUEUE_WAIT_NATIVE", "1"},
+        {"HAZE_SPU_IDLE_WAIT", "1"},
+        {"SPU_FLOAT_NATIVE", "1"},
+        {"SPU_WORKER_REUSE", "1"},
+        {"SPU_TASKSET_WAKE", "1"},
+        {"RSX_GPU_VERTEX_PULL", "2"},
+        {"RSX_VP_BURST", "1"},
+        {"RSX_PROFILE_LIGHT", "1"},
+    };
+    for (const auto& setting : native_defaults)
+        if (!getenv(setting[0])) _putenv_s(setting[0], setting[1]);
+#endif
     const char* native_float = getenv("SPU_FLOAT_NATIVE");
     spu_float_native_set_mode(!native_float || *native_float != '0');
     if (!haze_graphics_initialize()) return 2;

@@ -169,6 +169,6 @@ if __name__ == '__main__':
     parser.add_argument('--seconds', type=float, default=12)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if args.warmup < 5 or args.seconds < 10 or not 0 <= args.cpu_work <= 2047:
-        parser.error('Use at least 5 warmup seconds, 10 measured seconds and CPU flags 0..2047')
+    if args.warmup < 5 or args.seconds < 10 or not 0 <= args.cpu_work <= 8191:
+        parser.error('Use at least 5 warmup seconds, 10 measured seconds and CPU flags 0..8191')
     record(args)

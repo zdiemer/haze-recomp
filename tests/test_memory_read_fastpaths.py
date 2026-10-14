@@ -62,7 +62,7 @@ def extract_source(sdk: Path, baseline: bool, sample: bool) -> str:
     )
     probes = extract_section(
         source, "static inline bool vm_memory_probes(void)",
-        "static void vm_hotmap(",
+        "/* Generated PPU TUs may opt into an inline ordinary-RAM read path",
     )
     read8 = extract_section(
         source, "uint8_t  vm_read8 (uint64_t a)", "uint16_t vm_read16(uint64_t a)",

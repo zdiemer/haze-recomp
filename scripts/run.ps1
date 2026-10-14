@@ -8,6 +8,8 @@ param(
     [ValidateSet('Live','Legacy')][string]$Renderer = 'Live',
     [switch]$Audio,
     [switch]$CaptureAudio,
+    [switch]$Milestones,
+    [switch]$BootReport,
     [string]$ExecutablePath,
     [string]$GraphicsConfig,
     [switch]$Uncapped,
@@ -41,7 +43,9 @@ $settings = @{
     HAZE_GRAPHICS_CONFIG = $(if ($GraphicsConfig) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($GraphicsConfig) } elseif ($env:HAZE_GRAPHICS_CONFIG) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:HAZE_GRAPHICS_CONFIG) } elseif (Test-Path -LiteralPath (Join-Path $root 'config\graphics.ini')) { Join-Path $root 'config\graphics.ini' } else { $null })
     PS3_HLE_TRACE = [string]$TraceCalls
     PS3_HLE_UNRESOLVED = 'fail'
-    HAZE_BOOT_REPORT = '1'
+    # Recurring guest-thread dumps and stream flushes belong to explicit
+    # bring-up runs, not ordinary frame-time measurements.
+    HAZE_BOOT_REPORT = $(if ($BootReport) { '1' } else { $null })
     # Automated diagnostic runs are silent; retain the real audio pipeline and
     # device timing for representative performance measurements.
     AUDIO_MUTE = $(if ($Audio) { '0' } else { '1' })
@@ -51,7 +55,9 @@ $settings = @{
     RSX_RENDER_RESOLUTION = $(if ($RenderResolution) { $RenderResolution } else { $env:RSX_RENDER_RESOLUTION })
     RSX_MAX_FPS = $(if ($Uncapped) { '0' } else { $env:RSX_MAX_FPS })
     RSX_SHADER_CACHE_DIR = $(if ($env:RSX_SHADER_CACHE_DIR) { $env:RSX_SHADER_CACHE_DIR } else { $shaderCache })
-    PS3_MILESTONE_OUT = (Join-Path $runDir 'boot-milestones.log')
+    # Milestone checkpoints can perform synchronous I/O on guest threads.
+    # Explicit bring-up diagnostic only; keep ordinary performance runs clear.
+    PS3_MILESTONE_OUT = $(if ($Milestones) { Join-Path $runDir 'boot-milestones.log' } else { $null })
     CELLMARK_DUMP = $(if ($CaptureFrames -gt 0) { [string]$CaptureFrames } else { $null })
     CELLMARK_DUMP_MINDRAWS = '1'
     CELLMARK_DUMP_DIR = (Join-Path $runDir 'frames')
@@ -105,6 +111,8 @@ try {
         graphics_settings = $effectiveGraphics
         audio_muted = -not $Audio
         audio_capture = [bool]$CaptureAudio
+        milestone_logging = [bool]$Milestones
+        boot_report_logging = [bool]$BootReport
         max_fps = $(if ($effectiveGraphics.Contains('frame_limit')) { $effectiveGraphics['frame_limit'] } else { $settings.RSX_MAX_FPS })
     }
     $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'local\boot-result.json') -Encoding UTF8
