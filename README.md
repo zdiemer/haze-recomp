@@ -182,6 +182,14 @@ F1 releases the mouse. Add `?debug=1` for controls and logs. Browser saves use
 IndexedDB, separately from native saves. Browser network play is not implemented.
 Native FFmpeg movie playback is not part of the experimental browser build.
 
+Use `scripts/playtest-wasm.py --profile-after 30` with your normal playtest
+arguments to record worker CPU profiles. Summarize a run with
+`py -3 scripts/summarize_browser_cpu.py local/wasm-tests/<run>`.
+The report ranks self samples per worker and shows callers from leaf to root;
+`--top`, `--stack-depth`, and `--json` control the output. It also accepts raw
+Chromium `.cpuprofile` files. Counts are samples, not elapsed time; idle and wait
+functions remain visible, and workers are reported separately.
+
 ## License
 
 The port scaffold derives from ps3recomp's MIT-licensed template; see
