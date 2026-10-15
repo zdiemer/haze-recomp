@@ -84,6 +84,34 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (std::strcmp(mode, "setup") == 0) {
+        _putenv_s("HAZE_PRODUCER_PROFILE_COARSE", "1");
+        {
+            haze_producer_profile::frame_scope root(1, kToc, 0x00680FA0, 23);
+            const unsigned clocks = qpc_calls.load();
+            {
+                haze_producer_profile::call_scope wrong(0x00681054, 0x00C27870);
+                haze_producer_profile::call_scope timer(0x00681108, 0x00680D18);
+                assert(!wrong.active() && !timer.active() && qpc_calls == clocks);
+            }
+            {
+                haze_producer_profile::call_scope acquire(0x00681054, 0x00C2786C);
+                assert(acquire.active());
+            }
+            for (unsigned i = 0; i != 2; ++i) {
+                haze_producer_profile::call_scope queue(0x006810EC, 0x00680A30);
+                assert(queue.active());
+            }
+            {
+                haze_producer_profile::call_scope update(0x00681148, 0x0076F798);
+                assert(update.active());
+            }
+        }
+        haze_producer_profile::haze_producer_profile_dump();
+        assert(qpc_calls == 11 && cycle_calls == 10);
+        return 0;
+    }
+
     if (std::strcmp(mode, "disabled") == 0) {
         _putenv_s("HAZE_PRODUCER_PROFILE_CSV", "");
         { haze_producer_profile::frame_scope wrong_thread(2, kToc, 0x680FA0);
@@ -307,6 +335,15 @@ class ProducerProfileTests(unittest.TestCase):
         self.assertEqual([row["generation"] for row in rows], ["19"] * 4)
         self.assertEqual([int(row["callsite_lr"]) for row in rows],
                          [0, 0x006812F8, 0x00686A50, 0x00681184])
+
+    def test_coarse_setup_keeps_repeated_queue_calls_and_rejects_wrong_edges(self):
+        metadata, rows = parse_csv(self.run_mode("setup"))
+        self.assertEqual(metadata["begun"], "5")
+        self.assertEqual(metadata["completed"], "5")
+        self.assertEqual([row["parent_id"] for row in rows], ["0", "1", "1", "1", "1"])
+        self.assertEqual([row["generation"] for row in rows], ["23"] * 5)
+        self.assertEqual([int(row["callsite_lr"]) for row in rows],
+                         [0, 0x00681054, 0x006810EC, 0x006810EC, 0x00681148])
 
     def test_nested_frame_calls_and_idempotent_dump(self):
         path = self.run_mode("nested")

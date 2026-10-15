@@ -49,11 +49,30 @@ struct configuration {
 };
 
 // A diagnostic frontier through the main frame and its render-record branch.
-// These pinned call-site pairs occur roughly twenty times per frame in the
-// retained opening/combat captures. In particular, omit per-material and
-// per-item loops. Omitted scopes leave the nearest recorded ancestor active.
+// Include frame setup, whose formerly unprofiled interval can dominate tails.
+// Omit per-material/item loops; setup queue entries are intentionally retained.
+// Omitted scopes leave the nearest recorded ancestor active.
 bool coarse_edge(std::uint32_t lr, std::uint32_t callee) noexcept {
     switch (lr) {
+    case 0x00680FF8: return callee == 0x006DD638;
+    case 0x00681004: return callee == 0x0068ECD8;
+    case 0x00681014: return callee == 0x00719EF8;
+    case 0x0068101C: return callee == 0x00682060;
+    case 0x00681024: return callee == 0x0076F580;
+    case 0x0068102C: return callee == 0x006CBED0;
+    case 0x0068103C: return callee == 0x00C2796C;
+    case 0x00681054: return callee == 0x00C2786C;
+    case 0x006810B8: return callee == 0x00723660;
+    case 0x006810EC: return callee == 0x00680A30;
+    case 0x00681100: return callee == 0x006C8870;
+    case 0x0068110C: return callee == 0x006A6220;
+    case 0x00681114: return callee == 0x006D1E90;
+    case 0x00681120: return callee == 0x0074C950;
+    case 0x00681128: return callee == 0x006808D8;
+    case 0x0068112C: return callee == 0x0076E6C0;
+    case 0x00681134: return callee == 0x00709838;
+    case 0x0068113C: return callee == 0x006B2DF0;
+    case 0x00681148: return callee == 0x0076F798;
     case 0x006812F8: return callee == 0x006869F0;
     case 0x00681184: return callee == 0x005FBB70;
     case 0x0068128C: return callee == 0x00697C70;
