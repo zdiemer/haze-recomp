@@ -220,8 +220,12 @@ int main(int argc,char **argv) {
     durations[repeat]=end.QuadPart-begin.QuadPart;
     require(cursor==header.event_count,"unconsumed events");
     require(ctx->pc==header.final_pc && ctx->status==header.final_status && ctx->image_id==32,"final continuation mismatch");
+#ifdef HAZE_JOB13_COMPARE_FINAL
+    HAZE_JOB13_COMPARE_FINAL(ctx,initial,expected_gpr,expected_ls);
+#else
     equal_bytes(ctx->gpr,expected_gpr,sizeof ctx->gpr,"final registers");
     equal_bytes(ctx->ls,expected_ls,SPU_LS_SIZE,"final local store");
+#endif
     require(final_mxcsr==header.final_mxcsr,"floating-point status mismatch");
     }
     printf("PASS whole-batch replay variant=%s events=%u payload=%u steps=%llu\n",
