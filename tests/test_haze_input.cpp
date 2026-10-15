@@ -8,6 +8,7 @@
 static bool focused=true;
 static bool keys[256];
 static ULONGLONG ticks=100;
+static LONG message_time=-1;
 static unsigned graphics_reloads,overlay_cycles;
 void haze_graphics_request_reload() { ++graphics_reloads; }
 void haze_graphics_request_overlay_cycle() { ++overlay_cycles; }
@@ -16,6 +17,7 @@ static SHORT test_key(int vk) { return keys[vk] ? (SHORT)0x8000 : 0; }
 static HWND test_foreground() { return focused ? (HWND)1 : nullptr; }
 static DWORD test_owner(HWND hwnd,DWORD* pid) { *pid=hwnd ? GetCurrentProcessId() : 0; return 1; }
 static ULONGLONG test_time() { ticks+=8; return ticks; }
+static LONG test_message_time() { return message_time<0 ? LONG(ticks) : message_time; }
 static UINT forwarded_message;
 static std::string forwarded_caption;
 static RAWINPUT raw_packet;
@@ -51,6 +53,7 @@ static LRESULT test_window_proc(WNDPROC,HWND,UINT msg,WPARAM,LPARAM lp) {
 #define GetForegroundWindow test_foreground
 #define GetWindowThreadProcessId test_owner
 #define GetTickCount64 test_time
+#define GetMessageTime test_message_time
 #undef CallWindowProc
 #define CallWindowProc test_window_proc
 #define GetRawInputData test_raw_input
@@ -213,25 +216,77 @@ int main() {
     // Physical key state can lead queued window messages. Menus must not
     // report the physical tap and then replay its queued press as a second tap.
     haze_input_menu_state(true);
-    for (int vk : {VK_UP,VK_DOWN,VK_SPACE,int('X')}) {
+    for (int vk : {VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_SPACE,int('X')}) {
         clear_keys(); keys[vk]=true;
-        assert(!sample().buttons);
+        message_time=LONG(ticks);
+        const auto physical=sample().buttons;
+        assert(physical && !(physical&(physical-1)));
         keys[vk]=false;
         assert(!sample().buttons);
         window_proc(window,WM_KEYDOWN,vk,0);
         window_proc(window,WM_KEYUP,vk,0);
-        const auto tap=sample().buttons;
-        assert(tap && !(tap&(tap-1)));
+        assert(!sample().buttons);
+        message_time=-1;
+        // A later tap entirely between polls still reaches one report.
+        ticks+=20;
+        window_proc(window,WM_KEYDOWN,vk,0);
+        window_proc(window,WM_KEYUP,vk,0);
+        assert(sample().buttons==physical);
+        assert(!sample().buttons);
+        // Confirm/back releases also remain single actions across page changes.
+        keys[vk]=true;
+        window_proc(window,WM_KEYDOWN,vk,0);
+        assert(sample().buttons==physical);
+        keys[vk]=false;
+        haze_input_menu_state(false); haze_input_menu_state(true);
+        assert(!sample().buttons);
+        window_proc(window,WM_KEYUP,vk,0);
         assert(!sample().buttons);
     }
+    // WASD uses the same physical/timestamp reconciliation through stick axes.
+    keys['W']=true; message_time=LONG(ticks);
+    assert(sample().ly==1);
+    keys['W']=false; assert(sample().ly==128);
+    window_proc(window,WM_KEYDOWN,'W',0); window_proc(window,WM_KEYUP,'W',0);
+    assert(sample().ly==128); message_time=-1;
     // Hold stays continuous; Windows auto-repeat must not add press edges.
+    keys[VK_DOWN]=true;
     window_proc(window,WM_KEYDOWN,VK_DOWN,0);
     for (int i=0;i<100;++i) {
         window_proc(window,WM_KEYDOWN,VK_DOWN,1ll<<30);
         assert(sample().buttons==CELL_PAD_CTRL_DOWN);
     }
+    // A delayed WM_KEYUP must not stretch a brief physical press into the
+    // guest's repeat delay, even if the window thread stalls for a second.
+    keys[VK_DOWN]=false;
+    for (int i=0;i<100;++i) assert(!sample().buttons);
     window_proc(window,WM_KEYUP,VK_DOWN,0);
     assert(!sample().buttons);
+    // Physical input takes hover ownership before its queued WM_KEYDOWN.
+    menu_pointer.active=true;
+    keys[VK_UP]=true;
+    assert(sample().buttons==CELL_PAD_CTRL_UP && !menu_pointer.active);
+    keys[VK_UP]=false; assert(!sample().buttons);
+    // Focus loss quarantines a held key until release. An old queued press
+    // cannot resurrect it after focus returns or a native page closes.
+    keys[VK_DOWN]=true;
+    focused=false; message_time=LONG(ticks); assert(!sample().buttons);
+    focused=true;
+    window_proc(window,WM_KEYDOWN,VK_DOWN,0);
+    assert(!sample().buttons);
+    keys[VK_DOWN]=false; assert(!sample().buttons);
+    window_proc(window,WM_KEYUP,VK_DOWN,0); message_time=-1;
+    ticks+=20; keys[VK_DOWN]=true;
+    assert(sample().buttons==CELL_PAD_CTRL_DOWN);
+    keys[VK_DOWN]=false; assert(!sample().buttons);
+    // Reconciliation uses Win32's wrapping 32-bit millisecond timestamps.
+    HazeMenuKey wrap;
+    bool edge=false;
+    assert(wrap.sample(true,0xfffffff0,edge) && edge);
+    assert(!wrap.sample(false,0x10,edge));
+    wrap.press(0xffffffe0); assert(!wrap.sample(false,0x20,edge));
+    wrap.press(0x30); assert(wrap.sample(false,0x40,edge));
+    assert(!wrap.sample(false,0x50,edge));
     // A key still held after a transition cannot reactivate the next menu.
     window_proc(window,WM_KEYDOWN,VK_SPACE,0);
     clear_keys();

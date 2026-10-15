@@ -98,6 +98,19 @@ existing hex-pattern menu background is not used for the popup interior.
 
 ## Validation
 
+For #102, menu keyboard holds use physical samples so a delayed window-message
+release cannot keep navigation repeating. Queued keydown timestamps preserve
+otherwise missed taps and discard messages for presses already sampled. Focus
+loss and native-page handoffs suppress held keys until release. The guest retains
+its navigation repeat delay/rate and confirm/back event handling.
+
+The input regression suite covers delayed press/release delivery, buffered taps,
+hover handoff, focus suppression, clock wrap, and startup transitions. A native
+comparison on isolated desktops used process-local focus and physical-key test
+stand-ins: a 100 ms press with its release message delayed by 800 ms moved eight
+rows on the baseline and one on the fix. This tests the production mapper and
+guest menu together; physical keyboard feel still needs interactive verification.
+
 For #107, the native build and `scripts/test-input.ps1` passed against the
 pinned SDK. A private-desktop run with copied saves checked Video, Audio and
 Controls over the dark main menu and the bright carrier checkpoint, including

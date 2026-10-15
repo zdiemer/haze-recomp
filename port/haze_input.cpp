@@ -14,6 +14,7 @@
 #include "cellSail.h"
 #include "haze_startup.h"
 #include "haze_input_key.h"
+#include "haze_menu_key.h"
 #include "haze_quit.h"
 #include "haze_quit_menu.h"
 #include <algorithm>
@@ -50,6 +51,8 @@ HazeStartupSkip startup_skip;
 ULONGLONG startup_epoch=0;
 enum { KEY_HELD=1, KEY_PENDING=2 };
 std::atomic<unsigned> message_keys[256];
+std::mutex menu_keys_mutex;
+HazeMenuKey menu_keys[256];
 std::atomic<bool> capture_click;
 std::atomic<bool> menu_active{false}, pause_requested{false};
 ULONGLONG pause_request_time=0;
@@ -112,16 +115,31 @@ bool down(int vk) {
     // Buffer an otherwise missed tap for one host report, rather than holding
     // released buttons for 120ms. The SDK caches that report between pad reads.
     const unsigned state=message_keys[vk].fetch_and(~unsigned(KEY_PENDING));
-    // In menus, use one ordered source for a key's press and release. Sampling
-    // the physical key first and later replaying its queued messages can turn
-    // one tap into two presses, restarting the guest's navigation repeat.
-    // Presentation release draining must still see physical keys after focus
-    // loss clears the message buffer and the following menu becomes active.
+    if (vk>VK_XBUTTON2) {
+        bool new_press=false, result;
+        {
+            std::lock_guard lock(menu_keys_mutex);
+            result=menu_keys[vk].sample((GetAsyncKeyState(vk)&0x8000)!=0,
+                                       uint32_t(GetTickCount64()),new_press);
+        }
+        // A queued key message can lag a render stall. Release immediately on
+        // the physical sample, and relinquish hover on the first sampled press.
+        if (menu_active && !startup_skip.owns_input()) {
+            if (new_press) { last_family=HazeInputFamily::Keyboard; pointer_mode(false); }
+            return result;
+        }
+    }
     return (state & (KEY_HELD|KEY_PENDING)) ||
         ((!menu_active || startup_skip.owns_input()) && (GetAsyncKeyState(vk) & 0x8000));
 }
 void clear_keys() {
     for (auto& key : message_keys) key=0;
+    {
+        std::lock_guard lock(menu_keys_mutex);
+        const auto now=uint32_t(GetTickCount64());
+        for (int vk=0;vk<256;++vk)
+            menu_keys[vk].reset((GetAsyncKeyState(vk)&0x8000)!=0,now);
+    }
     capture_click=false;
 }
 void record_key(int vk, bool held, ULONGLONG) {
@@ -132,6 +150,11 @@ void record_key(int vk, bool held, ULONGLONG) {
         next=held ? previous | KEY_HELD | ((previous & KEY_HELD) ? 0u : KEY_PENDING)
                   : previous & ~unsigned(KEY_HELD);
     } while (!message_keys[vk].compare_exchange_weak(previous,next));
+    if (vk>VK_XBUTTON2) {
+        std::lock_guard lock(menu_keys_mutex);
+        if (held && !(previous & KEY_HELD)) menu_keys[vk].press(uint32_t(GetMessageTime()));
+        if (!held) menu_keys[vk].release(uint32_t(GetMessageTime()));
+    }
     if (held && !(previous & KEY_HELD) && enabled) {
         last_family=HazeInputFamily::Keyboard;
         capture_policy.use_keyboard();
