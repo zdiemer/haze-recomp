@@ -19,11 +19,31 @@ Windows PowerShell and System.Drawing, with no downloaded tools or image assets.
 The source PNG and generated ICO/RC files stay in ignored game/build directories.
 
 If the PNG is missing, corrupt, not PNG, over 8 MiB or over 4096 pixels on either
-side, conversion warns and embeds the standard Windows application icon. A
+side, conversion warns and falls back to the bundled Haze logo described below;
+if that is also unavailable it embeds the standard Windows application icon. A
 later build picks up added, changed or removed artwork without reconfiguring.
 Unchanged output keeps its timestamp to avoid recompiling the resource. File
 write/replacement failures stop the build instead of silently retaining stale
 artwork. Generated files are written and flushed before replacement.
+
+## Bundled Haze logo
+
+`assets/haze-logo.png` is a crop of the Haze wordmark from the official 2007
+Haze wallpaper distributed through the TimeSplitters World downloads page
+(timesplitters-world.de, "Haze Logo" wallpaper). Haze is a trademark of Ubisoft
+Entertainment and Free Radical Design; the artwork is bundled solely to
+identify this port of the game. `assets/haze-logo.ico` is the same artwork as a
+seven-layer ICO in the format `scripts/build-icon.ps1` produces.
+
+The bundled logo covers the builds that have no game artwork. Hosted release
+builds use private build inputs containing generated sources only, so no
+`ICON0.PNG` exists there: `port/windows-icon.cmake` passes the logo to
+`scripts/build-icon.ps1` as `-FallbackSource`, and the game and launcher embed
+it instead of the generic Windows application icon. Local builds with game
+data still prefer the disc's own `ICON0.PNG`. The setup executable is
+downloaded before any disc image exists, so `scripts/installer.py` always
+brands it with the bundled ICO (`csc /win32icon`), and the installer window
+and taskbar button use the same icon through the form's associated icon.
 
 Run `scripts/test-icon.ps1 -SharedRoot <asset root>` to check ICO layer dimensions,
 alpha, aspect ratio, stable output timestamps, missing/corrupt fallback, actual

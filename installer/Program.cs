@@ -69,6 +69,7 @@ internal sealed class Installer : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         BackColor = Color.White;
         var heading = new Label { Text = "Install Haze Recomp", Left = 28, Top = 24, Width = 610, Height = 38,
             Font = new Font("Segoe UI", 19, FontStyle.Bold) };

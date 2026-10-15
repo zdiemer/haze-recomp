@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Source,
     [Parameter(Mandatory=$true)][string]$Output,
-    [Parameter(Mandatory=$true)][string]$Resource
+    [Parameter(Mandatory=$true)][string]$Resource,
+    [string]$FallbackSource
 )
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Drawing
@@ -19,22 +20,33 @@ function Write-Changed([string]$Path,[byte[]]$Bytes) {
     } finally { if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) } }
 }
 
-$art=$null
-try {
-    if (-not [IO.File]::Exists($Source)) { throw 'ICON0.PNG is missing' }
-    if ((Get-Item -LiteralPath $Source).Length -gt 8MB) { throw 'ICON0.PNG exceeds 8 MiB' }
-    $inputStream=[IO.File]::OpenRead($Source)
+function Read-Artwork([string]$Path,[string]$Label) {
+    if (-not [IO.File]::Exists($Path)) { throw "$Label is missing" }
+    if ((Get-Item -LiteralPath $Path).Length -gt 8MB) { throw "$Label exceeds 8 MiB" }
+    $inputStream=[IO.File]::OpenRead($Path)
     try {
         $decoded=[Drawing.Image]::FromStream($inputStream,$false,$true)
         try {
             if ($decoded.RawFormat.Guid -ne [Drawing.Imaging.ImageFormat]::Png.Guid -or
-                $decoded.Width -gt 4096 -or $decoded.Height -gt 4096) { throw 'Unsupported icon image' }
-            $art=[Drawing.Bitmap]::new($decoded)
+                $decoded.Width -gt 4096 -or $decoded.Height -gt 4096) { throw "Unsupported $Label image" }
+            return [Drawing.Bitmap]::new($decoded)
         } finally { $decoded.Dispose() }
     } finally { $inputStream.Dispose() }
+}
+
+$art=$null
+try {
+    $art=Read-Artwork $Source 'ICON0.PNG'
 } catch {
-    Write-Warning "Local Haze icon unavailable ($($_.Exception.Message)); using the Windows application icon."
-    $art=[Drawing.SystemIcons]::Application.ToBitmap()
+    Write-Warning "Local Haze icon unavailable ($($_.Exception.Message))."
+    if ($FallbackSource) {
+        try { $art=Read-Artwork $FallbackSource 'Bundled Haze logo' }
+        catch { Write-Warning "Bundled Haze logo unavailable ($($_.Exception.Message))." }
+    }
+    if (-not $art) {
+        Write-Warning 'Using the Windows application icon.'
+        $art=[Drawing.SystemIcons]::Application.ToBitmap()
+    }
 }
 
 try {

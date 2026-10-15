@@ -44,4 +44,31 @@ if ([Convert]::ToBase64String($fallback) -eq [Convert]::ToBase64String($original
 [IO.File]::WriteAllText($source,'invalid png')
 & $Converter -Source $source -Output $output -Resource $resource
 if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($output)) -ne [Convert]::ToBase64String($fallback)) { throw 'Invalid input did not use the same fallback' }
+# A bundled fallback source (the repo Haze logo in real builds) must replace
+# the generic application icon when the game artwork is unavailable.
+$fallbackSource=Join-Path $Directory 'fallback source.png'
+$fallbackImage=[Drawing.Bitmap]::new(80,40)
+$drawing=[Drawing.Graphics]::FromImage($fallbackImage)
+try { $drawing.Clear([Drawing.Color]::Blue); $fallbackImage.Save($fallbackSource,[Drawing.Imaging.ImageFormat]::Png) }
+finally { $drawing.Dispose(); $fallbackImage.Dispose() }
+& $Converter -Source (Join-Path $Directory 'missing.png') -FallbackSource $fallbackSource -Output $output -Resource $resource
+$bundled=[IO.File]::ReadAllBytes($output)
+if ([Convert]::ToBase64String($bundled) -eq [Convert]::ToBase64String($fallback)) { throw 'Bundled fallback source was not used' }
+$stream=[IO.MemoryStream]::new($bundled)
+$reader=[IO.BinaryReader]::new($stream)
+try {
+    $stream.Position=6+16*6
+    $stream.Position+=8
+    $length=$reader.ReadUInt32(); $offset=$reader.ReadUInt32()
+    $stream.Position=$offset; $png=[IO.MemoryStream]::new($reader.ReadBytes($length))
+    $image=[Drawing.Bitmap]::new($png)
+    try {
+        $center=$image.GetPixel(128,128)
+        if ($center.A -ne 255 -or $center.B -ne 255 -or $center.R -ne 0) { throw 'Bundled fallback artwork changed' }
+        if ($image.GetPixel(0,0).A -ne 0) { throw 'Bundled fallback lost its transparent margins' }
+    } finally { $image.Dispose(); $png.Dispose() }
+} finally { $reader.Dispose(); $stream.Dispose() }
+[IO.File]::WriteAllText($source,'invalid png')
+& $Converter -Source $source -FallbackSource $fallbackSource -Output $output -Resource $resource
+if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($output)) -ne [Convert]::ToBase64String($bundled)) { throw 'Invalid input did not use the bundled fallback' }
 Write-Output 'ICO conversion: seven sizes, alpha, proportions, unchanged timestamps, missing/corrupt fallback passed.'

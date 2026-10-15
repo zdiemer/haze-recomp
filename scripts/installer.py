@@ -23,6 +23,7 @@ def build_installer(msi, tools, output, version):
     subprocess.run([str(compiler), '/nologo', '/target:winexe', '/platform:x64',
         '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
         '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll',
+        f'/win32icon:{(ROOT / "assets" / "haze-logo.ico").resolve()}',
         f'/resource:{payload.resolve()},payload.zip', f'/out:{result.resolve()}',
         str(ROOT / 'installer/Program.cs')], check=True)
     subprocess.run([str(result.resolve()), '--verify-payload'], check=True)

@@ -1,6 +1,7 @@
 """Private input exclusion and immutable release artifact verification."""
 from pathlib import Path
 import json
+import struct
 import sys
 import subprocess
 import tempfile
@@ -201,6 +202,51 @@ class Artifacts(unittest.TestCase):
         result, calls = self.publisher(verify_only=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(calls, '')
+
+
+class ReleaseBuildSteps(unittest.TestCase):
+    def test_game_and_launcher_builds_share_the_release_root(self):
+        # Both executables embed their program icon from the shared root
+        # (windows-icon.cmake reads game/disc/PS3_GAME/ICON0.PNG under it).
+        # The launcher step previously omitted -SharedRoot, so release
+        # launchers fell back to the default Windows icon (#108).
+        script = (Path(__file__).resolve().parents[1] / 'scripts' /
+                  'build-release.ps1').read_text(encoding='utf-8')
+        for step in ('game', 'launcher'):
+            self.assertRegex(
+                script,
+                rf"Run-ReleaseStep '{step}'[^)]*'-SharedRoot',\$inputsPath",
+                f"release {step} step must pass -SharedRoot $inputsPath")
+
+    def test_bundled_logo_is_wired_into_setup_and_icon_fallback(self):
+        # Hosted release builds have no game artwork: the private build
+        # inputs carry generated sources only. The bundled logo is the icon
+        # source for the setup executable (#98) and the fallback artwork
+        # for the game/launcher when ICON0.PNG is unavailable (#108).
+        root = Path(__file__).resolve().parents[1]
+        png = root / 'assets/haze-logo.png'
+        ico = root / 'assets/haze-logo.ico'
+        self.assertTrue(png.is_file())
+        with png.open('rb') as stream:
+            self.assertEqual(stream.read(8), b'\x89PNG\r\n\x1a\n')
+        with ico.open('rb') as stream:
+            data = stream.read()
+        reserved, kind, count = struct.unpack_from('<HHH', data)
+        self.assertEqual((reserved, kind, count), (0, 1, 7))
+        sizes = []
+        for index in range(count):
+            width, height = struct.unpack_from('<BB', data, 6 + 16 * index)
+            sizes.append(width or 256)
+            self.assertEqual(width, height)
+        self.assertEqual(sizes, [16, 24, 32, 48, 64, 128, 256])
+        installer = (root / 'scripts/installer.py').read_text(encoding='utf-8')
+        self.assertIn('/win32icon:', installer)
+        self.assertIn('haze-logo.ico', installer)
+        cmake = (root / 'port/windows-icon.cmake').read_text(encoding='utf-8')
+        self.assertIn('-FallbackSource "${icon_root}/assets/haze-logo.png"',
+                      cmake)
+        converter = (root / 'scripts/build-icon.ps1').read_text(encoding='utf-8')
+        self.assertIn('[string]$FallbackSource', converter)
 
 
 if __name__ == '__main__':

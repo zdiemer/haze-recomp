@@ -48,7 +48,7 @@ Run-ReleaseStep 'game' $shell @('-NoProfile','-ExecutionPolicy','Bypass','-File'
     '-Configuration','Release','-SharedRoot',$inputsPath,'-Python',$Python,'-Jobs',"$Jobs",
     '-SDL3Root',"$work/sources/sdl",'-FFmpegRoot',"$work/ffmpeg")
 Run-ReleaseStep 'launcher' $shell @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$project/scripts/build-launcher.ps1",
-    '-Configuration','Release','-Test')
+    '-Configuration','Release','-SharedRoot',$inputsPath,'-Test')
 Run-ReleaseStep 'tools' $shell @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$tooling/scripts/prepare-release-tools.ps1",
     '-OutputDirectory',"$work/tools")
 Run-ReleaseStep 'stage' $shell @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$project/scripts/stage-runtime.ps1",

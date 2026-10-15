@@ -19,6 +19,7 @@ function(haze_local_icon target)
         COMMAND "${HAZE_ICON_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
             -File "${icon_root}/scripts/build-icon.ps1"
             -Source "${icon_assets}/game/disc/PS3_GAME/ICON0.PNG"
+            -FallbackSource "${icon_root}/assets/haze-logo.png"
             -Output "${icon_dir}/app.ico" -Resource "${icon_rc}"
         BYPRODUCTS "${icon_dir}/app.ico" "${icon_rc}"
         VERBATIM)
