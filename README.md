@@ -106,8 +106,8 @@ outputs are ignored by Git. The first launch installs about 4 GB of game data.
 | Switch weapon | X or mouse wheel |
 | Grenade / Nectar or play dead | G / Q |
 | Melee | F |
-| Menu confirm / back | Space / X |
-| Start / pause | Enter / Escape |
+| Menu confirm / back | Space or Enter / X |
+| Start / pause | Enter / Escape (in menus, Enter confirms instead) |
 | Release or recapture mouse | F1 |
 
 Menus also support the pointer: left click selects, right click goes back.

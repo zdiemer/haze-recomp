@@ -458,11 +458,18 @@ int poll(u32 port, CellPadHostInput* input, void*) {
         if (b.vk >= VK_LBUTTON && b.vk <= VK_XBUTTON2 &&
             (!presentation_input && (!captured || menu_active || pause_requested || suppress_mouse_buttons))) continue;
         if (b.vk == VK_LBUTTON && capture_click) continue;
+        // In a menu Enter confirms instead of reporting its Start binding, so
+        // one press cannot both activate an item and toggle pause (#101).
+        if (menu_active && b.vk == VK_RETURN && b.button == CELL_PAD_CTRL_START) continue;
         if (key_down(b.vk)) input->buttons |= b.button;
     }
     // Escape is confirm only during an owned presentation. During release
     // draining it still counts as held input, even when Start is rebound.
     if (key_down(VK_ESCAPE)) input->buttons |= movie ? CELL_PAD_CTRL_CROSS : CELL_PAD_CTRL_START;
+    // Enter is the expected PC confirmation key: while a guest menu owns the
+    // pad it reports Cross, whatever it is bound to. Outside menus it keeps
+    // its binding (Start by default), including at title/pause prompts.
+    if (menu_active && key_down(VK_RETURN)) input->buttons |= CELL_PAD_CTRL_CROSS;
     const int horizontal=(int)key_down(movement[3])-(int)key_down(movement[2]);
     const int vertical=(int)key_down(movement[1])-(int)key_down(movement[0]);
     if (horizontal) input->lx=(u8)(128+127*horizontal);

@@ -472,6 +472,27 @@ int main() {
     keys[VK_RETURN]=true; assert(!(sample().buttons&CELL_PAD_CTRL_START));
     keys[VK_RETURN]=false; keys['K']=true; assert(sample().buttons&CELL_PAD_CTRL_START);
     keys['K']=false; assert(!(sample().buttons&CELL_PAD_CTRL_START));
+    // Enter confirms in menus even though Start moved to K (#101): the press
+    // reports Cross only. Enter remains unbound outside menus, and the key
+    // actually bound to Start keeps reporting Start inside menus too.
+    haze_input_menu_state(true);
+    keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    keys[VK_RETURN]=false; assert(!sample().buttons);
+    keys['K']=true; assert(sample().buttons==CELL_PAD_CTRL_START);
+    keys['K']=false; assert(!sample().buttons);
+    haze_input_menu_state(false); sample();
+    keys[VK_RETURN]=true; assert(!sample().buttons);
+    keys[VK_RETURN]=false;
+    // With Enter bound to Start again, a menu press still reports Cross only:
+    // one press cannot both confirm and toggle pause.
+    bindings[10].vk=VK_RETURN;
+    haze_input_menu_state(true);
+    keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    keys[VK_RETURN]=false; assert(!sample().buttons);
+    haze_input_menu_state(false); sample();
+    keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_START);
+    keys[VK_RETURN]=false; sample();
+    bindings[10].vk='K';
     // A rebound manual skip cannot activate Start, including across focus loss.
     startup_skip.configure(false,true);
     assert(startup_skip.playback(123,uri,true,ticks));
