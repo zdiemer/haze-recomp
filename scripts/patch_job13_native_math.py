@@ -153,8 +153,10 @@ void haze_job13_native_math_report(void) {
 '''
 
 
-def patch(source, registration, execute_native=False, diagnostics=True):
-    validate(source, registration)
+def patch_trusted(source, execute_native=False, diagnostics=False):
+    """Apply only the exact DA08 rename/wrapper after an enclosing patcher has
+    already validated the complete generated image source and registration.
+    """
     definition = 'void ' + PREFIX + '0000DA08(spu_context* ctx) {'
     if source.count(definition) != 1:
         raise ValueError('DA08 definition is not unique')
@@ -162,6 +164,11 @@ def patch(source, registration, execute_native=False, diagnostics=True):
     mode = '#define HAZE_JOB13_EXECUTE_NATIVE_MATH ' + str(int(execute_native)) + '\n'
     mode += '#define HAZE_JOB13_MATH_DIAGNOSTICS ' + str(int(diagnostics)) + '\n'
     return source.replace(definition, renamed, 1) + mode + WRAPPER
+
+
+def patch(source, registration, execute_native=False, diagnostics=True):
+    validate(source, registration)
+    return patch_trusted(source, execute_native, diagnostics)
 
 
 if __name__ == '__main__':
