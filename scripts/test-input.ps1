@@ -34,6 +34,13 @@ foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test
     & "$root/local/$test.exe"
     if ($LASTEXITCODE -ne 0) { throw "$test failed" }
 }
+# Exercise the production DSP wrappers against the SDK's independent integer
+# oracle, including extended values, rounding modes and runtime fallback.
+$audioFloatTest=Join-Path $root 'local/test_haze_audio_spu_float.exe'
+& $clang /nologo /W0 /O2 /Ob1 /std:c11 /DSPU_FLOAT_NATIVE_RUNTIME=1 "/I$sdk/runtime/spu" "/FI$root/port/haze_audio_spu_float.h" "/Fe$audioFloatTest" "/Fo$root/local/test_haze_audio_spu_float.obj" "$sdk/runtime/spu/tests/test_spu_float_native.c"
+if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic oracle compilation failed.' }
+& $audioFloatTest
+if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic/fallback oracle failed.' }
 & $Python "$root/tests/test_savedata_patch.py" "$sdk/libs/system/cellSaveData.c"
 if ($LASTEXITCODE -ne 0) { throw 'Save-data transaction patch guard failed.' }
 if ($AssetFree) {

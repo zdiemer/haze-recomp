@@ -572,6 +572,17 @@ if(SPU_SOURCES)
     endif()
 endif()
 
+# Keep native audio arithmetic in the DSP loops; retain the SDK scalar fallback.
+if(PORT_ENABLE_SPU AND PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+    file(GLOB HAZE_AUDIO_DSP_SOURCES "${SPU_DIR}/audio_pic_*/spu_recomp.c"
+        "${SPU_DIR}/firmware_atrac/spu_recomp.c"
+        "${SPU_DIR}/spu_0026_at_00DAFD00/spu_recomp.c")
+    if(HAZE_AUDIO_DSP_SOURCES)
+        set_property(SOURCE ${HAZE_AUDIO_DSP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+            "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_spu_float.h")
+    endif()
+endif()
+
 # LLVM 24's Wasm SIMD selector crashes when vectorizing this image's packed
 # unsigned-to-float conversion (WebAssemblyISD::CONVERT_LOW_U). Preserve its
 # scalar arithmetic until the compiler issue is resolved; other images retain SIMD.
