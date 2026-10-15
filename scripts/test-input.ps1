@@ -37,8 +37,17 @@ foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test
 # Exercise the production DSP wrappers against the SDK's independent integer
 # oracle, including extended values, rounding modes and runtime fallback.
 $audioFloatTest=Join-Path $root 'local/test_haze_audio_spu_float.exe'
-& $clang /nologo /W0 /O2 /Ob1 /std:c11 /DSPU_FLOAT_NATIVE_RUNTIME=1 "/I$sdk/runtime/spu" "/FI$root/port/haze_audio_spu_float.h" "/Fe$audioFloatTest" "/Fo$root/local/test_haze_audio_spu_float.obj" "$sdk/runtime/spu/tests/test_spu_float_native.c"
-if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic oracle compilation failed.' }
+$audioFloatObjects=@()
+foreach ($source in @('port/haze_audio_spu_float.c','port/haze_audio_spu_double.c','tests/test_haze_audio_spu_float.c')) {
+    $object=Join-Path $root ('local/' + [IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
+    $floatFlags=@('-msse4.1','-ffp-contract=off')
+    if ($source -ne 'port/haze_audio_spu_float.c') { $floatFlags += '-ffp-model=strict' }
+    & $clang /nologo /W0 /O2 /Ob1 /std:c11 /DSPU_FLOAT_NATIVE_RUNTIME=1 @floatFlags "/I$sdk/runtime/spu" "/I$sdk/include" /c "/Fo$object" "$root/$source"
+    if ($LASTEXITCODE -ne 0) { throw "Audio DSP arithmetic compilation failed: $source" }
+    $audioFloatObjects += $object
+}
+& $clang /nologo @audioFloatObjects "/Fe$audioFloatTest"
+if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic oracle link failed.' }
 & $audioFloatTest
 if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic/fallback oracle failed.' }
 & $Python "$root/tests/test_savedata_patch.py" "$sdk/libs/system/cellSaveData.c"

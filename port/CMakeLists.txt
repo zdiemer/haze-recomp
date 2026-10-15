@@ -572,15 +572,34 @@ if(SPU_SOURCES)
     endif()
 endif()
 
-# Keep native audio arithmetic in the DSP loops; retain the SDK scalar fallback.
-if(PORT_ENABLE_SPU AND PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+# Scope the fast float environment to the Multistream audio worker. Do not
+# change the SDK checkout: wrap its halt boundary in this build only.
+if(PORT_ENABLE_SPU AND PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32
+        AND CMAKE_C_COMPILER_ID MATCHES "Clang"
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|amd64|x86_64")
+    file(READ "${PS3RECOMP_DIR}/runtime/spu/spu_channels.c" HAZE_SPU_CHANNELS_TEXT)
+    string(REPLACE "\r\n" "\n" HAZE_SPU_CHANNELS_TEXT "${HAZE_SPU_CHANNELS_TEXT}")
+    string(SHA256 HAZE_SPU_CHANNELS_HASH "${HAZE_SPU_CHANNELS_TEXT}")
+    if(NOT HAZE_SPU_CHANNELS_HASH STREQUAL "d524a6455cc709c751b23e3c83c041677d345b049042f41a69f2e92dbeb87f0f")
+        message(FATAL_ERROR "SPU halt boundary changed: audit audio float environment restoration before building")
+    endif()
     file(GLOB HAZE_AUDIO_DSP_SOURCES "${SPU_DIR}/audio_pic_*/spu_recomp.c"
         "${SPU_DIR}/firmware_atrac/spu_recomp.c"
         "${SPU_DIR}/spu_0026_at_00DAFD00/spu_recomp.c")
-    if(HAZE_AUDIO_DSP_SOURCES)
-        set_property(SOURCE ${HAZE_AUDIO_DSP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
-            "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_spu_float.h")
-    endif()
+    set_property(SOURCE ${HAZE_AUDIO_DSP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+        "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_spu_float.h" "-ffp-contract=off")
+    set(HAZE_AUDIO_FLOAT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_spu_float.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_spu_double.c")
+    target_sources(ps3recomp_runtime PRIVATE ${HAZE_AUDIO_FLOAT_SOURCES})
+    set_property(SOURCE ${HAZE_AUDIO_FLOAT_SOURCES} TARGET_DIRECTORY ps3recomp_runtime
+        APPEND PROPERTY INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
+    set_property(SOURCE ${HAZE_AUDIO_FLOAT_SOURCES} TARGET_DIRECTORY ps3recomp_runtime
+        APPEND PROPERTY COMPILE_OPTIONS "-msse4.1" "-ffp-contract=off")
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_audio_spu_double.c"
+        TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY COMPILE_OPTIONS "-ffp-model=strict")
+    set_property(SOURCE "${PS3RECOMP_DIR}/runtime/spu/spu_channels.c"
+        TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY COMPILE_DEFINITIONS
+        spu_run_with_halt=haze_sdk_spu_run_with_halt)
 endif()
 
 # LLVM 24's Wasm SIMD selector crashes when vectorizing this image's packed
