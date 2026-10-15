@@ -60,8 +60,11 @@ Keyboard names include A-Z, 0-9, Space, Enter, Escape, Tab, Shift, Ctrl, Alt,
 arrows, Mouse1-Mouse5, Backspace, Delete, Insert, Home, End, PageUp, PageDown,
 and F2-F12 except F6/F7. F1 controls mouse capture, F6 reloads graphics settings,
 and F7 cycles the performance overlay.
-Escape is reserved for cancelling a binding capture; existing Escape bindings
-in the INI remain supported by the mapper.
+Escape is reserved for pause during gameplay, Back in menus, and cancelling a
+binding capture. Enter confirms in menus regardless of its gameplay binding.
+These menu actions override conflicting button and movement bindings; Space
+keeps its default gameplay jump binding. Held Enter/Escape input is suppressed
+until release when entering or leaving a menu.
 
 Controller names describe physical positions: south/east/west/north, shoulders,
 stick presses, menu buttons, d-pad directions and named SDL axes. Raw sources

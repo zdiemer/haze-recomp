@@ -216,7 +216,7 @@ int main() {
     // Physical key state can lead queued window messages. Menus must not
     // report the physical tap and then replay its queued press as a second tap.
     haze_input_menu_state(true);
-    for (int vk : {VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_SPACE,int('X')}) {
+    for (int vk : {VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_SPACE,int('X'),VK_RETURN,VK_ESCAPE}) {
         clear_keys(); keys[vk]=true;
         message_time=LONG(ticks);
         const auto physical=sample().buttons;
@@ -492,6 +492,81 @@ int main() {
     haze_input_menu_state(false); sample();
     keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_START);
     keys[VK_RETURN]=false; sample();
+    // A held Enter cannot turn from Confirm into Start when Resume closes
+    // the menu, even across queued repeats or focus loss. A fresh press works.
+    haze_input_menu_state(true);
+    keys[VK_RETURN]=true; window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    haze_input_menu_state(false);
+    for (int i=0;i<5;++i) {
+        window_proc(window,WM_KEYDOWN,VK_RETURN,1ll<<30);
+        assert(!sample().buttons && !pause_requested);
+    }
+    // An original key message can also arrive after the physical sample and
+    // menu close. It must not re-request pause or replay the confirmation.
+    window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    assert(!sample().buttons && !pause_requested);
+    focused=false; assert(!sample().buttons);
+    focused=true; ticks+=10; haze_input_update(); assert(!sample().buttons);
+    keys[VK_RETURN]=false; window_proc(window,WM_KEYUP,VK_RETURN,0);
+    assert(!sample().buttons);
+    keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_START);
+    keys[VK_RETURN]=false; sample();
+    // Escape opens pause from gameplay, backs out of a menu, and needs a
+    // release between those actions in both directions.
+    keys[VK_ESCAPE]=true; window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(pause_requested && sample().buttons==CELL_PAD_CTRL_START);
+    haze_input_menu_state(true);
+    assert(!pause_requested && !sample().buttons);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,1ll<<30);
+    assert(!sample().buttons);
+    keys[VK_ESCAPE]=false; window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    keys[VK_ESCAPE]=true; window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
+    haze_input_menu_state(false);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,1ll<<30);
+    assert(!sample().buttons && !pause_requested);
+    window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
+    assert(!sample().buttons && !pause_requested);
+    keys[VK_ESCAPE]=false; window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
+    keys[VK_ESCAPE]=true; assert(sample().buttons==CELL_PAD_CTRL_START);
+    keys[VK_ESCAPE]=false; sample();
+    // Menu Enter/Escape override conflicting buttons AND movement bindings.
+    // Gameplay Enter and Space keep their configured actions; controllers
+    // and the existing keyboard confirmation/back bindings remain available.
+    const auto saved_cross=bindings[0].vk,old_circle=bindings[1].vk,old_square=bindings[2].vk;
+    const auto old_forward=movement[0],old_right=movement[3];
+    bindings[0].vk=VK_SPACE;
+    bindings[10].vk='K'; bindings[1].vk=VK_RETURN; bindings[2].vk=VK_ESCAPE;
+    movement[0]=VK_RETURN; movement[3]=VK_ESCAPE;
+    haze_input_menu_state(true);
+    keys[VK_RETURN]=true;
+    auto enter_menu=sample();
+    assert(enter_menu.buttons==CELL_PAD_CTRL_CROSS && enter_menu.ly==128);
+    keys[VK_RETURN]=false; sample();
+    keys[VK_ESCAPE]=true;
+    auto escape_menu=sample();
+    assert(escape_menu.buttons==CELL_PAD_CTRL_CIRCLE && escape_menu.lx==128);
+    keys[VK_ESCAPE]=false; sample();
+    keys[VK_SPACE]=true; assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    keys[VK_SPACE]=false; sample();
+    controller_state.connected=true;
+    controller_state.input.buttons=CELL_PAD_CTRL_START|CELL_PAD_CTRL_CIRCLE;
+    assert(sample().buttons==(CELL_PAD_CTRL_START|CELL_PAD_CTRL_CIRCLE));
+    controller_state={};
+    haze_input_menu_state(false);
+    keys[VK_RETURN]=true;
+    auto enter_game=sample();
+    assert(enter_game.buttons==CELL_PAD_CTRL_CIRCLE && enter_game.ly==1);
+    keys[VK_RETURN]=false; sample();
+    keys[VK_ESCAPE]=true;
+    auto escape_game=sample();
+    assert(escape_game.buttons==CELL_PAD_CTRL_START && escape_game.lx==128);
+    keys[VK_ESCAPE]=false; sample();
+    keys[VK_SPACE]=true; assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    keys[VK_SPACE]=false; sample();
+    bindings[0].vk=saved_cross; bindings[1].vk=old_circle; bindings[2].vk=old_square;
+    movement[0]=old_forward; movement[3]=old_right;
     bindings[10].vk='K';
     // A rebound manual skip cannot activate Start, including across focus loss.
     startup_skip.configure(false,true);
@@ -546,7 +621,7 @@ int main() {
     keys[VK_ESCAPE]=false; window_proc(window,WM_KEYUP,VK_ESCAPE,0);
     assert(!sample().buttons);
     window_proc(window,WM_KEYDOWN,VK_ESCAPE,0);
-    assert(sample().buttons==CELL_PAD_CTRL_START);
+    assert(sample().buttons==CELL_PAD_CTRL_CIRCLE);
     window_proc(window,WM_KEYUP,VK_ESCAPE,0); sample();
     haze_input_menu_state(false);
     // Manual video skipping is not limited to the automatic-skip whitelist.

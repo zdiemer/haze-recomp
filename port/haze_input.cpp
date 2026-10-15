@@ -124,8 +124,11 @@ bool down(int vk) {
         }
         // A queued key message can lag a render stall. Release immediately on
         // the physical sample, and relinquish hover on the first sampled press.
-        if (menu_active && !startup_skip.owns_input()) {
-            if (new_press) { last_family=HazeInputFamily::Keyboard; pointer_mode(false); }
+        // Enter/Escape can change meaning at a menu boundary. Keep their
+        // release suppression in gameplay too, so closing a menu cannot turn
+        // the same held confirmation/back key into a new pause request.
+        if ((menu_active || vk==VK_RETURN || vk==VK_ESCAPE) && !startup_skip.owns_input()) {
+            if (menu_active && new_press) { last_family=HazeInputFamily::Keyboard; pointer_mode(false); }
             return result;
         }
     }
@@ -234,9 +237,18 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (wp == VK_ESCAPE) {
             if (startup_skip.owns_input()) return 0; // Skip must not also request pause.
+            {
+                std::lock_guard lock(menu_keys_mutex);
+                if ((lp & (1ll<<30)) || menu_keys[VK_ESCAPE].suppressed) return 0;
+            }
             if (!menu_active) { pause_request_time=GetTickCount64(); pause_requested=true; }
             capture(false); return 0;
         } // Pause, rather than SDK's quit.
+        if (lp & (1ll<<30)) break;
+        if (wp==VK_RETURN && !startup_skip.owns_input()) {
+            std::lock_guard lock(menu_keys_mutex);
+            if (menu_keys[VK_RETURN].suppressed) return 0;
+        }
         {
             std::lock_guard<std::mutex> lock(settings_mutex);
             for (const auto& b : bindings)
@@ -449,6 +461,8 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     bool sampled[256]={}, states[256]={};
     const bool movie=startup_skip.showing();
     const bool presentation_input=startup_skip.owns_input();
+    const bool keyboard_menu=menu_active && !presentation_input;
+    auto menu_key=[&](int vk) { return keyboard_menu && (vk==VK_RETURN || vk==VK_ESCAPE); };
     auto key_down=[&](int vk) {
         if (vk <= 0 || vk >= 256) return false;
         if (!sampled[vk]) { states[vk]=down(vk); sampled[vk]=true; }
@@ -458,20 +472,21 @@ int poll(u32 port, CellPadHostInput* input, void*) {
         if (b.vk >= VK_LBUTTON && b.vk <= VK_XBUTTON2 &&
             (!presentation_input && (!captured || menu_active || pause_requested || suppress_mouse_buttons))) continue;
         if (b.vk == VK_LBUTTON && capture_click) continue;
-        // In a menu Enter confirms instead of reporting its Start binding, so
-        // one press cannot both activate an item and toggle pause (#101).
-        if (menu_active && b.vk == VK_RETURN && b.button == CELL_PAD_CTRL_START) continue;
+        // Menu actions take priority over every gameplay binding, including
+        // conflicting face buttons. Escape is always the PC pause/back key.
+        if (menu_key(b.vk) || (!presentation_input && b.vk==VK_ESCAPE)) continue;
         if (key_down(b.vk)) input->buttons |= b.button;
     }
     // Escape is confirm only during an owned presentation. During release
     // draining it still counts as held input, even when Start is rebound.
-    if (key_down(VK_ESCAPE)) input->buttons |= movie ? CELL_PAD_CTRL_CROSS : CELL_PAD_CTRL_START;
-    // Enter is the expected PC confirmation key: while a guest menu owns the
-    // pad it reports Cross, whatever it is bound to. Outside menus it keeps
-    // its binding (Start by default), including at title/pause prompts.
-    if (menu_active && key_down(VK_RETURN)) input->buttons |= CELL_PAD_CTRL_CROSS;
-    const int horizontal=(int)key_down(movement[3])-(int)key_down(movement[2]);
-    const int vertical=(int)key_down(movement[1])-(int)key_down(movement[0]);
+    if (key_down(VK_ESCAPE)) input->buttons |= movie ? CELL_PAD_CTRL_CROSS :
+        keyboard_menu ? CELL_PAD_CTRL_CIRCLE : CELL_PAD_CTRL_START;
+    if (keyboard_menu && key_down(VK_RETURN)) input->buttons |= CELL_PAD_CTRL_CROSS;
+    auto movement_down=[&](int vk) {
+        return !menu_key(vk) && (presentation_input || vk!=VK_ESCAPE) && key_down(vk);
+    };
+    const int horizontal=(int)movement_down(movement[3])-(int)movement_down(movement[2]);
+    const int vertical=(int)movement_down(movement[1])-(int)movement_down(movement[0]);
     if (horizontal) input->lx=(u8)(128+127*horizontal);
     if (vertical) input->ly=(u8)(128+127*vertical);
     if (captured) {
@@ -634,6 +649,14 @@ void haze_input_menu_state(bool active) {
     if (active) pause_requested=false;
     else menu_return_pending=false; // The guest already left its menu stack.
     if (menu_active.exchange(active)==active) return;
+    if (!startup_skip.owns_input()) {
+        std::lock_guard lock(menu_keys_mutex);
+        const auto now=uint32_t(GetTickCount64());
+        for (int vk : {VK_RETURN,VK_ESCAPE}) {
+            message_keys[vk]=0;
+            menu_keys[vk].reset((GetAsyncKeyState(vk)&0x8000)!=0,now);
+        }
+    }
     mouse_motion.clear();
     InterlockedExchange(&wheel,0);
     suppress_mouse_buttons=true;

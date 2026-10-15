@@ -106,11 +106,14 @@ outputs are ignored by Git. The first launch installs about 4 GB of game data.
 | Switch weapon | X or mouse wheel |
 | Grenade / Nectar or play dead | G / Q |
 | Melee | F |
-| Menu confirm / back | Space or Enter / X |
-| Start / pause | Enter / Escape (in menus, Enter confirms instead) |
+| Menu confirm / back | Enter / Esc (Space / X also work) |
+| Open / close pause menu | Esc (in nested menus, goes back one page) |
 | Release or recapture mouse | F1 |
 
 Menus also support the pointer: left click selects, right click goes back.
+Enter and Esc keep their menu actions regardless of gameplay bindings. Holding
+either key across a menu boundary cannot trigger another action. Space remains
+jump during gameplay; Enter retains the Start binding outside menus by default.
 SDL gamepads connect automatically. Bindings, mouse sensitivity, controller
 options, and startup skipping live in [config/input.ini](config/input.ini)
 and reload while running. Action names above assume Haze's default controller
