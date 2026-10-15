@@ -28,9 +28,12 @@ artwork. Generated files are written and flushed before replacement.
 
 ## Bundled Haze logo
 
-`assets/haze-logo.png` is a crop of the Haze wordmark from the official 2007
-Haze wallpaper distributed through the TimeSplitters World downloads page
-(timesplitters-world.de, "Haze Logo" wallpaper). Haze is a trademark of Ubisoft
+`assets/haze-logo.png` is the yellow Haze emblem logo: the yellow wordmark with
+the Mantel bullet emblem behind the A, on a transparent background. The source
+asset is the 1170x603 PNG distributed as "Haze-Logo-4.png" by a poster shop
+selling Haze logo prints from the game's original marketing artwork (Squarespace
+CDN, site 5ce1293686eff10001a80617); the vendored file is that artwork trimmed
+to its opaque bounds. Haze is a trademark of Ubisoft
 Entertainment and Free Radical Design; the artwork is bundled solely to
 identify this port of the game. `assets/haze-logo.ico` is the same artwork as a
 seven-layer ICO in the format `scripts/build-icon.ps1` produces.
