@@ -1,14 +1,17 @@
-Haze Recomp 0.1.6 for Windows x64
+Haze Recomp 0.1.7 for Windows x64
 
-Reduces redundant pixel shader compilation caused by unused texture bindings.
-In a captured Haze sample, 274 shader recipes now require 117 unique shader
-sources (57.3% fewer), with identical GPU instructions and declarations.
-This reduces shader work; an isolated gameplay FPS gain has not been established.
-Stutter and frame pacing remain under investigation (#110, #123).
+Saves learned shader bundles during normal native quit, before the renderer is
+disabled. Persistence shares the existing shutdown timeout and preserves the
+previous archive if replacement cannot complete. Raises the retained bundle
+limit from 64 to 128 MiB so larger learned archives can be loaded and updated.
+Focused persistence, archive-boundary and renderer-shutdown regressions pass.
+Release-configuration gameplay validation is incomplete; no sustained-FPS or
+general stutter improvement is claimed. Frame pacing remains under investigation.
 
-Also includes the menu input fixes merged since 0.1.5: keyboard navigation no
-longer replays queued presses, and menu camera ownership preserves mouse capture
-correctly around gameplay tips. Startup splash screens support skipping.
+Also includes invite-code campaign co-op and native player-profile settings,
+expanded keyboard bindings with separate mouse-wheel controls, controller rumble
+through the selected SDL device, Enter/Escape menu navigation, improved sustained
+gunfire audio handling, and Haze artwork for setup and application icons.
 
 Native offline shader preparation is still experimental and is not integrated
 into this installer. Existing native controls and graphics settings are retained.
