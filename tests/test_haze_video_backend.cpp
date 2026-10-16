@@ -31,6 +31,7 @@ int main() {
     assert(haze_video_prepare(&high,error,sizeof error)); haze_video_finish(1);
     assert(overlay_mode==2 && overlay_corner==3);
     assert(g_ld_postprocess.output && g_ld_anisotropy==16 && !g.n_samplers && !g.smp_ring_used && !g.smp_keys[0]);
+    assert(sampler_pages_reset_calls==1);
     assert(g_ld_frame_limiter.period==16667 && g_ld_frame_limiter.last_present==0);
     // Same allocation supports changes to effect parameters without recreation.
     int count=allocated; high.exposure=1;

@@ -102,6 +102,9 @@ void haze_video_finish(int commit) {
     if (commit) {
         const haze_video_live* s=&haze_pending.settings;
         if (g_ld_anisotropy!=s->anisotropy || g_ld_mip_bias!=s->mip_bias) {
+            /* prepare fenced all prior descriptor references. Sampler slots
+             * are about to change identity; discard every page's host cache. */
+            ld_sampler_pages_reset();
             g.n_samplers=0;
             g.smp_ring_used=0;
             memset(g.smp_keys,0,sizeof g.smp_keys);

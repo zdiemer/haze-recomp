@@ -97,6 +97,8 @@ static ULONGLONG shutdown_clock;
 static ULONGLONG fake_shutdown_clock(void) { return shutdown_clock; }
 #define GetTickCount64 fake_shutdown_clock
 static unsigned bundle_stop_calls,bundle_stop_ready,bundle_stop_limit,bundle_stop_cost;
+static unsigned sampler_pages_reset_calls;
+static void ld_sampler_pages_reset(void) { assert(fences>0); ++sampler_pages_reset_calls; }
 static unsigned recipe_stop_calls,recipe_stop_limit,recipe_stop_cost;
 static int rsx_live_draw_finish_pipeline_recipes(unsigned timeout) {
     ++recipe_stop_calls; recipe_stop_limit=timeout;

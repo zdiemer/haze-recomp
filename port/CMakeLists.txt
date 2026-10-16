@@ -305,9 +305,11 @@ if(WIN32)
     # and GPU resource/display lifetime remain on the renderer owner thread.
     # Exact-validated fragment-program plans own CPU metadata only. Mutable
     # constants, PSO keys, descriptors, GPU fences and settings stay unchanged.
+    # Sampler heap pages remain immutable until successful GPU completion;
+    # live sampler changes discard page metadata only after prepare fences.
     # Exact pipeline recipes retain independent PSO/root/device references.
     # Live settings and display rollback retain their existing fence/ownership.
-    if(NOT HAZE_RSX_HASH STREQUAL "d81d3ea5b8ab00c1053cc43b1072d06fd175dcbd0a607baf9b53802f9eeaf731")
+    if(NOT HAZE_RSX_HASH STREQUAL "1db09021ec9818a481aad30da0f34f322a30c07ccbca3d4c91ff1153d060ad07")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
@@ -317,6 +319,9 @@ if(WIN32)
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     # Match only the final presentation flush, not settings/readback flushes.
     string(REPLACE "    ld_flush(LD_FLUSH_PRESENT);\n    {" "    haze_overlay_draw(bbi);\n    ld_flush(LD_FLUSH_PRESENT);\n    {"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(REPLACE "    ld_flush(LD_FLUSH_PRESENT);\n    if (!g.ready) return;\n    {"
+        "    haze_overlay_draw(bbi);\n    ld_flush(LD_FLUSH_PRESENT);\n    if (!g.ready) return;\n    {"
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     string(REPLACE "    rsx_postprocess_destroy(&g_ld_postprocess);"
         "    haze_overlay_destroy();\n    rsx_postprocess_destroy(&g_ld_postprocess);"
