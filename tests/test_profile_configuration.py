@@ -47,6 +47,27 @@ class ProfileConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'job trace compile gate'):
             check_rules(ninja, False, True)
 
+    def test_hot_modules_inline_reads_in_ordinary_builds(self):
+        def inline_ninja(inlined):
+            blocks = synthetic_ninja(False, False).split('\n\n')
+            blocks += [rule('HazeRecomp', source) for source in
+                       ('ppu_recomp_000.cpp', 'ppu_recomp_001.cpp', 'ppu_recomp_002.cpp',
+                        'ppu_recomp_004.cpp', 'ppu_recomp_005.cpp', 'ppu_recomp_006.cpp',
+                        'ppu_hle_nids.cpp')]
+            return '\n\n'.join(
+                block + '\n  FLAGS = /FIport/haze_ppu_inline_reads.h'
+                if any(f'{source}.obj:' in block.splitlines()[0] for source in inlined) else block
+                for block in blocks)
+        hot = ('ppu_recomp_003.cpp', 'ppu_recomp_005.cpp')
+        check_rules(inline_ninja(hot), False, False, False)
+        everything = hot + ('ppu_recomp_000.cpp', 'ppu_recomp_001.cpp', 'ppu_recomp_002.cpp',
+                            'ppu_recomp_004.cpp', 'ppu_recomp_006.cpp', 'ppu_hle_nids.cpp')
+        check_rules(inline_ninja(everything), False, False, True)
+        with self.assertRaisesRegex(ValueError, 'ppu_recomp_005'):
+            check_rules(inline_ninja(('ppu_recomp_003.cpp',)), False, False, False)
+        with self.assertRaisesRegex(ValueError, 'ppu_recomp_000'):
+            check_rules(inline_ninja(hot + ('ppu_recomp_000.cpp',)), False, False, False)
+
 
 if __name__ == '__main__':
     unittest.main()
