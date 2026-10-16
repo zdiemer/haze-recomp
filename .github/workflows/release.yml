@@ -91,7 +91,7 @@ jobs:
           MSYS_ROOT: ${{ steps.msys.outputs.msys2-location }}
         run: |
           ./tooling/scripts/build-release.ps1 -ProjectRoot project -Inputs private-inputs `
-            -Python (Get-Command python).Source -MsysRoot $env:MSYS_ROOT
+            -Python (Get-Command python).Source -MsysRoot $env:MSYS_ROOT -Jobs 1
       - name: Verify release artifacts
         shell: powershell
         run: |

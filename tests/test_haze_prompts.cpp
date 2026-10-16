@@ -4,11 +4,24 @@
 #include <cassert>
 #include <fstream>
 #include <iterator>
+#include <atomic>
 #ifdef _MSC_VER
 #include <crtdbg.h>
 #endif
 static ULONGLONG ticks=0;
 static ULONGLONG test_time() { return ticks; }
+static DWORD window_thread;
+static std::atomic<bool> check_io_thread{false},block_io{false};
+static HANDLE io_entered,io_release;
+static void test_io() {
+    if (!check_io_thread.load()) return;
+    assert(GetCurrentThreadId()!=window_thread);
+    if (block_io.exchange(false)) {
+        SetEvent(io_entered);
+        assert(WaitForSingleObject(io_release,5000)==WAIT_OBJECT_0);
+    }
+}
+#define HAZE_PROMPTS_TEST_IO test_io
 #define GetTickCount64 test_time
 #include "../port/haze_prompts.cpp"
 static rsx_live_texture_revision_fn registered_revision;
@@ -16,7 +29,9 @@ static rsx_live_texture_pixels_fn registered_pixels;
 extern "C" void rsx_live_draw_set_texture_override(rsx_live_texture_revision_fn r,rsx_live_texture_pixels_fn p,void*) {
     registered_revision=r; registered_pixels=p;
 }
-static void refresh(HazeInputFamily family) { ticks+=501; haze_prompts_update(family); }
+// Exercise the atlas/data checks deterministically with the watcher stopped.
+// The real worker, nonblocking frame path and shutdown are exercised below.
+static void refresh(HazeInputFamily family) { ticks+=501; refresh_on_worker(family); }
 static void write_setting(const char* section,const char* key,const char* value) {
     assert(WritePrivateProfileStringA(section,key,value,config.c_str()));
     // Force distinguishable timestamps even on coarse filesystems.
@@ -40,6 +55,7 @@ int main(int argc,char** argv) {
     const auto ini=temp/"input.ini";
     { std::ofstream out(ini); out << "[Prompts]\nDirectory=" << (repo/"assets/input-prompts").string() << '\n'; }
     haze_prompts_initialize(ini.string().c_str());
+    assert(haze_prompts_shutdown(5000));
     assert(registered_revision && registered_pixels);
     assert(published && !empty_slot(*published,12));
     const auto keyboard=published;
@@ -148,5 +164,43 @@ int main(int argc,char** argv) {
         assert(!registered_pixels(0x88,384,240,source.data(),source.size(),nullptr));
         puts("Retail fingerprint: exact original accepted; one-byte change rejected.");
     }
-    puts("Prompt PNG decoding, all families, rebinds, cache revision, file hot reload and malformed fallback passed.");
+    // A filesystem stall cannot hold up a frame or unboundedly delay quit.
+    write_setting("Prompts","Directory",(repo/"assets/input-prompts").string().c_str());
+    window_thread=GetCurrentThreadId();
+    io_entered=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    io_release=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    assert(io_entered && io_release);
+    haze_prompts_initialize(ini.string().c_str());
+    assert(state().thread);
+    check_io_thread=true; block_io=true;
+    const auto old_atlas=std::atomic_load(&published);
+    haze_prompts_update(HazeInputFamily::Xbox);
+    assert(WaitForSingleObject(io_entered,5000)==WAIT_OBJECT_0);
+    haze_prompts_update(HazeInputFamily::Switch);
+    assert(std::atomic_load(&published)==old_atlas);
+    assert(!haze_prompts_shutdown(0));
+    SetEvent(io_release);
+    assert(haze_prompts_shutdown(5000));
+    check_io_thread=false;
+    CloseHandle(io_entered); CloseHandle(io_release);
+    // Reinitialization after a stopped watcher and a real asynchronous family
+    // change still publish complete immutable atlases.
+    haze_prompts_initialize(ini.string().c_str());
+    const auto initial=std::atomic_load(&published);
+    rev=generation.load();
+    haze_prompts_update(HazeInputFamily::Xbox);
+    for (int i=0;i<5000 && generation.load()==rev;i++) Sleep(1);
+    assert(generation.load()>rev);
+    assert(std::atomic_load(&published) && *std::atomic_load(&published)!=*initial);
+    // The live watcher must keep detecting edits that preserve timestamps.
+    const auto xbox=std::atomic_load(&published);
+    const auto config_time=fs::last_write_time(config);
+    rev=generation.load();
+    write_setting("ControllerBindings","Cross","north");
+    fs::last_write_time(config,config_time);
+    for (int i=0;i<5000 && generation.load()==rev;i++) Sleep(1);
+    assert(generation.load()>rev);
+    assert(std::atomic_load(&published) && *std::atomic_load(&published)!=*xbox);
+    assert(haze_prompts_shutdown(5000));
+    puts("Prompt decoding, hot reload, async family rebuild, blocked-I/O isolation and bounded shutdown passed.");
 }

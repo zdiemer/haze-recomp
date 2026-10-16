@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <process.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -24,19 +25,29 @@ using Microsoft::WRL::ComPtr;
 namespace fs=std::filesystem;
 constexpr unsigned width=384, height=240;
 using Atlas=std::array<u8,width*height*4>;
-std::shared_ptr<const Atlas> published;
-std::atomic<u64> generation{1};
-std::string config;
-HazeInputFamily current=HazeInputFamily::Keyboard;
-bool first=true;
-ULONGLONG next_check=0;
 struct FileStamp {
     fs::file_time_type time;
     uintmax_t bytes=0;
     u64 hash=0;
     bool operator==(const FileStamp&) const=default;
 };
-std::vector<std::pair<fs::path,FileStamp>> watched;
+struct PromptState {
+    std::shared_ptr<const Atlas> published;
+    std::atomic<u64> generation{1};
+    std::string config;
+    HazeInputFamily current=HazeInputFamily::Keyboard;
+    std::atomic<HazeInputFamily> requested{HazeInputFamily::Keyboard};
+    std::atomic<bool> stopping{false};
+    std::vector<std::pair<fs::path,FileStamp>> watched;
+    HANDLE wake=nullptr,thread=nullptr;
+};
+// A filesystem call may outlast bounded shutdown. Retain its state through
+// process teardown rather than destroying storage under the worker.
+PromptState& state() { static auto* value=new PromptState; return *value; }
+auto& published=state().published;
+auto& generation=state().generation;
+auto& config=state().config;
+auto& watched=state().watched;
 
 std::string setting(const char* section,const char* key,const char* fallback) {
     char value[1024];
@@ -46,6 +57,9 @@ std::string setting(const char* section,const char* key,const char* fallback) {
     return result;
 }
 FileStamp stamp(const fs::path& path) {
+#ifdef HAZE_PROMPTS_TEST_IO
+    HAZE_PROMPTS_TEST_IO();
+#endif
     std::error_code ec;
     FileStamp value{fs::last_write_time(path,ec)};
     if (ec) return value;
@@ -120,6 +134,9 @@ std::string pad_icon(HazeInputFamily family,std::string name) {
 }
 struct Image { unsigned w=0,h=0; std::vector<u8> rgba; };
 bool decode(IWICImagingFactory* factory,const fs::path& path,Image& image) {
+#ifdef HAZE_PROMPTS_TEST_IO
+    HAZE_PROMPTS_TEST_IO();
+#endif
     ComPtr<IWICBitmapDecoder> decoder;
     ComPtr<IWICBitmapFrameDecode> frame;
     ComPtr<IWICFormatConverter> converter;
@@ -191,7 +208,7 @@ void place(Atlas& atlas,const Image& image,int slot,int ox=4,int oy=4,int bound_
         target[3]=(u8)std::clamp(int(alpha+.5),0,255);
     }
 }
-void rebuild(HazeInputFamily family) {
+void rebuild(HazeInputFamily family,bool report=false) {
     watched.clear(); watched.emplace_back(config,stamp(config));
     std::shared_ptr<Atlas> atlas;
     if (GetPrivateProfileIntA("Prompts","Enabled",1,config.c_str())) {
@@ -237,7 +254,7 @@ void rebuild(HazeInputFamily family) {
             const auto path=root/folder/(name+".png");
             watched.emplace_back(path,stamp(path));
             if (!factory || !decode(factory.Get(),path,image)) {
-                fprintf(stderr,"[prompts] Cannot decode %s; using original game prompts\n",path.string().c_str());
+                if (report) fprintf(stderr,"[prompts] Cannot decode %s; using original game prompts\n",path.string().c_str());
                 return false;
             }
             return true;
@@ -279,24 +296,71 @@ void rebuild(HazeInputFamily family) {
     }
     std::atomic_store(&published,std::shared_ptr<const Atlas>(atlas));
     const auto value=generation.fetch_add(1,std::memory_order_release)+1;
-    fprintf(stderr,"[prompts] %s atlas %s; revision=%llu\n",
+    if (report) fprintf(stderr,"[prompts] %s atlas %s; revision=%llu\n",
         family==HazeInputFamily::Keyboard ? "keyboard" : family==HazeInputFamily::Xbox ? "Xbox" : family==HazeInputFamily::Switch ? "Switch" : "PlayStation",
         atlas ? "ready" : "original fallback",(unsigned long long)value);
 }
+void refresh_on_worker(HazeInputFamily family) {
+    auto& worker=state();
+    bool changed=family!=worker.current;
+    if (!changed)
+        for (const auto& [path,time]:watched)
+            if (!(stamp(path)==time)) { changed=true; break; }
+    if (changed) { worker.current=family; rebuild(family); }
+}
+unsigned __stdcall watch_files(void*) {
+    auto& worker=state();
+    for (;;) {
+        const auto result=WaitForSingleObject(worker.wake,500);
+        if (worker.stopping.load(std::memory_order_acquire) || result==WAIT_FAILED) break;
+        refresh_on_worker(worker.requested.load(std::memory_order_acquire));
+        // A family change during disk I/O must not wait another polling period.
+        if (worker.requested.load(std::memory_order_acquire)!=worker.current)
+            SetEvent(worker.wake);
+    }
+    return 0;
+}
 }
 void haze_prompts_initialize(const char* path) {
-    config=path; first=true; next_check=0;
+    if (!haze_prompts_shutdown(2000)) return;
+    auto& worker=state();
+    config=path;
+    worker.current=HazeInputFamily::Keyboard;
+    worker.requested.store(HazeInputFamily::Keyboard);
+    worker.stopping.store(false);
     rsx_live_draw_set_texture_override(revision,pixels,nullptr);
-    haze_prompts_update(HazeInputFamily::Keyboard);
+    // Startup runs before renderer creation. Later checks and family rebuilds
+    // belong exclusively to the worker; the frame path only posts requests.
+    rebuild(HazeInputFamily::Keyboard,true);
+    worker.wake=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+    if (worker.wake)
+        worker.thread=reinterpret_cast<HANDLE>(_beginthreadex(nullptr,0,watch_files,nullptr,0,nullptr));
+    if (!worker.thread) {
+        if (worker.wake) CloseHandle(worker.wake);
+        worker.wake=nullptr;
+        std::atomic_store(&published,std::shared_ptr<const Atlas>{});
+        generation.fetch_add(1,std::memory_order_release);
+        fprintf(stderr,"[prompts] File watcher unavailable; using original game prompts\n");
+    }
 }
 void haze_prompts_update(HazeInputFamily family) {
-    const auto now=GetTickCount64();
-    bool changed=first || family!=current;
-    if (now>=next_check) {
-        next_check=now+500;
-        for (const auto& [path,time]:watched) if (!(stamp(path)==time)) { changed=true; break; }
+    auto& worker=state();
+    if (worker.thread && !worker.stopping.load(std::memory_order_acquire) &&
+        worker.requested.exchange(family,std::memory_order_acq_rel)!=family)
+        SetEvent(worker.wake);
+}
+bool haze_prompts_shutdown(unsigned timeout_ms) {
+    auto& worker=state();
+    if (!worker.thread) return true;
+    worker.stopping.store(true,std::memory_order_release);
+    SetEvent(worker.wake);
+    if (WaitForSingleObject(worker.thread,timeout_ms)!=WAIT_OBJECT_0) {
+        fprintf(stderr,"[prompts] File watcher retained for process teardown\n");
+        return false;
     }
-    if (changed) { first=false; current=family; rebuild(family); }
+    CloseHandle(worker.thread); CloseHandle(worker.wake);
+    worker.thread=worker.wake=nullptr;
+    return true;
 }
 static bool draw_icon(void* context,const std::shared_ptr<const Atlas>& atlas,int slot,int x,int y,int size) {
     if (!atlas || slot<0 || slot>=24) return false;

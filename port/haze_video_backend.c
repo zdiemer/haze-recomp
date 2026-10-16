@@ -102,6 +102,9 @@ void haze_video_finish(int commit) {
     if (commit) {
         const haze_video_live* s=&haze_pending.settings;
         if (g_ld_anisotropy!=s->anisotropy || g_ld_mip_bias!=s->mip_bias) {
+            /* prepare fenced all prior descriptor references. Sampler slots
+             * are about to change identity; discard every page's host cache. */
+            ld_sampler_pages_reset();
             g.n_samplers=0;
             g.smp_ring_used=0;
             memset(g.smp_keys,0,sizeof g.smp_keys);
@@ -129,11 +132,14 @@ int haze_video_stop(unsigned timeout_ms) {
     if (GetWindowThreadProcessId(g_ld_display_hwnd,NULL)!=GetCurrentThreadId()) return 0;
     const ULONGLONG began=GetTickCount64();
     haze_video_finish(0);
-    /* Native quit does not call the full SDK teardown. Persist the learned
-     * shader bundle before ready is cleared, sharing the existing display
-     * shutdown wait budget. The cache worker owns its detached data. */
-    rsx_live_draw_finish_shader_bundle(timeout_ms);
-    const ULONGLONG elapsed=GetTickCount64()-began;
+    /* Start recipe persistence before the bundle write, then join both within
+     * the existing display shutdown budget. Each writer owns detached data. */
+    rsx_live_draw_finish_pipeline_recipes(0);
+    ULONGLONG elapsed=GetTickCount64()-began;
+    rsx_live_draw_finish_shader_bundle(elapsed>=timeout_ms ? 0 : timeout_ms-(DWORD)elapsed);
+    elapsed=GetTickCount64()-began;
+    rsx_live_draw_finish_pipeline_recipes(elapsed>=timeout_ms ? 0 : timeout_ms-(DWORD)elapsed);
+    elapsed=GetTickCount64()-began;
     const DWORD remaining=elapsed>=timeout_ms ? 0 : timeout_ms-(DWORD)elapsed;
     int ok=1;
     /* No more draws follow this call. A queue fence covers submitted work;
