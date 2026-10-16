@@ -18,9 +18,9 @@ and maximum 89.69 ms. One interval exceeded 50 ms; none exceeded 100 ms.
 These are checkpoint-specific observations, not an isolated before/after gain
 or a guarantee for other scenes and hardware. GPU completion stalls remain.
 Focused sampler, pipeline-persistence, metadata and worker regressions passed.
-A broader texture fixture failed identically at both cache sizes and remains
-unresolved. The packaged Release build has not had a fresh gameplay or clean
-Windows installation acceptance run.
+The broader texture WARP fixture also passes after correcting its manual device
+setup and sampler-page initialization. The packaged Release build has not had
+a fresh gameplay or clean Windows installation acceptance run.
 
 Existing controls, graphics settings, campaign co-op and save support are retained.
 
