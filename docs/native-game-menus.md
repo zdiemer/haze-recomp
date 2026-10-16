@@ -6,6 +6,23 @@ native text, sliders, toggles, highlights and input prompts. Quit to Desktop and
 Add to Steam are separate main-menu rows; the pause menu also has Quit to Desktop.
 Confirmation backgrounds use plain brushed metal without hexes.
 
+Player Profile is a main-menu provider with staged name editing, validation,
+keyboard text input and native character choices for controllers. Text commands
+carry both page generation and modal revision, like other captured input.
+The profile name is written atomically to `player-name.txt` in the configured
+save root before the published identity changes. Failed writes retain the old
+name. System username parameter `0x131` retains the existing internal profile
+key; the audited guest display-name field at profile `+0x4d` is refreshed on the
+GUI thread. The first local profile is resolved through manager `00f48de0`,
+matching `004e6f20(manager, 0)`. The setter instruction guard is `004d31f8`.
+The NP ID handler preserves SDK errors and substitutes the display name only
+after a successful call. This does not implement authentication or online play.
+
+The obsolete frontend sign-in row `fefl_DC_text7` and initialization label
+`fefl_KS_text45` are detached from native child traversal. Removing the row also
+removes its layout and navigation slot. Their context registry handles remain
+valid for retail callbacks; child ownership is restored before context teardown.
+
 ## Presentation and transactions
 
 `haze_menu.cpp` owns window-thread providers and publishes immutable snapshots.
@@ -97,6 +114,18 @@ The material is procedural; no extracted game texture is redistributed. The
 existing hex-pattern menu background is not used for the popup interior.
 
 ## Validation
+
+Profile-name regressions cover invalid/unsupported names, length limits,
+restart persistence, a denied atomic replacement, unchanged campaign files,
+keyboard/controller editing, cancellation, stale text commands, guest ABI
+errors, and the guarded display-field update. A private-desktop native run with
+copied saves entered and saved `Pilot_46`, returned through the menus and exited
+normally with the original `_PROFILE.DAT` hash unchanged. A restart loaded the
+same save slot and displayed the new name in the main, campaign, and pause
+menus. Continuing the campaign reached the saved jungle checkpoint. The private
+desktop used a process-local focus stand-in and diagnostic pad input; it did not
+switch or send input to the user's desktop. Captures and logs are in ignored
+`local/runs/profile-proof-2` and `local/runs/profile-restart`.
 
 For #102, menu keyboard holds use physical samples so a delayed window-message
 release cannot keep navigation repeating. Queued keydown timestamps preserve

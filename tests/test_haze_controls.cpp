@@ -40,6 +40,9 @@ int main() {
     invalid=initial.values; invalid["Controller.MoveX"]="raw:b0"; assert(!haze_control_validate(invalid,message));
     invalid=initial.values; invalid["Bindings.Cross"]="F1"; assert(!haze_control_validate(invalid,message));
     invalid=initial.values; invalid["Bindings.Cross"]="F7"; assert(!haze_control_validate(invalid,message));
+    for (const char* key:{"F9","Num5","NumDivide","Semicolon","LeftBracket","Apostrophe","WheelUp","wheeldown"}) {
+        invalid=initial.values; invalid["Bindings.Cross"]=key; assert(haze_control_validate(invalid,message));
+    }
     invalid=initial.values; invalid["ControllerBindings.Cross"]="a";
     assert(haze_control_conflicts(invalid,"ControllerBindings.Circle","south").size()==1);
     haze_controls_menu_register(); registered.begin();
@@ -57,6 +60,13 @@ int main() {
     registered.activate("ControllerBindings.Cross");
     gamepad_capture={HazeBindingCapturePhase::Captured,"raw:h0.4","Captured"}; registered.update(true);
     registered.modal_choose(0); assert(value("ControllerBindings.Cross")=="Hat 1 Down");
+    // Reserved host keys explain themselves; wheel directions capture like keys.
+    registered.activate("Bindings.Cross"); registered.update(true); registered.modal_key(VK_F1);
+    assert(registered.modal().capturing && registered.modal().message.starts_with("F1 is reserved for mouse capture"));
+    registered.modal_key(HAZE_VK_WHEEL_DOWN); assert(!registered.modal().capturing);
+    registered.modal_choose(0); assert(value("Bindings.Cross")=="WheelDown");
+    registered.activate("Bindings.Square"); registered.update(true); registered.modal_key(VK_NUMPAD7);
+    registered.modal_choose(0); assert(value("Bindings.Square")=="Num7");
     const auto bad_mapping=path+".mapping.txt";
     { std::ofstream file(bad_mapping); file<<"This is not an SDL mapping\n"; }
     registered.change("Controller.MappingFile",bad_mapping);
@@ -71,6 +81,7 @@ int main() {
     assert(registered.apply(message)==HazeMenuApply::Applied && reloads==1);
     HazeControlDocument saved; assert(haze_control_load(path,saved,message));
     assert(saved.values.at("Bindings.Forward")=="S" && saved.values.at("ControllerBindings.Cross")=="raw:h0.4");
+    assert(saved.values.at("Bindings.Cross")=="WheelDown" && saved.values.at("Bindings.Square")=="Num7");
     auto contents=bytes(); assert(contents.find("AutoSkipLogos=0")!=std::string::npos && contents.find("Directory=../my glyphs")!=std::string::npos && contents.find("Value=keep me")!=std::string::npos);
     registered.defaults(); assert(value("Bindings.Forward")=="W"); registered.begin(); assert(value("Bindings.Forward")=="S");
     { std::ofstream file(path,std::ios::app); file<<"; external edit\n"; }

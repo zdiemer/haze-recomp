@@ -31,6 +31,9 @@ bool initialized=false;
 Uint64 next_scan=0;
 float move_deadzone=.15f, look_deadzone=.12f, trigger_deadzone=.05f;
 bool invert_look=false;
+bool rumble_enabled=true;
+float rumble_intensity=1;
+struct Rumble { SDL_JoystickID id=0; Uint16 low=0,high=0; Uint64 refresh=0; } rumble;
 int forced_family=-1;
 HazeBindingCapture capture_state;
 SDL_JoystickID capture_device=0;
@@ -216,6 +219,11 @@ bool activity(const CellPadHostInput& now,const CellPadHostInput& before) {
     for (int i=0;i<4;i++) if (a[i]!=128 && std::abs(int(a[i])-int(b[i]))>=4) return true;
     return (now.l2>before.l2+4) || (now.r2>before.r2+4);
 }
+void stop_rumble() {
+    if (rumble.low || rumble.high)
+        for (const auto& d:devices) if (d.id==rumble.id) SDL_RumbleJoystick(d.joystick,0,0,0);
+    rumble={};
+}
 void update_capture() {
     if (capture_state.phase!=HazeBindingCapturePhase::Release && capture_state.phase!=HazeBindingCapturePhase::Listening) return;
     const auto it=std::find_if(devices.begin(),devices.end(),[](const Device& d) { return d.id==capture_device; });
@@ -286,6 +294,12 @@ void haze_gamepad_configure(const char* path) {
     look_deadzone=deadzone(path,"LookDeadzone","0.12");
     trigger_deadzone=deadzone(path,"TriggerDeadzone","0.05");
     invert_look=GetPrivateProfileIntA("Controller","InvertLookY",0,path)!=0;
+    rumble_enabled=GetPrivateProfileIntA("Controller","Rumble",1,path)!=0;
+    const auto intensity=setting(path,"Controller","RumbleIntensity","1.00");
+    char* end=nullptr; rumble_intensity=strtof(intensity.c_str(),&end);
+    if (end==intensity.c_str() || *end || !std::isfinite(rumble_intensity) || rumble_intensity<0 || rumble_intensity>1) {
+        fprintf(stderr,"[input] Invalid RumbleIntensity=%s; using 1.00\n",intensity.c_str()); rumble_intensity=1;
+    }
     auto style=setting(path,"Controller","IconFamily","auto");
     forced_family=!_stricmp(style.c_str(),"playstation") ? int(HazeInputFamily::PlayStation) :
                   !_stricmp(style.c_str(),"switch") ? int(HazeInputFamily::Switch) :
@@ -319,6 +333,7 @@ HazeGamepadState haze_gamepad_update() {
         if (!SDL_JoystickConnected(it->joystick)) {
             fprintf(stderr,"[input] Controller disconnected: %u\n",it->id);
             if (selected==it->id) selected=0;
+            if (rumble.id==it->id) rumble={};
             if (it->pad) SDL_CloseGamepad(it->pad);
             SDL_CloseJoystick(it->joystick); it=devices.erase(it); next_scan=0;
         } else ++it;
@@ -430,7 +445,24 @@ void haze_gamepad_capture_begin(bool axis_only) {
 }
 void haze_gamepad_capture_cancel() { capture_state={HazeBindingCapturePhase::Cancelled,{},"Capture cancelled. Binding unchanged."}; }
 HazeBindingCapture haze_gamepad_capture() { return capture_state; }
+void haze_gamepad_rumble(u8 small,u8 large) {
+    if (!initialized) return;
+    // PS3 actuators hold until changed: small is on/off, large 0-255. Short
+    // refreshed effects stop by themselves if this thread stops servicing them.
+    const float scale=rumble_enabled ? rumble_intensity : 0;
+    const auto low=Uint16(std::lround(large*257*scale)),high=Uint16(small ? std::lround(65535*scale) : 0);
+    if (rumble.id!=selected) stop_rumble();
+    const auto it=std::find_if(devices.begin(),devices.end(),[](const Device& d) { return d.id==selected; });
+    if (it==devices.end()) return;
+    const auto now=SDL_GetTicks();
+    if (rumble.id==it->id && rumble.low==low && rumble.high==high && (!(low|high) || now<rumble.refresh)) return;
+    if (((low|high) || (rumble.low|rumble.high)) && !SDL_RumbleJoystick(it->joystick,low,high,(low|high) ? 250 : 0) &&
+        (low|high) && rumble.id!=it->id)
+        fprintf(stderr,"[input] Controller %u has no rumble: %s\n",it->id,SDL_GetError());
+    rumble={it->id,low,high,now+100};
+}
 void haze_gamepad_shutdown() {
+    stop_rumble();
     for (auto& d:devices) { if (d.pad) SDL_CloseGamepad(d.pad); SDL_CloseJoystick(d.joystick); }
     devices.clear(); selected=0; next_scan=0;
     if (initialized) SDL_QuitSubSystem(SDL_INIT_GAMEPAD);

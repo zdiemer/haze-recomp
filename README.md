@@ -12,7 +12,10 @@ and installs a ready-to-play launcher. It uses a per-user MSI internally. See
 Menus, opening-scene gameplay, audio output, and checkpoint saves have been
 tested. Keyboard/mouse and SDL controller support are implemented. Performance,
 rendering, and campaign compatibility are still in development. Full campaign
-completion is not validated; online co-op is not implemented. Native PAMF movies
+completion is not validated. Experimental invite-code campaign co-op has passed
+two-instance local gameplay, departure and rejoin tests; separate-machine and
+home-router validation is pending. Internet play requires a configured service;
+see [co-op setup and limitations](docs/co-op.md). Native PAMF movies
 play with synchronized video and audio; Escape or the current confirm binding skips them.
 
 ## Install
@@ -114,16 +117,28 @@ Menus also support the pointer: left click selects, right click goes back.
 Enter and Esc keep their menu actions regardless of gameplay bindings. Holding
 either key across a menu boundary cannot trigger another action. Space remains
 jump during gameplay; Enter retains the Start binding outside menus by default.
-SDL gamepads connect automatically. Bindings, mouse sensitivity, controller
+Bindings accept function, numpad and punctuation keys and separate WheelUp /
+WheelDown directions; see [docs/control-settings.md](docs/control-settings.md).
+SDL gamepads connect automatically. Game vibration plays on the controller in
+use, including PlayStation, Switch and Steam virtual pads, while the game window
+has focus. Bindings, mouse sensitivity, controller
 options, and startup skipping live in [config/input.ini](config/input.ini)
 and reload while running. Action names above assume Haze's default controller
 layout; zoom and crouch can be changed from toggle to hold in the game's settings.
 
 **Settings > Control Setup** opens PC Controls for bindings, sensitivity,
-deadzones and prompt style. Select a binding to capture an input, review any
+deadzones, vibration and prompt style. Select a binding to capture an input, review any
 conflicts, then **Apply**. **Back** discards edits; **Defaults** requires Apply.
 **Game control options** opens the original controller layout and toggle/hold
 settings.
+
+**Player Profile** on the main menu shows your current name. Use **Edit profile
+name** to type with the keyboard (Enter accepts, Escape cancels), or use **Add
+character**, **Delete last character**, and **Clear name** with a controller.
+**Apply** saves the name; **Back** discards pending edits. Names use 3–16 ASCII
+letters, digits, underscores, or hyphens and must start with a letter. The name
+is stored alongside your saves in `player-name.txt`; changing it preserves the
+internal profile key, existing save directories, and campaign progression.
 
 The main-menu footer opens **Desktop Options** through the current Select
 binding (Tab by default) or a mouse click. **Add to Steam** lets you select a

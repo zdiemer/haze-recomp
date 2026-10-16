@@ -69,7 +69,10 @@ int main(int argc,char** argv) {
     HDC screen=GetDC(nullptr),dc=CreateCompatibleDC(screen);
     HBITMAP bitmap=CreateCompatibleBitmap(screen,64,64); auto old=SelectObject(dc,bitmap);
     const auto preview_revision=generation.load();
-    for (const char* key:{"F9","PageDown","Mouse5","K"}) assert(haze_prompts_draw_binding(dc,HazeInputFamily::Keyboard,key,0,0,64));
+    assert(key_icon("wheelup")=="mouse_scroll_up" && key_icon("wheeldown")=="mouse_scroll_down");
+    assert(key_icon("num5")=="#Num 5" && key_icon("semicolon")=="keyboard_semicolon" && key_icon("k")=="keyboard_k");
+    assert(key_icon("f9")=="keyboard_f9" && key_icon("f1").empty() && key_icon("none").empty());
+    for (const char* key:{"F9","PageDown","Mouse5","K","WheelUp","WheelDown","Num5","NumAdd","Semicolon","Grave"}) assert(haze_prompts_draw_binding(dc,HazeInputFamily::Keyboard,key,0,0,64));
     for (auto family:{HazeInputFamily::Xbox,HazeInputFamily::PlayStation,HazeInputFamily::Switch}) {
         assert(haze_prompts_draw_binding(dc,family,"raw:h0.4",0,0,64));
         assert(haze_prompts_draw_binding(dc,family,"-leftx",0,0,64));
@@ -101,6 +104,12 @@ int main(int argc,char** argv) {
     write_setting("ControllerBindings","Start","start");
     write_setting("Bindings","Cross","None"); refresh(HazeInputFamily::Keyboard);
     assert(published && empty_slot(*published,12));
+    // Numpad keys have no Kenney PNG; they still get a readable glyph.
+    write_setting("Bindings","Cross","Num5"); refresh(HazeInputFamily::Keyboard);
+    assert(published && !empty_slot(*published,12));
+    const auto numpad=published;
+    write_setting("Bindings","Cross","WheelUp"); refresh(HazeInputFamily::Keyboard);
+    assert(published && !empty_slot(*published,12) && *published!=*numpad);
     write_setting("Bindings","Cross","Mouse2"); refresh(HazeInputFamily::Keyboard);
     assert(published && !empty_slot(*published,12) && *published!=*keyboard);
     write_setting("ControllerBindings","Cross","north"); refresh(HazeInputFamily::Xbox);

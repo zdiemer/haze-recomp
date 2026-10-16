@@ -10,8 +10,8 @@
 #endif
 
 namespace {
-std::array<HazeMenuProvider,6> providers;
-std::array<std::atomic<bool>,6> available{};
+std::array<HazeMenuProvider,size_t(HazeMenuPage::Count)> providers;
+std::array<std::atomic<bool>,size_t(HazeMenuPage::Count)> available{};
 std::atomic<int> requested{0};
 std::atomic<bool> active{false},blocked{false};
 std::atomic<uint64_t> presented{0};
@@ -45,6 +45,7 @@ void publish() {
 void close_page(bool pop) {
     if (current_view.page==HazeMenuPage::None) return;
     const bool guest_back=provider().guest_back;
+    if (provider().end) provider().end(pop);
     if (provider().update) provider().update(false);
     current_view.page=HazeMenuPage::None;
     current_view.rows.clear(); current_view.modal={};
@@ -65,6 +66,8 @@ void dispatch(const HazeMenuCommand& command) {
             choose(command.choice);
         else if (command.kind==HazeMenuCommandKind::Key && dialog.capturing && provider().modal_key)
             provider().modal_key(command.choice);
+        else if (command.kind==HazeMenuCommandKind::Text && dialog.text_entry && !interrupt_dialog.revision && provider().modal_text)
+            provider().modal_text(uint32_t(command.choice));
         else if (command.kind==HazeMenuCommandKind::Back && choose) {
             const int cancel=dialog.cancel_choice>=0 ? dialog.cancel_choice : int(dialog.choices.size())-1;
             if (cancel>=0 && cancel<int(dialog.choices.size())) choose(cancel);
@@ -133,6 +136,13 @@ bool haze_menu_capture_key(int key) {
     if (!active || !view.modal.capturing) return false;
     HazeMenuCommand command; command.generation=view.generation;
     command.kind=key==27 ? HazeMenuCommandKind::Back : HazeMenuCommandKind::Key; command.choice=key; command.modal_revision=view.modal.revision;
+    haze_menu_command(std::move(command)); return true;
+}
+bool haze_menu_capture_text(uint32_t character) {
+    const auto view=haze_menu_view();
+    if (!active || !view.modal.text_entry) return false;
+    HazeMenuCommand command; command.generation=view.generation;
+    command.kind=HazeMenuCommandKind::Text; command.choice=int(character); command.modal_revision=view.modal.revision;
     haze_menu_command(std::move(command)); return true;
 }
 void haze_menu_update(void* owner,const HazeGamepadState&) {

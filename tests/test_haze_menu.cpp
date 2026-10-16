@@ -167,6 +167,21 @@ int main() {
     send(K::Activate,"binding"); foreground=nullptr; tick();
     assert(!haze_menu_view().modal.revision && haze_menu_active());
     send(K::Departed); assert(!haze_menu_active() && !haze_menu_view().pop);
+    foreground=owner;
+    HazeMenuModal text_dialog{7,"Name","Type a name",{"Use name","Cancel"},true,1,true};
+    std::vector<uint32_t> text;
+    HazeMenuProvider profile;
+    profile.modal=[&] { return text_dialog; };
+    profile.modal_text=[&](uint32_t c) { text.push_back(c); };
+    profile.modal_choose=[&](int) { text_dialog={}; };
+    haze_menu_register(HazeMenuPage::Profile,std::move(profile));
+    open(HazeMenuPage::Profile);
+    assert(haze_menu_capture_text('a')); tick(); assert(text==std::vector<uint32_t>{'a'});
+    HazeMenuCommand stale; stale.generation=haze_menu_view().generation; stale.kind=K::Text; stale.choice='b'; stale.modal_revision=6;
+    haze_menu_command(stale); tick(); assert(text.size()==1);
+    haze_menu_interrupt({1,"Interrupt","Keep typing private",{"OK"},false});
+    assert(!haze_menu_capture_text('c'));
+    haze_menu_interrupt({}); send(K::Back); assert(!haze_menu_capture_text('d'));
     haze_menu_shutdown();
     std::puts("Native menu commands, staging, preview rollback, stale events and pending saves passed.");
 }

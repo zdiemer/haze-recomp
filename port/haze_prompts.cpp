@@ -1,5 +1,6 @@
 #include "haze_prompts.h"
 #include "haze_input_source.h"
+#include "haze_input_key.h"
 #include "rsx_live_draw.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -84,21 +85,8 @@ const u8* pixels(u32 format,u32 w,u32 h,const u8* source,size_t bytes,void*) {
     return held ? held->data() : nullptr;
 }
 std::string key_icon(std::string name) {
-    if (name=="none" || name.empty()) return {};
-    if (name.size()==1 && std::isalnum((unsigned char)name[0])) return "keyboard_"+name;
-    if (name=="backspace" || name=="delete" || name=="insert" || name=="home" || name=="end" ||
-        name=="f2" || name=="f3" || name=="f4" || name=="f5" || name=="f7" || name=="f8" || name=="f9" ||
-        name=="f10" || name=="f11" || name=="f12") return "keyboard_"+name;
-    const std::pair<const char*,const char*> aliases[]={
-        {"space","keyboard_space"},{"enter","keyboard_enter"},{"escape","keyboard_escape"},
-        {"tab","keyboard_tab"},{"shift","keyboard_shift"},{"ctrl","keyboard_ctrl"},{"alt","keyboard_alt"},
-        {"up","keyboard_arrow_up"},{"down","keyboard_arrow_down"},
-        {"left","keyboard_arrow_left"},{"right","keyboard_arrow_right"},
-        {"pageup","keyboard_page_up"},{"pagedown","keyboard_page_down"},
-        {"mouse1","mouse_left"},{"mouse2","mouse_right"},{"mouse3","mouse_scroll"},
-        {"mouse4","mouse_side_back"},{"mouse5","mouse_side_forward"}};
-    for (const auto& [from,to]:aliases) if (name==from) return to;
-    return {}; // Same behavior as disabled unknown input bindings.
+    const int key=haze_key_code(name.c_str());
+    return key>0 ? haze_key_icon(key) : std::string{}; // Unknown bindings are disabled.
 }
 std::string pad_icon(HazeInputFamily family,std::string name) {
     if (name=="none" || name.empty()) return {};
@@ -142,6 +130,44 @@ bool decode(IWICImagingFactory* factory,const fs::path& path,Image& image) {
         FAILED(converter->Initialize(frame.Get(),GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom))) return false;
     image.rgba.resize(size_t(image.w)*image.h*4);
     return SUCCEEDED(converter->CopyPixels(nullptr,image.w*4,(UINT)image.rgba.size(),image.rgba.data()));
+}
+// Keys without a Kenney PNG get a readable keycap label instead of a blank slot.
+bool label(const std::string& text,Image& image) {
+    BITMAPINFO info{}; info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth=64; info.bmiHeader.biHeight=-60; info.bmiHeader.biPlanes=1;
+    info.bmiHeader.biBitCount=32; info.bmiHeader.biCompression=BI_RGB;
+    void* bits=nullptr; HDC dc=CreateCompatibleDC(nullptr);
+    HBITMAP bitmap=dc ? CreateDIBSection(dc,&info,DIB_RGB_COLORS,&bits,nullptr,0) : nullptr;
+    if (!bitmap) { if (dc) DeleteDC(dc); return false; }
+    const auto old=SelectObject(dc,bitmap);
+    HBRUSH fill=CreateSolidBrush(RGB(40,40,40)); HPEN pen=CreatePen(PS_SOLID,3,RGB(230,230,230));
+    const auto old_brush=SelectObject(dc,fill); const auto old_pen=SelectObject(dc,pen);
+    RoundRect(dc,2,4,62,56,14,14);
+    HFONT font=nullptr; HGDIOBJ old_font=nullptr; SIZE extent{};
+    for (int size=28;size>=10;size-=2) {
+        HFONT next=CreateFontA(-size,0,0,0,FW_BOLD,0,0,0,DEFAULT_CHARSET,0,0,ANTIALIASED_QUALITY,0,"Segoe UI");
+        const auto previous=SelectObject(dc,next);
+        if (!old_font) old_font=previous;
+        if (font) DeleteObject(font);
+        font=next;
+        if (GetTextExtentPoint32A(dc,text.c_str(),int(text.size()),&extent) && extent.cx<=52) break;
+    }
+    SetBkMode(dc,TRANSPARENT); SetTextColor(dc,RGB(255,255,255));
+    RECT rect{2,4,62,56}; DrawTextA(dc,text.c_str(),-1,&rect,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+    GdiFlush();
+    image.w=64; image.h=60; image.rgba.resize(64*60*4);
+    const auto* source=static_cast<const u8*>(bits);
+    for (size_t i=0;i<64*60;++i) {
+        // GDI leaves untouched pixels zero; everything drawn is opaque.
+        const bool drawn=source[i*4] || source[i*4+1] || source[i*4+2];
+        for (int c=0;c<3;c++) image.rgba[i*4+c]=source[i*4+2-c];
+        image.rgba[i*4+3]=drawn ? 255 : 0;
+    }
+    if (old_font) SelectObject(dc,old_font);
+    SelectObject(dc,old_pen); SelectObject(dc,old_brush); SelectObject(dc,old);
+    if (font) DeleteObject(font);
+    DeleteObject(pen); DeleteObject(fill); DeleteObject(bitmap); DeleteDC(dc);
+    return true;
 }
 void place(Atlas& atlas,const Image& image,int slot,int ox=4,int oy=4,int bound_w=56,int bound_h=52) {
     // Retail UVs address this 6x4 layout. Keep a gutter to avoid bilinear bleed.
@@ -207,6 +233,7 @@ void rebuild(HazeInputFamily family) {
         bool valid=SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)));
         atlas=std::make_shared<Atlas>();
         auto load=[&](const std::string& name,Image& image) {
+            if (name[0]=='#') return label(name.substr(1),image);
             const auto path=root/folder/(name+".png");
             watched.emplace_back(path,stamp(path));
             if (!factory || !decode(factory.Get(),path,image)) {
@@ -296,6 +323,11 @@ bool haze_prompts_draw_binding(void* context,HazeInputFamily family,const char* 
     std::string value=binding; for (auto& c:value) c=char(std::tolower((unsigned char)c));
     const auto icon=family==HazeInputFamily::Keyboard ? key_icon(value) : pad_icon(family,value);
     if (icon.empty()) return false;
+    if (icon[0]=='#') {
+        Image image; if (!label(icon.substr(1),image)) return false;
+        auto atlas=std::make_shared<Atlas>(); atlas->fill(0); place(*atlas,image,0);
+        return draw_icon(context,atlas,0,x,y,size);
+    }
     char directory[1024]; GetPrivateProfileStringA("Prompts","Directory","../assets/input-prompts",directory,sizeof(directory),config.c_str());
     const char* folder=family==HazeInputFamily::Keyboard ? "keyboard" : family==HazeInputFamily::Xbox ? "xbox" : family==HazeInputFamily::Switch ? "switch" : "playstation";
     const auto path=fs::path(config).parent_path()/directory/folder/(icon+".png");

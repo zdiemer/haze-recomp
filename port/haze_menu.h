@@ -6,7 +6,7 @@
 #include <array>
 #include "haze_gamepad.h"
 
-enum class HazeMenuPage { None, Video, Audio, Controls, Desktop, Quit };
+enum class HazeMenuPage { None, Video, Audio, Controls, Desktop, Quit, Profile, CoopHost, CoopJoin, Count };
 enum class HazeMenuApply { Applied, Pending, Failed };
 struct HazeMenuChoice { std::string value,label; bool operator==(const HazeMenuChoice&) const = default; };
 struct HazeMenuRow {
@@ -25,6 +25,7 @@ struct HazeMenuModal {
     std::vector<std::string> choices;
     bool capturing=false;
     int cancel_choice=-1; // -1 keeps the existing convention: last choice cancels
+    bool text_entry=false;
     bool operator==(const HazeMenuModal&) const = default;
 };
 struct HazeMenuProvider {
@@ -38,8 +39,10 @@ struct HazeMenuProvider {
     std::function<HazeMenuApply(std::string&)> poll;
     std::function<void(const std::string&)> activate;
     std::function<void(bool)> update;
+    std::function<void(bool)> end; // true: Back; false: guest page transition
     std::function<HazeMenuModal()> modal;
     std::function<void(int)> modal_key,modal_choose;
+    std::function<void(uint32_t)> modal_text;
     std::array<std::string,3> actions={"Apply","Defaults","Back"};
     std::string footer_hint="Apply saves changes. Back discards edits made since the last Apply.";
     std::string defaults_notice="Defaults selected. Apply to save.";
@@ -75,7 +78,7 @@ struct HazeMenuView {
     HazeMenuModal modal;
     bool applying=false,error=false,pop=false;
 };
-enum class HazeMenuCommandKind { Change, Activate, Apply, Defaults, Back, Modal, Key, Departed };
+enum class HazeMenuCommandKind { Change, Activate, Apply, Defaults, Back, Modal, Key, Departed, Text };
 struct HazeMenuCommand {
     uint64_t generation=0;
     HazeMenuCommandKind kind=HazeMenuCommandKind::Back;
@@ -88,6 +91,7 @@ void haze_menu_command(HazeMenuCommand command);
 void haze_menu_presented(uint64_t generation);
 bool haze_menu_blocks_input();
 bool haze_menu_capture_key(int key);
+bool haze_menu_capture_text(uint32_t character);
 
 #include <cstdint>
 

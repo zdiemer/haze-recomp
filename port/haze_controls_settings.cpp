@@ -63,6 +63,8 @@ const std::vector<HazeControlSpec>& haze_control_specs() {
         list.push_back({"Controller","LookDeadzone","Look deadzone","0.12",HazeControlKind::Number,0,.94,.01});
         list.push_back({"Controller","TriggerDeadzone","Trigger threshold","0.05",HazeControlKind::Number,0,.94,.01});
         list.push_back({"Controller","InvertLookY","Invert controller look","0",HazeControlKind::Toggle});
+        list.push_back({"Controller","Rumble","Controller vibration","1",HazeControlKind::Toggle});
+        list.push_back({"Controller","RumbleIntensity","Vibration intensity","1.00",HazeControlKind::Number,0,1,.05});
         list.push_back({"Controller","IconFamily","Controller prompts","auto",HazeControlKind::Family});
         list.push_back({"Controller","MappingFile","SDL mapping file","",HazeControlKind::Mapping});
         return list;

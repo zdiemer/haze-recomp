@@ -15,7 +15,7 @@ PATCHES = (
     'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
     'menu-lifetime', 'menu-material', 'menu-pages', 'movie-poll', 'native-cursor',
     'producer-profile', 'save-status', 'savedata', 'slot-copy', 'spu-idle',
-    'spu-triplet-copy', 'startup-splash', 'title-prompt', 'vp-upload',
+    'spu-triplet-copy', 'startup-splash', 'teammate-name', 'title-prompt', 'vp-upload',
 )
 ORACLES = {
     'oracle-bulk-fill': 'extract_bulk_fill_oracle',

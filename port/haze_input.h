@@ -16,5 +16,9 @@ unsigned haze_input_menu_button(int virtual_key);
 const char* haze_input_config_path();
 void haze_input_reload();
 HazeInputFamily haze_input_family();
+// Guest cellPadSetActDirect thread: latest port actuator values for the window thread.
+void haze_input_rumble(u32 port, u8 small, u8 large);
+// Windows: route guest actuator calls here instead of the SDK's XInput path.
+void haze_pad_guest_register();
 // Simulation-thread consumer: raw device counts and degrees per count.
 bool haze_input_take_mouse(double& x, double& y, double& sensitivity, bool& invert_y);

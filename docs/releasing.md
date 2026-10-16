@@ -112,6 +112,11 @@ The matching source archive and build recipe are shipped alongside the binary.
 7-Zip is bundled with its source and notices, including the unRAR restriction.
 SDL, project/SDK and input-prompt licenses are included, together with Microsoft's
 installed distributable-code list for the app-local VC runtime.
+Networking dependencies are pinned as well: libdatachannel, libjuice, Mbed TLS,
+usrsctp, plog and nlohmann/json. Their source archives and notices are included.
+The source bundle also contains the exact modified libdatachannel WebSocket
+source that enables Windows certificate verification, and its guarded build
+recipe in the project archive.
 
 RPCS3 is downloaded directly from the pinned official release during installation
 and verified before execution. The MSI/ZIP contain neither RPCS3 nor Sony firmware.

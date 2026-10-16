@@ -11,9 +11,14 @@
 #include <chrono>
 #include <process.h>
 
-static SDL_JoystickID attach(bool custom=false,bool unmapped=false) {
+struct Motors { Uint16 low=0,high=0; };
+static bool SDLCALL rumble(void* user,Uint16 low,Uint16 high) {
+    auto* motors=static_cast<Motors*>(user); motors->low=low; motors->high=high; return true;
+}
+static SDL_JoystickID attach(bool custom=false,bool unmapped=false,Motors* motors=nullptr) {
     SDL_VirtualJoystickDesc desc{};
     SDL_INIT_INTERFACE(&desc);
+    if (motors) { desc.Rumble=rumble; desc.userdata=motors; }
     desc.type=custom ? SDL_JOYSTICK_TYPE_FLIGHT_STICK : SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.naxes=SDL_GAMEPAD_AXIS_COUNT;
     desc.nbuttons=SDL_GAMEPAD_BUTTON_COUNT;
@@ -215,9 +220,49 @@ int main() {
     assert(haze_gamepad_capture().phase==HazeBindingCapturePhase::Cancelled && !haze_gamepad_info().connected);
     for (const char* invalid:{"raw:b-1","raw:a256","raw:h0.0","raw:h0.3","raw:+b1","raw:a0junk","raw:"})
         assert(haze_raw_source(invalid).kind==HazeRawSource::None);
-    haze_gamepad_shutdown();
+    // Guest actuators follow the selected device, scaled by input.ini.
+    { std::ofstream ini(config); }
+    haze_gamepad_configure(config.c_str());
+    Motors first,second;
+    attach(false,false,&first); SDL_Delay(510); haze_gamepad_update();
+    haze_gamepad_rumble(1,128);
+    assert(first.low==128*257 && first.high==65535);
+    haze_gamepad_rumble(0,0); assert(!first.low && !first.high);
+    { std::ofstream ini(config); ini<<"[Controller]\nRumbleIntensity=0.5\n"; }
+    haze_gamepad_configure(config.c_str());
+    haze_gamepad_rumble(1,255); assert(first.low==32768 && first.high==32768);
+    { std::ofstream ini(config); ini<<"[Controller]\nRumble=0\nRumbleIntensity=0.5\n"; }
+    haze_gamepad_configure(config.c_str());
+    haze_gamepad_rumble(1,255); assert(!first.low && !first.high); // Disabling stops a held effect.
+    { std::ofstream ini(config); ini<<"[Controller]\nRumble=1\nRumbleIntensity=2\n"; }
+    haze_gamepad_configure(config.c_str());
+    haze_gamepad_rumble(0,255); assert(first.low==65535 && !first.high); // Invalid intensity uses 1.
+    // A held request is refreshed while serviced and expires when it is not.
+    for (int i=0;i<8;++i) { SDL_Delay(50); haze_gamepad_update(); haze_gamepad_rumble(0,255); }
+    assert(first.low==65535);
+    SDL_Delay(300); haze_gamepad_update(); assert(!first.low);
+    haze_gamepad_rumble(0,255); assert(first.low==65535);
+    // Switching controllers moves the effect and stops the previous device.
+    const auto second_id=attach(false,false,&second); SDL_Delay(510); haze_gamepad_update();
+    haze_gamepad_rumble(0,255); assert(first.low==65535 && !second.low);
+    joy=SDL_OpenJoystick(second_id); assert(joy);
+    SDL_SetJoystickVirtualButton(joy,SDL_GAMEPAD_BUTTON_SOUTH,true);
+    assert(haze_gamepad_update().activity);
+    haze_gamepad_rumble(1,255); assert(!first.low && !first.high && second.low==65535 && second.high==65535);
+    SDL_CloseJoystick(joy); assert(SDL_DetachVirtualJoystick(second_id));
+    haze_gamepad_update(); haze_gamepad_rumble(1,255);
+    assert(first.low==65535 && first.high==65535); // Disconnect falls back to the remaining device.
+    // A controller without motors is selected without failing the request.
+    const auto silent=attach(); SDL_Delay(510); haze_gamepad_update();
+    joy=SDL_OpenJoystick(silent); assert(joy);
+    SDL_SetJoystickVirtualButton(joy,SDL_GAMEPAD_BUTTON_SOUTH,true);
+    assert(haze_gamepad_update().activity);
+    haze_gamepad_rumble(1,255); haze_gamepad_rumble(1,255); assert(!first.low && !first.high);
+    SDL_CloseJoystick(joy); assert(SDL_DetachVirtualJoystick(silent));
+    haze_gamepad_update(); haze_gamepad_rumble(1,255); assert(first.low==65535);
+    haze_gamepad_shutdown(); assert(!first.low && !first.high);
     std::filesystem::remove(config);
     std::filesystem::remove(mapping);
     std::filesystem::remove(directory);
-    puts("SDL controller hotplug, position mapping, deadzones, analog triggers, activity and rebinds passed.");
+    puts("SDL controller hotplug, position mapping, deadzones, analog triggers, activity, rebinds and rumble passed.");
 }

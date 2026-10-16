@@ -91,7 +91,10 @@ void activate(const std::string& id) {
 void capture_key(int key) {
     if (stage!=Stage::Capture || !keyboard || !keyboard_neutral) return;
     const auto name=haze_key_name(key);
-    if (name.empty()) { dialog.message="That key is reserved or unsupported. Choose another key; Escape cancels."; return; }
+    if (name.empty()) {
+        const char* reserved=haze_key_reserved(key);
+        dialog.message=std::string(reserved ? reserved : "That key is unsupported")+". Choose another key; Escape cancels."; return;
+    }
     haze_input_menu_button(key); preview(name);
 }
 void update(bool focused) {

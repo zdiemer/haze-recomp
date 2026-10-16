@@ -19,6 +19,9 @@ bool haze_gamepad_initialize(const char* config);
 void haze_gamepad_configure(const char* config);
 HazeGamepadState haze_gamepad_update();
 void haze_gamepad_shutdown();
+// Window thread. Drives the selected device with guest actuator values (small
+// motor on/off, large 0-255) scaled by input.ini; zeros stop it.
+void haze_gamepad_rumble(u8 small,u8 large);
 
 struct HazeControllerInfo { std::string name; bool connected=false,mapped=false; HazeInputFamily family=HazeInputFamily::Xbox; };
 HazeControllerInfo haze_gamepad_info();

@@ -7,12 +7,12 @@ check.
 
 The page lists keyboard movement, mouse look, all sixteen emulated controller
 buttons, controller movement/look axes, mouse sensitivity and inversion,
-controller deadzones and trigger threshold, controller look inversion, prompt
-family and an optional SDL mapping file. Action names describe Haze's Default
-layout. **Game control options** opens the original page for its controller
-layouts, toggle aim/crouch and other game preferences, discarding unapplied PC
-edits. Those game preferences can further change the actions or inversion
-associated with the emulated buttons and sticks.
+controller deadzones and trigger threshold, controller look inversion,
+vibration and its intensity, prompt family and an optional SDL mapping file.
+Action names describe Haze's Default layout. **Game control options** opens
+the original page for its controller layouts, toggle aim/crouch and other game
+preferences, discarding unapplied PC edits. Those game preferences can further
+change the actions or inversion associated with the emulated buttons and sticks.
 
 ## Editing
 
@@ -56,12 +56,34 @@ change the saved bindings.
 
 ## Input and prompts
 
-Keyboard names include A-Z, 0-9, Space, Enter, Escape, Tab, Shift, Ctrl, Alt,
-arrows, Mouse1-Mouse5, Backspace, Delete, Insert, Home, End, PageUp, PageDown,
-and F2-F12 except F6/F7. F1 controls mouse capture, F6 reloads graphics settings,
-and F7 cycles the performance overlay.
+Keyboard names include A-Z, 0-9, Space, Enter, Tab, Shift, Ctrl, Alt, arrows,
+Backspace, Delete, Insert, Home, End, PageUp, PageDown, F2-F12 except F6/F7,
+Num0-Num9, NumMultiply, NumAdd, NumSubtract, NumDecimal, NumDivide, Semicolon,
+Equals, Comma, Minus, Period, Slash, Grave, LeftBracket, Backslash,
+RightBracket, Apostrophe, Mouse1-Mouse5, WheelUp and WheelDown. One table in
+`port/haze_input_key.h` defines these names for parsing, display and prompts.
+
+Numpad keys bind separately from the main-row digits and symbols. Windows
+reports numpad digits only while Num Lock is on; otherwise they arrive as Home,
+End, arrows, Insert and Delete and act as those bindings. Numpad Enter is
+Enter. Punctuation names are Windows virtual keys named after the US layout;
+another layout may put them on different physical keys or characters.
+
+WheelUp and WheelDown are separate one-report pulses while gameplay owns the
+mouse. Scrolling during capture binds a wheel direction. A wheel direction that
+no action uses keeps the original Circle (switch weapon) pulse, so older
+input.ini files keep their wheel behavior. Menus still use the wheel for
+scrolling.
+
+Prompts use the Kenney PNG for each key. Keys without one, such as numpad
+digits, get a generated keycap label instead of a blank prompt.
+
+F1 controls mouse capture, F6 reloads graphics settings, and F7 cycles the
+performance overlay. These cannot be bound: capture explains the reservation,
+and an INI binding to them is logged and disabled.
 Escape is reserved for pause during gameplay, Back in menus, and cancelling a
-binding capture. Enter confirms in menus regardless of its gameplay binding.
+binding capture. An existing INI binding to Escape is logged and only acts on
+startup screens. Enter confirms in menus regardless of its gameplay binding.
 These menu actions override conflicting button and movement bindings; Space
 keeps its default gameplay jump binding. Held Enter/Escape input is suppressed
 until release when entering or leaving a menu.
@@ -77,6 +99,7 @@ device activity also update the normal game prompt atlas. Controller style can
 be automatic, Xbox, PlayStation or Switch. Mouse sensitivity spans 0.01-10
 degrees per device count; movement/look deadzones and trigger threshold span
 0-0.94. Mouse look uses raw motion, independently of stick deadzones.
+Vibration intensity spans 0-1.
 
 The PC page retains arrow/Enter/Escape navigation. If controller Confirm, Back
 or Defaults is unbound, duplicated with another of those actions, or bound to
@@ -86,6 +109,18 @@ axes similarly retain a settings-only left-stick fallback. Gameplay bindings
 are unaffected by this fallback. Applying new bindings requires neutral input
 before navigation resumes. The host mapper suppresses gameplay input while
 the PC page or capture dialog owns it.
+
+## Vibration
+
+The game's `cellPadSetActDirect` motor requests are routed to the selected SDL
+controller instead of the SDK's XInput path, so PlayStation, Switch and Steam
+virtual pads receive them too. The large motor keeps its 0-255 strength; the
+small on/off motor runs at full strength. `RumbleIntensity` scales both and
+`Rumble=0` turns vibration off. Effects follow the most recently used
+controller and stop on the previous one. They also stop when the controller
+disconnects, when another window or a PC overlay page takes input, and on
+exit. Requests are refreshed briefly, so motors also stop by themselves if the
+window thread stalls. Controllers without motors are ignored.
 
 ## Validation and remaining acceptance
 

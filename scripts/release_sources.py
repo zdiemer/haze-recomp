@@ -1,6 +1,7 @@
 """Fetch pinned dependency sources, preserve notices and package matching source."""
 import argparse
 import json
+import runpy
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,6 +11,27 @@ import zipfile
 from release import digest, inventory
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def bundle_network(sources, project, licenses, stream):
+    if not (project / 'port/net/CMakeLists.txt').exists():
+        return
+    for name, license_file in (('datachannel', 'LICENSE'), ('juice', 'LICENSE'),
+                               ('sctp', 'LICENSE.md'), ('plog', 'LICENSE'),
+                               ('json', 'LICENSE.MIT'), ('mbedtls', 'LICENSE')):
+        shutil.copy2(sources / name / license_file, licenses / f'{name}-LICENSE.txt')
+    # Include the actual modified MPL-covered source, not only a patch promise.
+    patch = runpy.run_path(str(project / 'port/net/patch_verified_tls.py'))['patch']
+    modified = patch((sources / 'datachannel/src/impl/websocket.cpp').read_text())
+    stream.writestr('datachannel-modified/src/impl/websocket.cpp', modified)
+    stream.writestr('network-build.txt',
+        'Networking source archives correspond to the commits in sources.json.\n'
+        'Place juice, sctp, plog and json under libdatachannel/deps as libjuice,\n'
+        'usrsctp, plog and json; place mbedtls-framework under mbedtls/framework.\n'
+        'Haze port/net/CMakeLists.txt and mbedtls_config.h define the build.\n'
+        'The modified WebSocket source retains Windows CA verification; its exact\n'
+        'source is included under datachannel-modified, and the guarded recipe is\n'
+        'port/net/patch_verified_tls.py in the Haze project source archive.\n')
 
 
 def fetch(output):
@@ -62,6 +84,10 @@ def bundle(sources, project, ffmpeg, output):
         'DLLs with compatible modified builds. Reverse engineering for debugging such\n'
         'modifications is permitted. See the FFmpeg license texts.\n'
         '7-Zip 26.04: LGPL and BSD portions with the unRAR restriction; see 7zip/License.txt.\n'
+        'libdatachannel and libjuice: MPL 2.0. Mbed TLS: Apache 2.0 option.\n'
+        'usrsctp: BSD. plog and nlohmann/json: MIT. See their individual license files.\n'
+        'Matching networking sources, including the modified WebSocket TLS source,\n'
+        'are included in HazeRecomp-dependency-sources.zip.\n'
         'Microsoft Visual C++ runtime: Copyright Microsoft Corporation. Redistributed\n'
         'under the Visual Studio distributable-code terms; see Microsoft-Redist.txt.\n'
         'RPCS3 and Sony firmware are downloaded from their respective providers during\n'
@@ -70,7 +96,8 @@ def bundle(sources, project, ffmpeg, output):
         'The matching open-source dependency sources and FFmpeg build recipe are provided\n'
         'alongside this release as HazeRecomp-dependency-sources.zip. This is direct source\n'
         'distribution, not a promise to supply sources later. The archive contains the\n'
-        'unmodified pinned FFmpeg, SDL and 7-Zip source archives, project/SDK sources and\n'
+        'pinned FFmpeg, SDL, 7-Zip and networking source archives, the modified TLS\n'
+        'source, project/SDK sources and\n'
         'the FFmpeg configure log. Private game-derived translations are not included.\n', encoding='utf-8')
     vswhere = Path('C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe')
     vs = subprocess.check_output([str(vswhere), '-latest', '-products', '*', '-requires',
@@ -85,6 +112,7 @@ def bundle(sources, project, ffmpeg, output):
                 raise ValueError('Source archive changed after preparation')
             stream.write(source, f'{name}.zip')
         stream.write(sources / 'lock.json', 'sources.json')
+        bundle_network(sources, project, licenses, stream)
         stream.write(ffmpeg / 'build-config.log', 'ffmpeg-build-config.log')
         for name in ('build-ffmpeg.ps1', 'build-ffmpeg.sh'):
             stream.write(ROOT / 'scripts' / name, name)

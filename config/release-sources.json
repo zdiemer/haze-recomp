@@ -10,5 +10,33 @@
   "sdl": {
     "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.zip",
     "sha256": "9cd42377704398796071b8597cd7e21da254a43bad98c4199739647adc13fa6f"
+  },
+  "datachannel": {
+    "url": "https://codeload.github.com/paullouisageneau/libdatachannel/zip/6b1e2e620f1e37f0eafeee702eaea0043cb305fd",
+    "sha256": "f9c44bd46627f86625cddeb292cdea89ff1101211038924d77490eb18eef1cfe"
+  },
+  "mbedtls": {
+    "url": "https://codeload.github.com/Mbed-TLS/mbedtls/zip/e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df",
+    "sha256": "d63bba8858024b103e562b19ad3dd9ba74f7fe404a9ba445f6b8439abd187939"
+  },
+  "juice": {
+    "url": "https://codeload.github.com/paullouisageneau/libjuice/zip/b89c792e3612faf2f12cf35bcc56857313a06be3",
+    "sha256": "c937ec97110b559e4a27885a3098c7a65dad2459c813569441a1329f74662381"
+  },
+  "sctp": {
+    "url": "https://codeload.github.com/sctplab/usrsctp/zip/fec583d54493f879d2ae44a743423bf8a04371ab",
+    "sha256": "752b4337bece1138f4f4151cec4240956a7230b007e11bc1a6915cbda58d7086"
+  },
+  "plog": {
+    "url": "https://codeload.github.com/SergiusTheBest/plog/zip/94899e0b926ac1b0f4750bfbd495167b4a6ae9ef",
+    "sha256": "195415f664dccc6682c344ca0e1966674555f0be07e9552d4f760860acce719d"
+  },
+  "json": {
+    "url": "https://codeload.github.com/nlohmann/json/zip/55f93686c01528224f448c19128836e7df245f72",
+    "sha256": "0746352e4e9532e7aeabbcbaa79079b6bc6008e9261e4d459c9486a9b48a172e"
+  },
+  "mbedtls-framework": {
+    "url": "https://codeload.github.com/Mbed-TLS/mbedtls-framework/zip/457996474728cb8e968ed21953b72f74d2f536b2",
+    "sha256": "bb2ae32855ebada27c14f94344487422bdc2e131b7f4d9e0a0719e9d71553d85"
   }
 }

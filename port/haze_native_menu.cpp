@@ -1,6 +1,9 @@
 #include "ppu_recomp.h"
 #include "haze_menu.h"
 #include "haze_quit.h"
+#ifdef _WIN32
+#include "haze_coop.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -13,6 +16,9 @@
 #include <vector>
 
 extern "C" void ppu_register_function(uint64_t,void (*)(ppu_context*));
+void haze_menu_cleanup(uint32_t);
+void haze_menu_cleanup_restore(uint32_t,bool (*)(void*,uint32_t,uint32_t),void*);
+void haze_player_profile_tick();
 namespace {
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 constexpr uint32_t gateway=0xfffe7300;
@@ -63,6 +69,24 @@ uint32_t call(ppu_context* ctx,void(*fn)(ppu_context*),uint64_t a=0,uint64_t b=0
     fn(ctx);
     while (g_trampoline_fn) { auto next=g_trampoline_fn; g_trampoline_fn=nullptr; next(ctx); }
     const auto result=uint32_t(ctx->gpr[3]); *ctx=saved; g_trampoline_fn=trampoline; return result;
+}
+bool reserve_children(void* owner,uint32_t parent,uint32_t required) {
+    auto ctx=static_cast<ppu_context*>(owner);
+    const auto count=vm_read32(parent+0x60),old=vm_read32(parent+0x64);
+    if(required>1024 || count>required || !valid(old)) return false;
+    const auto temporary=uint32_t(ctx->gpr[1])-0x5400;
+    const uint64_t saved[]={vm_read64(temporary),vm_read64(temporary+8)};
+    call(ctx,func_00692068,temporary,UINT32_MAX,std::max(required,16u),8);
+    const auto replacement=vm_read32(temporary+8);
+    bool success=valid(replacement) && vm_read32(temporary)>=required;
+    if(success) {
+        for(uint32_t i=0;i<count;++i) vm_write64(replacement+i*8,vm_read64(old+i*8));
+        vm_write32(temporary+4,count);
+        call(ctx,func_00692010,parent+0x5c);
+        vm_write64(parent+0x5c,vm_read64(temporary)); vm_write64(parent+0x64,vm_read64(temporary+8));
+    }
+    vm_write64(temporary,saved[0]); vm_write64(temporary+8,saved[1]);
+    return success;
 }
 void put(uint32_t address,const std::string& text) {
     for (size_t i=0;i<text.size();++i) vm_write8(address+uint32_t(i),uint8_t(text[i]));
@@ -166,14 +190,14 @@ void action_callback(ppu_context* ctx) {
             }
             ctx->gpr[3]=1; return;
         }
-        if (a.local==4 || a.local==5) {
+        if (a.local==4 || a.local==5 || a.local==8) {
             const auto offer=haze_quit_offer();
             const auto root=main_roots.find(owner);
             if (root!=main_roots.end() && offer.available && !haze_menu_active() &&
                 (a.local==4 || !offer.gameplay)) {
                 target_page=root->second; target_context=vm_read32(owner+0xcc);
                 return_widget=owner;
-                haze_menu_request(a.local==4 ? HazeMenuPage::Quit : HazeMenuPage::Desktop);
+                haze_menu_request(a.local==4 ? HazeMenuPage::Quit : a.local==8 ? HazeMenuPage::Profile : HazeMenuPage::Desktop);
             }
             ctx->gpr[3]=1; return;
         }
@@ -593,12 +617,13 @@ void haze_native_menu_page(ppu_context* ctx,uint32_t page) {
     // Remember every activated native page, not just settings: window-close
     // status must also be renderable from campaign/loading/gameplay contexts.
     target_page=page; target_context=context;
+    haze_menu_cleanup(context);
     if ((!main && !pause) || !valid(target_context) || !register_callback(ctx)) return;
     if (main_handles[page]==vm_read32(page+0x28)) return;
     // The main list is a native resource-owned container. Insert the new handles
     // at its beginning because the list renders handles in reverse order.
     const std::string parent=main ? "fefl_DC_cntr2" : "ingm_DC_cntr2";
-    for (unsigned i=0;i<(main ? 2u:1u);++i) {
+    for (unsigned i=0;i<(main ? 3u:1u);++i) {
         const auto widget=create(ctx,"text",next_id(),props(parent,int(i)));
         if (!widget || !attach(ctx,widget)) return;
         const auto container=call(ctx,func_003141D0,widget+0x40,target_context);
@@ -606,13 +631,13 @@ void haze_native_menu_page(ppu_context* ctx,uint32_t page) {
         const auto last=vm_read64(items+(count-1)*8);
         for (uint32_t j=count-1;j>0;--j) vm_write64(items+j*8,vm_read64(items+(j-1)*8));
         vm_write64(items,last);
-        label(ctx,widget,i ? "Add to Steam" : "Quit to Desktop");
+        label(ctx,widget,i==2 ? "Player Profile" : i ? "Add to Steam" : "Quit to Desktop");
         main_roots[widget]=page;
-        bind(ctx,widget,{0,HazeMenuCommandKind::Activate,{},0,0,int(i)+4});
+        bind(ctx,widget,{0,HazeMenuCommandKind::Activate,{},0,0,i==2 ? 8 : int(i)+4});
     }
     main_handles[page]=vm_read32(page+0x28);
 }
-void haze_native_menu_context_reset(uint32_t context) {
+void haze_native_menu_context_reset(ppu_context* ctx,uint32_t context) {
     // 00317300 deletes the context's root widgets recursively. Forget host
     // identities before the game can recycle the same addresses and handles.
     for (auto it=caches.begin();it!=caches.end();) {
@@ -631,6 +656,7 @@ void haze_native_menu_context_reset(uint32_t context) {
             it=main_roots.erase(it);
         } else ++it;
     }
+    haze_menu_cleanup_restore(context,reserve_children,ctx);
     if (displayed.context==context) {
         if (displayed.generation) haze_menu_command({displayed.generation,HazeMenuCommandKind::Departed});
         displayed={};
@@ -638,6 +664,7 @@ void haze_native_menu_context_reset(uint32_t context) {
     if (target_context==context) { target_page=0; target_context=0; return_widget=0; }
 }
 void haze_native_menu_tick(ppu_context* ctx) {
+    haze_player_profile_tick();
     const auto manager=vm_read32(0xf48dd4);
     if (!valid(manager) || !valid(target_page)) return;
     if (vm_read32(manager+0x48)!=target_context) return;
@@ -650,6 +677,32 @@ void haze_native_menu_tick(ppu_context* ctx) {
         if (displayed.generation) haze_menu_command({displayed.generation,HazeMenuCommandKind::Departed});
         restore_children(ctx); displayed={}; target_page=0; return;
     }
+#ifdef _WIN32
+    const auto coop=haze_coop_take_action();
+    if (coop.generation && coop.generation==view.generation &&
+        view.page==(coop.host ? HazeMenuPage::CoopHost:HazeMenuPage::CoopJoin) &&
+        id(target_page)==(coop.host ? "fefl_KS_page26":"fefl_KS_page27") &&
+        vm_read32(0xe3b3c8)==0xb2c38 && vm_read32(0xe3a6a8)==0x975f0 && valid(callback_storage)) {
+        restore_children(ctx); displayed={};
+        haze_menu_command({view.generation,HazeMenuCommandKind::Departed});
+        if (coop.host) {
+            // The retail callback reads the original connection toggle. The
+            // bridge carries this LAN session over the authenticated room.
+            const auto count=vm_read32(target_context+0x1f4),data=vm_read32(target_context+0x1f0),stride=vm_read32(target_context+0x1f8);
+            if(valid(data) && count<=65536 && stride>=8 && stride<=0x100 && uint64_t(data)+uint64_t(count)*stride<0xc0000000)
+                for(uint32_t i=0;i<count;++i) {
+                    const auto widget=vm_read32(data+i*stride);
+                    if(id(widget)=="fefl_KS_tggl8") vm_write32(widget+0x170,0);
+                }
+            call(ctx,func_000B2C38);
+        } else {
+            call(ctx,func_000975F0);
+            put(callback_storage+40,"fefl_KS_page12");
+            call(ctx,func_000AAC48,callback_storage+40);
+        }
+        return;
+    }
+#endif
     if (view.page==HazeMenuPage::None) {
         if (displayed.generation && view.generation==displayed.generation && !view.pop) {
             restore_children(ctx);

@@ -22,6 +22,14 @@ void haze_menu_page_loaded(ppu_context* ctx,uint32_t page) {
     if (!std::strcmp(name,"sett_DC_page10")) kind=HazeMenuPage::Video;
     if (!std::strcmp(name,"sett_DC_page3")) kind=HazeMenuPage::Audio;
     if (!std::strcmp(name,"sett_DC_page2")) kind=HazeMenuPage::Controls;
+#ifdef _WIN32
+    // Audited BLUS30094 callback descriptors for LAN host acceptance and join.
+    if ((!std::strcmp(name,"fefl_KS_page26") || !std::strcmp(name,"fefl_KS_page27")) &&
+        vm_read32(0xe3b3c8)==0xb2c38 && vm_read32(0xe3a6a8)==0x975f0) {
+        if (!std::strcmp(name,"fefl_KS_page26")) kind=HazeMenuPage::CoopHost;
+        if (!std::strcmp(name,"fefl_KS_page27")) kind=HazeMenuPage::CoopJoin;
+    }
+#endif
     if (kind==HazeMenuPage::Audio && !haze_audio_guest_open(ctx)) {
         std::fprintf(stderr,"[menu] Audio profile unavailable; retaining retail page\n"); return;
     }

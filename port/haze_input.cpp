@@ -1,10 +1,12 @@
 #include "haze_input.h"
 #include "haze_graphics_reload.h"
 #include "haze_menu.h"
+#include "haze_player_profile.h"
 #include "haze_audio_settings.h"
 #include "haze_mouse.h"
 #include "haze_capture.h"
 #ifdef _WIN32
+#include "haze_coop.h"
 #include "haze_prompts.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -42,6 +44,7 @@ std::atomic<bool> menu_return_pending{false};
 std::atomic<unsigned> quit_pause_polls{0};
 std::atomic<bool> menu_pop{true};
 std::atomic<HazeInputFamily> last_family{HazeInputFamily::Keyboard};
+std::atomic<unsigned> rumble_request{0};
 char config_path[MAX_PATH]{};
 ULONGLONG next_input_update=0, next_config_check=0;
 FILETIME config_time{};
@@ -106,7 +109,11 @@ Binding bindings[] = {
 int movement[4] = {'W','S','A','D'};
 int key_code(const char* name) {
     const int code=haze_key_code(name);
+    if (code==VK_ESCAPE) fprintf(stderr,"[input] %s; its binding only acts on startup screens\n",haze_key_reserved(code));
     if (code>=0) return code;
+    for (int key:{VK_F1,VK_F6,VK_F7}) if (std::strlen(name)==2 && !_strnicmp(name,haze_key_reserved(key),2)) {
+        fprintf(stderr,"[input] %s; binding disabled\n",haze_key_reserved(key)); return 0;
+    }
     fprintf(stderr,"[input] Unknown key '%s'; binding disabled\n",name);
     return 0;
 }
@@ -212,6 +219,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 haze_graphics_notice().c_str());
             return CallWindowProc(original_proc,hwnd,msg,wp,(LPARAM)caption);
         }
+        break;
+    case WM_CHAR:
+        if (!startup_skip.owns_input() && haze_menu_capture_text(uint32_t(wp))) return 0;
         break;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
@@ -382,6 +392,8 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     }
     case WM_MOUSEWHEEL:
+        if (GET_WHEEL_DELTA_WPARAM(wp) &&
+            haze_menu_capture_key(GET_WHEEL_DELTA_WPARAM(wp)>0 ? HAZE_VK_WHEEL_UP : HAZE_VK_WHEEL_DOWN)) return 0;
         if (enabled && menu_active) {
             pointer_position(hwnd);
             std::lock_guard lock(pointer_mutex);
@@ -391,7 +403,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             capture_policy.use_keyboard();
             return 0;
         }
-        if (captured) { InterlockedExchange(&wheel,1); last_family=HazeInputFamily::Keyboard; }
+        if (captured && GET_WHEEL_DELTA_WPARAM(wp)) {
+            InterlockedOr(&wheel,GET_WHEEL_DELTA_WPARAM(wp)>0 ? 1 : 2); last_family=HazeInputFamily::Keyboard;
+        }
         break;
     case WM_INPUT: {
         RAWINPUT input{}; UINT size = sizeof(input);
@@ -463,7 +477,10 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     const bool presentation_input=startup_skip.owns_input();
     const bool keyboard_menu=menu_active && !presentation_input;
     auto menu_key=[&](int vk) { return keyboard_menu && (vk==VK_RETURN || vk==VK_ESCAPE); };
+    // Each captured wheel direction is a pulse for one host report.
+    const LONG wheel_pulses=captured ? InterlockedExchange(&wheel,0) : 0;
     auto key_down=[&](int vk) {
+        if (vk==HAZE_VK_WHEEL_UP || vk==HAZE_VK_WHEEL_DOWN) return (wheel_pulses&(vk==HAZE_VK_WHEEL_UP ? 1 : 2))!=0;
         if (vk <= 0 || vk >= 256) return false;
         if (!sampled[vk]) { states[vk]=down(vk); sampled[vk]=true; }
         return states[vk];
@@ -489,9 +506,10 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     const int vertical=(int)movement_down(movement[1])-(int)movement_down(movement[0]);
     if (horizontal) input->lx=(u8)(128+127*horizontal);
     if (vertical) input->ly=(u8)(128+127*vertical);
-    if (captured) {
-        if (InterlockedExchange(&wheel,0)) input->buttons |= CELL_PAD_CTRL_CIRCLE;
-    }
+    // A wheel direction no binding uses keeps the original switch-weapon pulse.
+    for (int vk : {HAZE_VK_WHEEL_UP,HAZE_VK_WHEEL_DOWN})
+        if (key_down(vk) && std::none_of(std::begin(bindings),std::end(bindings),[&](const Binding& b) { return b.vk==vk; }) &&
+            std::find(std::begin(movement),std::end(movement),vk)==std::end(movement)) input->buttons |= CELL_PAD_CTRL_CIRCLE;
     if ((input->buttons & CELL_PAD_CTRL_L2) && !input->l2) input->l2=255;
     if ((input->buttons & CELL_PAD_CTRL_R2) && !input->r2) input->r2=255;
     return finish();
@@ -576,6 +594,8 @@ void haze_input_attach(void* hwnd) {
     haze_audio_menu_register();
     haze_controls_menu_register();
     haze_steam_menu_register();
+    haze_player_profile_menu_register();
+    haze_coop_menu_register();
     haze_quit_menu_register();
     if (controller_enabled) gamepad_initialized=haze_gamepad_initialize(config_path);
     RAWINPUTDEVICE device{0x01,0x02,0,window};
@@ -601,6 +621,7 @@ void haze_input_update() {
     const auto now=GetTickCount64();
     if (now<next_input_update) return;
     next_input_update=now+8;
+    haze_coop_update();
     // A pause key during loading may be ignored by the guest. Give the menu
     // time to open, but do not leave capture disabled forever if it does not.
     // Live menu ownership still gates both capture and camera independently.
@@ -627,6 +648,10 @@ void haze_input_update() {
             pointer_mode(false); capture(false);
         }
         sample_focused=focused;
+        // Overlay pages and other windows own input; the guest request resumes after.
+        const unsigned motors=controller_enabled && GetForegroundWindow()==window.load() &&
+            !haze_menu_active() && !haze_quit_menu_active() ? rumble_request.load() : 0;
+        haze_gamepad_rumble(u8(motors),u8(motors>>8));
     }
     capture_policy.focused=GetForegroundWindow()==window.load();
     capture_policy.menu_state(menu_active);
@@ -729,6 +754,7 @@ HazeMenuPointer haze_input_take_pointer() {
     return result;
 }
 HazeInputFamily haze_input_family() { return last_family.load(); }
+void haze_input_rumble(u32 port,u8 small,u8 large) { if (!port) rumble_request=small|unsigned(large)<<8; }
 const char* haze_input_config_path() { return config_path; }
 void haze_input_reload() {
     std::lock_guard<std::mutex> lock(settings_mutex);
@@ -749,6 +775,7 @@ unsigned haze_input_menu_button(int virtual_key) {
     return buttons;
 }
 void haze_input_shutdown() {
+    haze_coop_leave();
     haze_quit_menu_shutdown();
     haze_menu_shutdown(true);
     capture_policy.ready=false;
@@ -813,4 +840,5 @@ HazeMenuPointer haze_input_take_pointer() { return {}; }
 void haze_input_update() {}
 void haze_input_shutdown() {}
 HazeInputFamily haze_input_family() { return HazeInputFamily::Keyboard; }
+void haze_input_rumble(u32,u8,u8) {}
 #endif
