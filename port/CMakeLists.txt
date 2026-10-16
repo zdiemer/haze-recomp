@@ -601,7 +601,7 @@ if(PORT_ENABLE_SPU AND PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32
     file(READ "${PS3RECOMP_DIR}/runtime/spu/spu_channels.c" HAZE_SPU_CHANNELS_TEXT)
     string(REPLACE "\r\n" "\n" HAZE_SPU_CHANNELS_TEXT "${HAZE_SPU_CHANNELS_TEXT}")
     string(SHA256 HAZE_SPU_CHANNELS_HASH "${HAZE_SPU_CHANNELS_TEXT}")
-    if(NOT HAZE_SPU_CHANNELS_HASH STREQUAL "d524a6455cc709c751b23e3c83c041677d345b049042f41a69f2e92dbeb87f0f")
+    if(NOT HAZE_SPU_CHANNELS_HASH STREQUAL "c2e0ddc57074c4e7ff5cac88e18fda4c1f488c57d10aff29933b490d1fc8f159")
         message(FATAL_ERROR "SPU halt boundary changed: audit audio float environment restoration before building")
     endif()
     file(GLOB HAZE_AUDIO_DSP_SOURCES "${SPU_DIR}/audio_pic_*/spu_recomp.c"

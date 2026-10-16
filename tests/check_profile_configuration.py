@@ -19,11 +19,14 @@ def check_rules(ninja, renderer_enabled, jobs_enabled=False, inline_reads=None):
             is_generated = bool(re.search(r'[\\/]ppu_(?:recomp_\d+|hle_nids)\.cpp\.obj:', first))
             if is_generated:
                 generated += 1
-            if ('haze_ppu_inline_reads.h' in block) != (is_generated and inline_reads):
+            # HAZE_INLINE_HOT_READS inlines the two measured hot modules in
+            # ordinary builds; the experiment extends it to every module.
+            is_hot = bool(re.search(r'[\\/]ppu_recomp_00[35]\.cpp\.obj:', first))
+            if ('haze_ppu_inline_reads.h' in block) != (is_generated and (inline_reads or is_hot)):
                 raise ValueError(f'Generated-only inline-read compile gate mismatch: {first}')
         if generated != 8:
             raise ValueError(f'Expected 8 lifted Haze compile rules, got {generated}')
-        print(f'Actual compile rules: inline reads={int(inline_reads)} on generated sources only')
+        print(f'Actual compile rules: inline reads={int(inline_reads)} on generated sources only (hot modules always)')
 
     sdk_sources = {
         'ppu_loader.cpp': 'HazeRecomp',
