@@ -129,11 +129,14 @@ int haze_video_stop(unsigned timeout_ms) {
     if (GetWindowThreadProcessId(g_ld_display_hwnd,NULL)!=GetCurrentThreadId()) return 0;
     const ULONGLONG began=GetTickCount64();
     haze_video_finish(0);
-    /* Native quit does not call the full SDK teardown. Persist the learned
-     * shader bundle before ready is cleared, sharing the existing display
-     * shutdown wait budget. The cache worker owns its detached data. */
-    rsx_live_draw_finish_shader_bundle(timeout_ms);
-    const ULONGLONG elapsed=GetTickCount64()-began;
+    /* Start recipe persistence before the bundle write, then join both within
+     * the existing display shutdown budget. Each writer owns detached data. */
+    rsx_live_draw_finish_pipeline_recipes(0);
+    ULONGLONG elapsed=GetTickCount64()-began;
+    rsx_live_draw_finish_shader_bundle(elapsed>=timeout_ms ? 0 : timeout_ms-(DWORD)elapsed);
+    elapsed=GetTickCount64()-began;
+    rsx_live_draw_finish_pipeline_recipes(elapsed>=timeout_ms ? 0 : timeout_ms-(DWORD)elapsed);
+    elapsed=GetTickCount64()-began;
     const DWORD remaining=elapsed>=timeout_ms ? 0 : timeout_ms-(DWORD)elapsed;
     int ok=1;
     /* No more draws follow this call. A queue fence covers submitted work;
