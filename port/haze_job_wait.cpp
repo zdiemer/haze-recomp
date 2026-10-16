@@ -51,7 +51,10 @@ std::atomic_flag counts_dumped = ATOMIC_FLAG_INIT;
 bool native_wait_enabled() {
     static const bool enabled = [] {
         const char* value = std::getenv("HAZE_NATIVE_JOB_WAIT");
-        return value && std::strcmp(value, "1") == 0;
+        // Recheck the audited completion predicate during the guest's polling
+        // delay. The guest still consumes the result and owns the wait loop.
+        // Keep an explicit opt-out for diagnosis and unsupported configurations.
+        return !value || !*value || std::strcmp(value, "1") == 0;
     }();
     return enabled;
 }

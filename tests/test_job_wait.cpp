@@ -316,7 +316,8 @@ int main(int argc, char** argv) {
     }
 #endif
     test_policy();
-    _putenv_s("HAZE_NATIVE_JOB_WAIT", "1");
+    // Exercise the production default; the child below checks explicit opt-out.
+    _putenv_s("HAZE_NATIVE_JOB_WAIT", "");
     test_completion_queue();
 
     reset_guest(2, 0);

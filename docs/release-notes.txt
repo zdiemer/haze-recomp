@@ -1,18 +1,19 @@
-Haze Recomp 0.1.9 for Windows x64
+Haze Recomp 0.1.10 for Windows x64
 
-Fixes Enter failing to advance past the Press Start screen after the recent PC
-menu confirmation changes. The title screen now preserves the configured Start
-binding, while Enter continues to confirm in other menus and dialogs. Holding
-Enter through the transition cannot also activate the next menu.
+Reduces repeated CPU work with vertex-program metadata reuse, ready-aware job
+completion waits, guarded native fill/copy helpers, selective PPU memory-read
+inlining, and streamlined SPU quadword shifts and rotates. Existing fallback
+paths and diagnostic opt-outs remain available.
 
-Rebound Start keys and controller Start remain supported. Targeted input,
-menu-bridge and title regressions pass, including held-key transitions and short
-taps. The new regression fails with the old Enter mapping. Interactive title
-activation and a fresh installation acceptance run have not been performed for
-this release.
+Targeted correctness regressions and a later-combat gameplay run were completed
+for the optimization stack. Other workloads contended for CPU during the final
+run, so a gameplay FPS improvement has not been established. This release does
+not promise 60 FPS. The final integration with the latest SDK has not received
+a new interactive acceptance run or a fresh Windows installation test.
 
-Includes the performance, controls, graphics, campaign co-op and save support
-from 0.1.8. This patch makes no new performance claims.
+Preserves the 0.1.9 title-screen Enter fix and earlier controls, graphics,
+campaign co-op and save support. Also includes the integrated SDK fixes for
+SPU decrementer overflow and PPU system-call fallthrough.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3

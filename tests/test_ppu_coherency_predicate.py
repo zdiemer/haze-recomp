@@ -94,7 +94,9 @@ def main() -> None:
                    f'/Fo{exe.with_suffix(".obj")}', f'/Fe{exe}', str(fixture)]
         if sample: command.append('/DVM_SAMPLE_READS=1')
         subprocess.run(command, check=True)
-        cases = [('ordinary', 0, {}), ('ordinary', 0, {'PPU_INLINE_COH_CHECK':'OFF'}),
+        cases = [('ordinary', int(not sample), {}),
+                 ('ordinary', int(not sample), {'PPU_INLINE_COH_CHECK':''}),
+                 ('ordinary', 0, {'PPU_INLINE_COH_CHECK':'OFF'}),
                  ('ordinary', 0, {'PPU_INLINE_COH_CHECK':'typo'}),
                  ('null-init', 0, {'PPU_INLINE_COH_CHECK':'ON'}),
                  ('ordinary', int(not sample), {'PPU_INLINE_COH_CHECK':'ON'})]
@@ -104,6 +106,8 @@ def main() -> None:
             env = os.environ.copy()
             for name in (*PROBE_ENV_NAMES, 'PPU_INLINE_READS', 'PPU_INLINE_COH_CHECK'):
                 env.pop(name, None)
+            # Exercise store coherency independently of the read-inlining policy.
+            env['PPU_INLINE_READS'] = 'OFF'
             env.update(extra)
             run = subprocess.run([str(exe), case, str(expected)], env=env,
                                  capture_output=True, text=True, timeout=10)
