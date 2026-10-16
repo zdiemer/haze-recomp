@@ -87,6 +87,7 @@ int main(int argc,char** argv) {
     assert(edited.at("Bindings.Forward")=="P" && edited.at("ControllerBindings.Cross")=="north");
     activate("game-options"); assert(!haze_menu_active() && !haze_menu_view().pop);
     activate("Bindings.Cross"); assert(!haze_menu_active()); // Queued commands to a departed page.
-    haze_menu_shutdown(); DestroyWindow(owner); haze_gamepad_shutdown(); std::filesystem::remove(input_path);
+    haze_menu_shutdown(); DestroyWindow(owner); haze_gamepad_shutdown();
+    assert(haze_prompts_shutdown(5000)); std::filesystem::remove(input_path);
     std::puts("Native Controls commands: keyboard capture, SDL rebind/apply, conflicts, focus/disconnect cancellation and saved reopen passed.");
 }

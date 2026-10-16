@@ -85,6 +85,7 @@ static unsigned rumble_small,rumble_large;
 void haze_gamepad_rumble(u8 small,u8 large) { rumble_small=small; rumble_large=large; }
 void haze_prompts_initialize(const char*) {}
 void haze_prompts_update(HazeInputFamily) {}
+bool haze_prompts_shutdown(unsigned) { return true; }
 static bool native_menu_active;
 bool haze_menu_active() { return native_menu_active; }
 bool haze_menu_blocks_input() { return native_menu_active; }

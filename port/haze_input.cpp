@@ -775,6 +775,7 @@ unsigned haze_input_menu_button(int virtual_key) {
     return buttons;
 }
 void haze_input_shutdown() {
+    haze_prompts_shutdown(2000);
     haze_coop_leave();
     haze_quit_menu_shutdown();
     haze_menu_shutdown(true);
