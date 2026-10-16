@@ -36,13 +36,13 @@ def fixture_source(diagnostic: str, wrapper: str) -> str:
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef enum {{ FLUSH_TEST = 0 }} ld_flush_reason;
-#define FAILED(hr) ((HRESULT)(hr) < 0)
 
 static volatile LONG qpc_calls, cycle_calls, close_calls, execute_calls;
 static volatile LONG signal_calls, completed_calls, set_event_calls, wait_calls;
 static volatile LONG info_calls, release_calls, alloc_reset_calls, list_reset_calls;
 static volatile LONG dred_calls;
 static volatile LONG last_error_calls;
+static volatile LONG sampler_completed_calls;
 static u64 fake_qpc;
 static DWORD fake_last_error;
 static char call_order[64];
@@ -50,6 +50,7 @@ static LONG call_order_size;
 static HRESULT close_result, signal_result, event_result;
 static HRESULT alloc_reset_result, list_reset_result;
 static u64 completed_result;
+static u64 after_wait_result = 11;
 static DWORD wait_result = WAIT_OBJECT_0;
 static void note_call(char code)
 {{ LONG index = InterlockedIncrement(&call_order_size) - 1; if (index < 63) call_order[index] = code; }}
@@ -61,7 +62,7 @@ static BOOL WINAPI test_qpc(LARGE_INTEGER* value)
 static BOOL WINAPI test_cycles(HANDLE thread, PULONG64 cycles)
 {{ (void)thread; InterlockedIncrement(&cycle_calls); *cycles = (u64)cycle_calls * 100; return TRUE; }}
 static DWORD WINAPI test_wait(HANDLE event, DWORD timeout)
-{{ (void)event; if (timeout != INFINITE) abort(); note_call('W'); InterlockedIncrement(&wait_calls); if (wait_result == WAIT_FAILED) fake_last_error = 123; return wait_result; }}
+{{ (void)event; if (timeout != INFINITE) abort(); note_call('W'); InterlockedIncrement(&wait_calls); if (wait_result == WAIT_FAILED) fake_last_error = 123; completed_result = after_wait_result; return wait_result; }}
 static DWORD WINAPI test_last_error(void)
 {{ note_call('e'); InterlockedIncrement(&last_error_calls); return fake_last_error; }}
 #define QueryPerformanceFrequency test_qpf
@@ -134,6 +135,8 @@ static void ld_drain_info_queue(const char* where)
 {{ if (strcmp(where, "flush") != 0) abort(); note_call('I'); InterlockedIncrement(&info_calls); }}
 static void ld_dump_dred(const char* where, HRESULT hr)
 {{ (void)where; (void)hr; note_call('D'); InterlockedIncrement(&dred_calls); }}
+static void ld_sampler_pages_completed(void)
+{{ note_call('P'); InterlockedIncrement(&sampler_completed_calls); }}
 
 {diagnostic}
 
@@ -163,11 +166,12 @@ int main(int argc, char** argv)
     if (!strcmp(mode, "signal_fail")) signal_result = (HRESULT)0x80004005u;
     if (!strcmp(mode, "event_fail")) event_result = (HRESULT)0x80004005u;
     if (!strcmp(mode, "no_wait")) completed_result = 11;
+    if (!strcmp(mode, "device_removed")) completed_result = UINT64_MAX;
+    if (!strcmp(mode, "incomplete_wait")) after_wait_result = 10;
+    if (!strcmp(mode, "removed_after_wait")) after_wait_result = UINT64_MAX;
     if (!strcmp(mode, "wait_fail")) wait_result = WAIT_FAILED;
-    if (!strcmp(mode, "reset_fail")) {{
-        alloc_reset_result = (HRESULT)0x80004005u;
-        list_reset_result = (HRESULT)0x80004005u;
-    }}
+    if (!strcmp(mode, "reset_fail")) alloc_reset_result = (HRESULT)0x80004005u;
+    if (!strcmp(mode, "list_reset_fail")) list_reset_result = (HRESULT)0x80004005u;
     if (!strcmp(mode, "disabled")) {{
         _putenv("RSX_SLOW_FLUSH_CSV=");
         _putenv("RSX_SLOW_FLUSH_THRESHOLD_US=");
@@ -177,13 +181,25 @@ int main(int argc, char** argv)
     const char* expected_order = !strcmp(mode, "close_fail") ? "CD" :
         !strcmp(mode, "signal_fail") ? "CXSD" :
         !strcmp(mode, "event_fail") ? "CXSGED" :
-        !strcmp(mode, "wait_fail") ? "CXSGEWeIRAL" :
-        !strcmp(mode, "no_wait") ? "CXSGIRAL" : "CXSGEWIRAL";
+        !strcmp(mode, "device_removed") ? "CXSGD" :
+        !strcmp(mode, "wait_fail") ? "CXSGEWeG" :
+        (!strcmp(mode, "incomplete_wait") || !strcmp(mode, "removed_after_wait")) ? "CXSGEWG" :
+        !strcmp(mode, "reset_fail") ? "CXSGEWGIRAD" :
+        !strcmp(mode, "list_reset_fail") ? "CXSGEWGIRALD" :
+        !strcmp(mode, "no_wait") ? "CXSGIRALP" : "CXSGEWGIRALP";
     if (strcmp(call_order, expected_order) != 0) {{ fprintf(stderr, "order mismatch: %s expected %s\\n", call_order, expected_order); return 12; }}
+    const int success = !strcmp(mode, "wait") || !strcmp(mode, "no_wait") || !strcmp(mode, "disabled");
+    if (sampler_completed_calls != success || g.ready != (u32)success ||
+        g.upload_used != (success ? 0u : 41u)) return 13;
+    if (!success) {{
+        LONG before = call_order_size;
+        ld_flush(FLUSH_TEST);
+        if (call_order_size != before) return 14;
+    }}
     if (strcmp(mode, "disabled") == 0) {{
         if (qpc_calls || cycle_calls) return 3;
         if (close_calls != 1 || execute_calls != 1 || signal_calls != 1 ||
-            completed_calls != 1 || set_event_calls != 1 || wait_calls != 1 ||
+            completed_calls != 2 || set_event_calls != 1 || wait_calls != 1 ||
             info_calls != 1 || release_calls != 1 || alloc_reset_calls != 1 ||
             list_reset_calls != 1) return 4;
         return 0;
@@ -195,7 +211,8 @@ int main(int argc, char** argv)
     if (!strcmp(mode, "event_fail") && (wait_calls || info_calls || release_calls || dred_calls != 1)) return 8;
     if (!strcmp(mode, "no_wait") && (set_event_calls || wait_calls)) return 9;
     if (!strcmp(mode, "wait") && (!wait_calls || !info_calls || release_calls != 1)) return 10;
-    if (!strcmp(mode, "reset_fail") && (alloc_reset_calls != 1 || list_reset_calls != 1 || !release_calls)) return 11;
+    if (!strcmp(mode, "reset_fail") && (alloc_reset_calls != 1 || list_reset_calls || !release_calls)) return 11;
+    if (!strcmp(mode, "list_reset_fail") && (alloc_reset_calls != 1 || list_reset_calls != 1 || !release_calls)) return 15;
     return 0;
 }}
 '''
@@ -247,7 +264,8 @@ def run_case(exe: Path, mode: str, csv_path: Path | None) -> dict[str, str] | No
     if int(row["unaccounted_ticks"]) + sum(int(row[name]) for name in stage_names) != int(row["total_ticks"]):
         raise AssertionError(f"stage and residual time do not conserve total: {row}")
     expected_failures = {"close_fail": "1", "signal_fail": "3", "event_fail": "5",
-                         "reset_fail": "9"}
+                         "device_removed": "4", "incomplete_wait": "6",
+                         "removed_after_wait": "6", "reset_fail": "9", "list_reset_fail": "10"}
     if mode in expected_failures and row["failed_stage"] != expected_failures[mode]:
         raise AssertionError(f"failed stage missing for {mode}: {row}")
     if mode == "wait" and (row["waited"] != "1" or row["wait_result"] != str(0)):
@@ -258,8 +276,10 @@ def run_case(exe: Path, mode: str, csv_path: Path | None) -> dict[str, str] | No
         raise AssertionError(f"no-wait sentinel/flag incorrect: {row}")
     if mode in ("close_fail", "signal_fail", "event_fail") and row["stage_mask"] == "0":
         raise AssertionError(f"early-failure row has no phase metadata: {row}")
-    if mode == "reset_fail" and (row["alloc_reset_hr"] != "0x80004005" or row["list_reset_hr"] != "0x80004005"):
+    if mode == "reset_fail" and (row["alloc_reset_hr"] != "0x80004005" or int(row["stage_mask"]) & (1 << 9)):
         raise AssertionError(f"reset error results not retained: {row}")
+    if mode == "list_reset_fail" and row["list_reset_hr"] != "0x80004005":
+        raise AssertionError(f"list reset error not retained: {row}")
     return row
 
 
@@ -283,10 +303,11 @@ def main() -> int:
         temp_path = Path(temp)
         run_case(exe, "disabled", None)
         print("PASS disabled path makes no QPC or thread-cycle calls and preserves flush calls")
-        for mode in ("close_fail", "signal_fail", "event_fail", "wait", "wait_fail", "no_wait", "reset_fail"):
+        for mode in ("close_fail", "signal_fail", "event_fail", "device_removed", "wait", "wait_fail",
+                     "incomplete_wait", "removed_after_wait", "no_wait", "reset_fail", "list_reset_fail"):
             row = run_case(exe, mode, temp_path / f"{mode}.csv")
             print(f"PASS {mode}: failed_stage={row['failed_stage']} waited={row['waited']} mask={row['stage_mask']}")
-    print("8 focused RSX slow-flush cases passed")
+    print("12 focused RSX slow-flush cases passed")
     return 0
 
 

@@ -69,6 +69,14 @@ static int fixture_fflush(FILE* ignored) { (void)ignored; ++flushes; return 0; }
 """
 
 EXIT_STUBS = r"""
+static void ld_sampler_pages_dump(void) {}
+typedef struct { u64 hits, misses, mutations, evictions, rejected; } rsx_fp_program_cache_stats;
+static void* g_ld_fp_program_cache;
+static rsx_fp_program_cache_stats rsx_fp_program_cache_statistics(const void* cache) {
+    (void)cache;
+    const rsx_fp_program_cache_stats stats = {0};
+    return stats;
+}
 static void ld_report_counters(void) {}
 static void ld_slow_flush_dump(void) {}
 static void ld_texture_content_summary(void) {}
@@ -94,7 +102,9 @@ int main(void) {
     assert(g_ld_texture_diag.overwritten == 4);
     g.ready = 1;
     rsx_live_draw_dump_present_samples();
-    assert(writes == LD_TEXTURE_DIAG_CAP + 1 && flushes == 1);
+    /* One fragment-cache summary, one texture summary, and the retained ring. */
+    assert(writes == LD_TEXTURE_DIAG_CAP + 2 && flushes == 1);
+    assert(strstr(output, "[fp-plan] hits=0 misses=0 mutations=0 evictions=0 rejected=0") != NULL);
     assert(strstr(output, "records=260 retained=256 overwritten=4 capacity=256") != NULL);
     assert(strstr(output, "n=5 frame=1005 src=7:0x00001234") != NULL);
     assert(strstr(output, "n=260 frame=1260 src=7:0x00001234") != NULL);

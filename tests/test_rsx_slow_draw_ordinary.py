@@ -102,6 +102,14 @@ static LONGLONG ld_profile_qpc(void) { LARGE_INTEGER q; QueryPerformanceCounter(
 EXIT_STUBS = r"""
 static unsigned summaries_called;
 static unsigned texture_dumps;
+static unsigned sampler_dumps, fp_summaries;
+static void ld_sampler_pages_dump(void) { ++sampler_dumps; }
+typedef struct { u64 hits, misses, mutations, evictions, rejected; } rsx_fp_program_cache_stats;
+static void* g_ld_fp_program_cache;
+static rsx_fp_program_cache_stats rsx_fp_program_cache_statistics(const void*) {
+    ++fp_summaries;
+    return {};
+}
 static void ld_texture_diag_dump(void) { ++texture_dumps; }
 static void ld_report_counters(void) { ++summaries_called; }
 static void ld_slow_flush_dump(void) { ++summaries_called; }
@@ -259,6 +267,7 @@ int main(int argc, char** argv) {
     fclose(second_dump);
     if (first_size <= 0 || second_size != first_size) return 19;
     if (texture_dumps != 2) return 22;
+    if (sampler_dumps != 2 || fp_summaries != 2) return 24;
 #ifdef YZ_PERF_PROFILE
     if (summaries_called != 18) return 20;
 #else
