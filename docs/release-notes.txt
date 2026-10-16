@@ -1,28 +1,18 @@
-Haze Recomp 0.1.8 for Windows x64
+Haze Recomp 0.1.9 for Windows x64
 
-Reduces recurring gameplay work with asynchronous input-prompt atlas loading,
-validated fragment-shader metadata reuse, and reuse of four additional verified
-physics workers. Retains sampler descriptors across bounded heap pages to avoid
-repeated mid-frame GPU completion waits. Doubles the bounded texture-content
-cache limits from 64 to 128 MiB each for CPU and GPU content, reducing repeated
-texture allocations in the tested opening scene.
+Fixes Enter failing to advance past the Press Start screen after the recent PC
+menu confirmation changes. The title screen now preserves the configured Start
+binding, while Enter continues to confirm in other menus and dialogs. Holding
+Enter through the transition cannot also activate the next menu.
 
-Remembers exact graphics-pipeline recipes and prepares known pipelines before
-gameplay on later launches. New or unsupported pipelines still use the normal
-creation path. Recipe and shader-bundle persistence share the existing bounded
-native-quit timeout and preserve prior archives when replacement cannot finish.
+Rebound Start keys and controller Start remain supported. Targeted input,
+menu-bridge and title regressions pass, including held-key transitions and short
+taps. The new regression fails with the old Enter mapping. Interactive title
+activation and a fresh installation acceptance run have not been performed for
+this release.
 
-The final 60-second later-combat development-build capture averaged 38.34 FPS
-at 2560x1440, uncapped with VSync off: median 24.11 ms, p95 34.74 ms, p99 37.32 ms,
-and maximum 89.69 ms. One interval exceeded 50 ms; none exceeded 100 ms.
-These are checkpoint-specific observations, not an isolated before/after gain
-or a guarantee for other scenes and hardware. GPU completion stalls remain.
-Focused sampler, pipeline-persistence, metadata and worker regressions passed.
-The broader texture WARP fixture also passes after correcting its manual device
-setup and sampler-page initialization. The packaged Release build has not had
-a fresh gameplay or clean Windows installation acceptance run.
-
-Existing controls, graphics settings, campaign co-op and save support are retained.
+Includes the performance, controls, graphics, campaign co-op and save support
+from 0.1.8. This patch makes no new performance claims.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3

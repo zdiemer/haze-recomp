@@ -5,7 +5,7 @@
 namespace {
 std::unordered_map<uint64_t,uint32_t> memory;
 HazeMenuPointer pointer;
-bool menu;
+bool menu,title;
 constexpr uint32_t manager=0x495e0020,context=0x495b82c0,input=0x495cc250;
 constexpr uint32_t page=0x49700000,tutorial=0x49701000;
 constexpr uint32_t page_handle=0x00100001,tutorial_handle=0x00200001;
@@ -47,7 +47,7 @@ uint32_t vm_read32(uint64_t a) { return memory[a]; }
 uint8_t vm_read8(uint64_t a) { return static_cast<uint8_t>(memory[a]); }
 void vm_write32(uint64_t a,uint32_t v) { memory[a]=v; }
 void vm_write8(uint64_t a,uint8_t v) { memory[a]=v; }
-void haze_input_menu_state(bool active) { menu=active; }
+void haze_input_menu_state(bool active,bool at_title) { menu=active; title=at_title; }
 HazeMenuPointer haze_input_take_pointer() { return pointer; }
 int main() {
     HazeCapturePolicy p;
@@ -85,6 +85,25 @@ int main() {
     memory[context+0x170]=input;
     assert(!haze_menu_gameplay_allowed()); // Live state, before publication.
     haze_menu_context(context); assert(menu);
+    // The title's Start event is distinct from ordinary menu confirmation.
+    constexpr uint32_t page_stack=0x49710000;
+    memory[context+0x50]=1; memory[context+0x54]=page_stack;
+    const char title_name[16]="fefl_DC_page3";
+    for (unsigned i=0;i<16;++i) memory[page_stack+i]=title_name[i];
+    haze_menu_context(context); assert(menu && title);
+    memory[manager+0x48]=0;
+    haze_menu_context(context); assert(menu && title); // Retained frontend context.
+    memory[manager+0x48]=context;
+    memory[context+0x50]=2;
+    haze_menu_context(context); assert(menu && !title); // Modal above the title.
+    memory[context+0x50]=65;
+    haze_menu_context(context); assert(menu && !title); // Invalid stack count.
+    memory[context+0x50]=1; memory[context+0x54]=0xbffffffc;
+    haze_menu_context(context); assert(menu && !title); // Invalid stack extent.
+    memory[context+0x54]=page_stack;
+    memory[page_stack+5]='K';
+    haze_menu_context(context); assert(menu && !title); // Other frontend page.
+    memory[context+0x50]=0;
     memory[manager+0x48]=0;
     assert(!haze_menu_gameplay_allowed()); // Current-context slot is temporary.
     memory[manager+0x48]=context;

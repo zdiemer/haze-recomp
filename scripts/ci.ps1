@@ -8,12 +8,11 @@ try {
     foreach ($path in @('game/disc', 'generated/ppu', 'generated/spu', 'local/tools/rpcs3/dev_flash')) {
         if (Test-Path -LiteralPath "$root/$path") { throw "Asset-free CI requires a checkout without $path" }
     }
-    $expected = ((& git ls-tree HEAD external/ps3recomp) -split '\s+')[2]
-    $actual = & git -C external/ps3recomp rev-parse HEAD
-    if ($LASTEXITCODE -ne 0 -or $actual -ne $expected) { throw 'SDK must match the committed gitlink; run git submodule update --init.' }
-    if (& git -C external/ps3recomp status --porcelain) { throw 'SDK has local modifications.' }
     & $Python --version
     if ($LASTEXITCODE -ne 0) { throw 'Python is required.' }
+    & $Python "$root/scripts/check_sdk_pin.py" --fetch
+    if ($LASTEXITCODE -ne 0) { throw 'SDK pin hygiene check failed.' }
+    $actual = & git -C external/ps3recomp rev-parse HEAD
     Write-Output "SDK: $actual; runner image: $env:ImageVersion"
     $shell = (Get-Process -Id $PID).Path
     $checks = @(
@@ -39,7 +38,7 @@ try {
         } finally { $ErrorActionPreference = 'Stop' }
         if ($code -ne 0) { throw "CI failed: $name" }
     }
-    foreach ($test in @('test_thread_priority.py', 'test_setup.py', 'test_release.py', 'test_release_pipeline.py', 'test_browser_cpu.py', 'test_script_commands.py')) {
+    foreach ($test in @('test_sdk_pin.py', 'test_thread_priority.py', 'test_setup.py', 'test_release.py', 'test_release_pipeline.py', 'test_browser_cpu.py', 'test_script_commands.py')) {
         try {
             $ErrorActionPreference = 'Continue'
             & $Python "$root/tests/$test" 2>&1 | Tee-Object -FilePath "$root/local/ci/$test.log"

@@ -12,6 +12,7 @@ Use `python scripts/diagnose.py --help` to list diagnostics and append
 | Prepare game files | `extract.ps1`, `decrypt.ps1`, `haze.py inventory` / `analyze` |
 | Generate translations | `haze.py lift` / `lift-spu`, `lift_audio_plugins.py`, `lift_firmware.py` |
 | Build and check | `build.ps1`, `build.ps1 -Test`, `ci.ps1` |
+| Verify SDK integration branch | `check_sdk_pin.py --fetch` (committed pin must be on `zdiemer/ps3recomp:haze`) |
 | Play or collect a bounded run | `play.ps1`, `run.ps1 -Seconds 90` |
 | Inspect captures and performance | `diagnose.py <command>` |
 | Native microbenchmarks | `benchmark.ps1 <benchmark>` |
