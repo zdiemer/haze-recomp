@@ -105,6 +105,10 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'SPU interpreter RI10 byte/halfword regression failed.' }
     & $python "$sdk/tools/test_spu_disasm_ri10.py"
     if ($LASTEXITCODE -ne 0) { throw 'SPU RI10 decoder/table generation regression failed.' }
+    & $python "$sdk/tools/test_spu_decrementer.py" --compiler $clang --output-dir "$root/build/spu-decrementer"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU decrementer overflow regression failed.' }
+    & $python "$sdk/tools/test_ppu_fallthrough.py"
+    if ($LASTEXITCODE -ne 0) { throw 'PPU syscall fall-through regression failed.' }
     & $python "$root/tests/test_fifo_recycle_trace.py" --compiler $clang --sdk $sdk --output-dir "$root/build/fifo-recycle-trace"
     if ($LASTEXITCODE -ne 0) { throw 'FIFO recycle acknowledgement diagnostic regression failed.' }
     & $python -m unittest tests.test_analyze_fifo_recycles
