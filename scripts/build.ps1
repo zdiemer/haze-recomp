@@ -191,6 +191,11 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'SPU SIMD byte-operation test compilation failed.' }
     & $bytesTest
     if ($LASTEXITCODE -ne 0) { throw 'SPU SIMD byte-operation oracle test failed.' }
+    $quadBitsTest = Join-Path $root 'local/test_spu_quad_bits.exe'
+    & $clang /nologo /W0 /O2 /clang:-msse4.1 "/I$sdk/include" "/Fe$quadBitsTest" "/Fo$root/local/test_spu_quad_bits.obj" "$sdk/runtime/spu/tests/test_spu_quad_bits.c"
+    if ($LASTEXITCODE -ne 0) { throw 'SPU quadword bit-operation test compilation failed.' }
+    & $quadBitsTest
+    if ($LASTEXITCODE -ne 0) { throw 'SPU quadword bit-position oracle test failed.' }
     $fiTest = Join-Path $root 'local/test_fi_scaling.exe'
     $fiFlags = @('/clang:-msse4.1')
     if ($SpuFma) { $fiFlags += @('/clang:-mavx', '/clang:-mfma') }

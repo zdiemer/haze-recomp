@@ -151,15 +151,16 @@ static void run_native(uint32_t source=0x14000u) {
 int main(int argc,char** argv) {
     assert(argc==2);
 #ifdef _WIN32
-    _putenv_s("HAZE_NATIVE_SLOT_COPY",std::strcmp(argv[1],"OFF") ? "ON" : "OFF");
+    _putenv_s("HAZE_NATIVE_SLOT_COPY",std::strcmp(argv[1],"DEFAULT") ? (std::strcmp(argv[1],"OFF") ? "ON" : "OFF") : "");
     _putenv_s("PS3_NULL_SWEEP",std::strcmp(argv[1],"SWEEP") ? "" : "1");
     _putenv_s("PT",std::strcmp(argv[1],"PT") ? "" : "0");
 #else
-    setenv("HAZE_NATIVE_SLOT_COPY",std::strcmp(argv[1],"OFF") ? "ON" : "OFF",1);
+    if(std::strcmp(argv[1],"DEFAULT")) setenv("HAZE_NATIVE_SLOT_COPY",std::strcmp(argv[1],"OFF") ? "ON" : "OFF",1);
+    else unsetenv("HAZE_NATIVE_SLOT_COPY");
     if(std::strcmp(argv[1],"SWEEP")==0) setenv("PS3_NULL_SWEEP","1",1); else unsetenv("PS3_NULL_SWEEP");
     unsetenv("PT");
 #endif
-    if(std::strcmp(argv[1],"ON")==0) {
+    if(std::strcmp(argv[1],"ON")==0 || std::strcmp(argv[1],"DEFAULT")==0) {
         run_native();
         run_native(0x12020u); // overlapping source/destination: original memmove semantics
         run_fallback(false,UINT32_MAX,0x14000,0x12010,0x1410,0x00682798);
@@ -241,10 +242,11 @@ class SlotCopySource(unittest.TestCase):
                 (outdir / "slot-copy-build.log").write_text(built.stdout + built.stderr)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
             expected_summaries = {
+                "DEFAULT": "[haze-slot-copy-summary] attempts=13 native=3 rejected=10 bytes=15408",
                 "ON": "[haze-slot-copy-summary] attempts=13 native=3 rejected=10 bytes=15408",
                 "SWEEP": "[haze-slot-copy-summary] attempts=1 native=0 rejected=1 bytes=0",
             }
-            for mode in ("ON", "OFF", "SWEEP"):
+            for mode in ("DEFAULT", "ON", "OFF", "SWEEP"):
                 ran = subprocess.run([str(exe), mode], text=True, capture_output=True)
                 self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
                 self.assertIn("PASS", ran.stdout)

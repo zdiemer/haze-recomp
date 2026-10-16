@@ -27,7 +27,7 @@ bool enabled_once()
 {
     static const bool enabled = [] {
         const char* value = std::getenv("HAZE_NATIVE_SLOT_COPY");
-        const bool selected = value && std::strcmp(value, "ON") == 0;
+        const bool selected = !value || !*value || std::strcmp(value, "ON") == 0;
         g_selector_enabled.store(selected, std::memory_order_relaxed);
         g_selector_seen.store(true, std::memory_order_release);
         return selected;
@@ -71,7 +71,7 @@ bool exact_shape(const ppu_context* ctx, uint32_t* source, uint32_t* destination
 }
 } // namespace
 
-// Experimental replacement for the one 0x1410-byte memmove in the audited
+// Native replacement for the one 0x1410-byte memmove in the audited
 // job-slot acquisition path. It deliberately keeps the preceding slot memset
 // and following metadata writes as generated guest operations. The source and
 // destination may overlap: std::memmove preserves the original helper's byte

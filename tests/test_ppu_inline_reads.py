@@ -230,7 +230,9 @@ def main() -> None:
             fast_tail = re.split(r'\bret\b', context[0].split('bswap', 1)[1], maxsplit=1)[0]
             assert '305419896' in fast_tail, "ordinary read lost known host-register value"
             assert not re.search(r'\[[^\]]*\+ 56\]', fast_tail), "ordinary read forced a context reload"
-        cases = [("disabled", {}), ("disabled", {"PPU_INLINE_READS": "OFF"}),
+        cases = [("disabled" if sample else "enabled", {}),
+                 ("disabled" if sample else "enabled", {"PPU_INLINE_READS": ""}),
+                 ("disabled", {"PPU_INLINE_READS": "OFF"}),
                  ("disabled", {"PPU_INLINE_READS": "typo"}),
                  ("null-init", {"PPU_INLINE_READS": "ON"}),
                  ("disabled" if sample else "enabled", {"PPU_INLINE_READS": "ON"})]

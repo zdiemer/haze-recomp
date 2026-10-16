@@ -172,7 +172,7 @@ int main(int argc,char** argv) {
     else unsetenv("HAZE_NATIVE_BULK_FILL");
     setenv("HAZE_BULK_FILL_PROFILE",argv[2],1);
 #endif
-    const bool on=std::strcmp(argv[1],"ON")==0;
+    const bool on=std::strcmp(argv[1],"ON")==0 || std::strcmp(argv[1],"DEFAULT")==0;
     selector_on=on;
     check_real_span_api();
     for(uint32_t offset=0;offset<8;++offset) {
@@ -265,7 +265,7 @@ def _compile_and_run(compiler: str, sdk: Path, generated: Path, output_dir: Path
                                  text=True, timeout=30, cwd=ROOT)
             if "PASS" not in run.stdout:
                 raise AssertionError((mode, profile, run.stdout, run.stderr))
-            expected_enabled = mode == "ON"
+            expected_enabled = mode in ("ON", "DEFAULT")
             if f"[haze-bulk-fill-mode] enabled={int(expected_enabled)}" not in run.stderr:
                 raise AssertionError((mode, profile, "missing/incorrect immutable mode line", run.stderr))
             has_success = "[haze-bulk-fill] native bytes=" in run.stderr

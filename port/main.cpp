@@ -568,7 +568,9 @@ static bool alloc_guest_vm(void)
     // Haze's validated preparation paths are fixed startup policy. Registering
     // write-watch below adds bit 4096 only when its reservation succeeds.
     // A live RSX_CPU_WORK_FILE override is still available for experiments.
-    rsx_live_draw_set_cpu_work(1283u | 8192u);
+    // Reuse vertex-program metadata after exact byte validation. Constants
+    // remain per draw; shader replacement invalidates the cached identity.
+    rsx_live_draw_set_cpu_work(1283u | 8192u | 512u);
     AddVectoredExceptionHandler(1, vm_commit_veh);
     const char* watch_option = getenv("HAZE_TEXTURE_WRITE_WATCH");
     const bool watch = watch_option && *watch_option == '1';

@@ -40,7 +40,7 @@ const BulkFillConfig& config_once()
     // first audited call. No environment lookup occurs on later fills.
     static const BulkFillConfig config = [] {
         const char* value = std::getenv("HAZE_NATIVE_BULK_FILL");
-        const bool selected = value && std::strcmp(value, "ON") == 0;
+        const bool selected = !value || !*value || std::strcmp(value, "ON") == 0;
         const char* profile_value = std::getenv("HAZE_BULK_FILL_PROFILE");
         const bool profile = profile_value && std::strcmp(profile_value, "1") == 0;
         std::fprintf(stderr, "[haze-bulk-fill-mode] enabled=%d\n", selected ? 1 : 0);

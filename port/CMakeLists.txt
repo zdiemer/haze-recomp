@@ -758,19 +758,26 @@ else()
         COMPILE_OPTIONS "-w;-ffp-contract=off")
 endif()
 
-# This unproven code-size tradeoff is excluded from ordinary builds entirely.
-# PPU_INLINE_READS only changes execution within a deliberately compiled probe.
+# Limit ordinary read inlining to the two modules containing the measured
+# producer memory hot spots. The all-module option remains a developer probe.
+option(HAZE_INLINE_HOT_READS "Inline ordinary RAM reads in hot PPU modules" ON)
 option(HAZE_EXPERIMENT_INLINE_READS "Compile the developer inline-read comparison" OFF)
 # Ordinary guest reads may be inlined into lifted host code. The runtime owns
 # the startup eligibility decision; special addresses and diagnostics retain
 # their original accessor. Never apply this remapping to runtime/HLE sources.
-if(HAZE_EXPERIMENT_INLINE_READS AND MSVC)
-    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
-        "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
-elseif(HAZE_EXPERIMENT_INLINE_READS)
-    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
-        "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
-endif()
+foreach(HAZE_READ_SOURCE IN LISTS RECOMP_SOURCES)
+    get_filename_component(HAZE_READ_NAME "${HAZE_READ_SOURCE}" NAME)
+    if(HAZE_EXPERIMENT_INLINE_READS OR
+       (HAZE_INLINE_HOT_READS AND HAZE_READ_NAME MATCHES "^ppu_recomp_00[35]\\.cpp$"))
+        if(MSVC)
+            set_property(SOURCE "${HAZE_READ_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
+                "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
+        else()
+            set_property(SOURCE "${HAZE_READ_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
+                "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
+        endif()
+    endif()
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Install
