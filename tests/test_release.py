@@ -60,6 +60,9 @@ class Release(unittest.TestCase):
         defaults = package.find('.//w:Directory[@Name="defaults"]', ns)
         self.assertIsNotNone(defaults.find('w:Directory[@Name="config"]', ns))
         self.assertNotIn('RemoveFile', wxs.read_text())
+        shortcuts = {s.get('Id'): s for s in package.findall('.//w:Shortcut', ns)}
+        self.assertIsNone(shortcuts['Launch'].get('Arguments'))
+        self.assertEqual(shortcuts['Diagnostics'].get('Arguments'), '--diagnostics')
 
     def test_runtime_allowlist_rejects_local_data(self):
         runtime = self.root / 'runtime'

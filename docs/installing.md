@@ -51,5 +51,7 @@ Use the installer for first-time ISO preparation. Do not copy stale launcher.ini
 paths from another machine.
 
 `HazeLauncher.exe --check --no-ui` checks configuration without starting the game.
-Game logs are under `local/sessions`. GPU compatibility, full campaign completion,
+Game logs are under `local/sessions`. To report a problem, use the **Haze Recomp
+diagnostics** Start menu shortcut, or **Export diagnostics...** after a failed
+run, and attach the ZIP after reviewing it. GPU compatibility, full campaign completion,
 co-op and consistent performance remain experimental; see each release's notes.
