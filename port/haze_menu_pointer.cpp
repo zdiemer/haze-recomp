@@ -60,7 +60,17 @@ bool has_menu(uint32_t context) {
     }
     return false;
 }
-bool owns_input() {
+bool title_page(uint32_t context) {
+    // BLUS30094's frontend resource assigns startButton to fefl_DC_page3.
+    // Inspect the top page ID, so a dialog above the title still uses Confirm.
+    const auto count=vm_read32(context+0x50),stack=vm_read32(context+0x54);
+    if (!count || count>64 || !valid(stack) || uint64_t(stack)+count*16>0xc0000000) return false;
+    char name[17]{};
+    for (unsigned i=0;i<16;++i) name[i]=char(vm_read8(stack+(count-1)*16+i));
+    return !std::strcmp(name,"fefl_DC_page3");
+}
+bool owns_input(bool* title=nullptr) {
+    if (title) *title=false;
     // 004D2D48 enumerates these live local players. A later empty GUI dispatch
     // must not overwrite a pause/tutorial menu owned by another context.
     const auto players=vm_read32(0xf48c3c);
@@ -77,7 +87,12 @@ bool owns_input() {
     }
     // Frontend/startup has no local player yet. Its current context may be
     // temporary, so retain the last dispatched one until reset/destruction.
-    return !local && (has_menu(current_context()) || has_menu(active_context));
+    if (local) return false;
+    const auto current=current_context();
+    const auto context=has_menu(current) ? current : active_context.load();
+    if (!has_menu(context)) return false;
+    if (title) *title=title_page(context);
+    return true;
 }
 float read_float(uint32_t address) {
     auto bits=vm_read32(address); float value; std::memcpy(&value,&bits,4); return value;
@@ -157,8 +172,9 @@ bool haze_menu_gameplay_allowed() {
 void haze_menu_context(uint32_t context) {
     if (!supported) return;
     active_context=context;
-    const bool owned=owns_input();
-    haze_input_menu_state(owned);
+    bool title=false;
+    const bool owned=owns_input(&title);
+    haze_input_menu_state(owned,title);
     if (trace) {
         static uint32_t previous_context=0,previous_count=~0u;
         static bool previous_owned=false;

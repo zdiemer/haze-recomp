@@ -58,6 +58,7 @@ std::mutex menu_keys_mutex;
 HazeMenuKey menu_keys[256];
 std::atomic<bool> capture_click;
 std::atomic<bool> menu_active{false}, pause_requested{false};
+std::atomic<bool> title_active{false};
 ULONGLONG pause_request_time=0;
 std::atomic<bool> suppress_mouse_buttons{false};
 HazeCapturePolicy capture_policy;
@@ -476,7 +477,8 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     const bool movie=startup_skip.showing();
     const bool presentation_input=startup_skip.owns_input();
     const bool keyboard_menu=menu_active && !presentation_input;
-    auto menu_key=[&](int vk) { return keyboard_menu && (vk==VK_RETURN || vk==VK_ESCAPE); };
+    const bool menu_confirm=keyboard_menu && !title_active;
+    auto menu_key=[&](int vk) { return (menu_confirm && vk==VK_RETURN) || (keyboard_menu && vk==VK_ESCAPE); };
     // Each captured wheel direction is a pulse for one host report.
     const LONG wheel_pulses=captured ? InterlockedExchange(&wheel,0) : 0;
     auto key_down=[&](int vk) {
@@ -498,7 +500,7 @@ int poll(u32 port, CellPadHostInput* input, void*) {
     // draining it still counts as held input, even when Start is rebound.
     if (key_down(VK_ESCAPE)) input->buttons |= movie ? CELL_PAD_CTRL_CROSS :
         keyboard_menu ? CELL_PAD_CTRL_CIRCLE : CELL_PAD_CTRL_START;
-    if (keyboard_menu && key_down(VK_RETURN)) input->buttons |= CELL_PAD_CTRL_CROSS;
+    if (menu_confirm && key_down(VK_RETURN)) input->buttons |= CELL_PAD_CTRL_CROSS;
     auto movement_down=[&](int vk) {
         return !menu_key(vk) && (presentation_input || vk!=VK_ESCAPE) && key_down(vk);
     };
@@ -670,10 +672,11 @@ void haze_input_update() {
         controller_state=latest; controller_sample_focused=sample_focused;
     }
 }
-void haze_input_menu_state(bool active) {
+void haze_input_menu_state(bool active,bool title) {
     if (active) pause_requested=false;
     else menu_return_pending=false; // The guest already left its menu stack.
-    if (menu_active.exchange(active)==active) return;
+    const bool title_changed=title_active.exchange(active && title)!=(active && title);
+    if (menu_active.exchange(active)==active && !title_changed) return;
     if (!startup_skip.owns_input()) {
         std::lock_guard lock(menu_keys_mutex);
         const auto now=uint32_t(GetTickCount64());
@@ -836,7 +839,7 @@ bool haze_input_take_mouse(double&,double&,double&,bool&) { return false; }
 #endif
 
 #ifndef _WIN32
-void haze_input_menu_state(bool) {}
+void haze_input_menu_state(bool,bool) {}
 HazeMenuPointer haze_input_take_pointer() { return {}; }
 void haze_input_update() {}
 void haze_input_shutdown() {}

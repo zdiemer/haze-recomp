@@ -13,6 +13,11 @@ configured key/button as guest Start, and the original title event advances the
 screen. With prompts disabled, the inline glyph falls back to the retail Start
 icon, consistent with the other game prompts.
 
+The menu bridge identifies the topmost `fefl_DC_page3` (Press Start) page and
+preserves the configured Start key there. Other menus and dialogs map Enter to
+Confirm. A held Enter must be released when crossing that boundary, so starting
+the game cannot also confirm the next page.
+
 ## Resource boundary
 
 For BLUS30094, string ID `STR_PRESS_START` hashes to `0xb3a1b9c6`.
