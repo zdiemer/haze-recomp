@@ -104,5 +104,6 @@ struct HazeMenuPointer {
 };
 void haze_menu_initialize();
 bool haze_menu_gameplay_allowed();
-void haze_input_menu_state(bool active);
+// The title page consumes the configured Start binding instead of Confirm.
+void haze_input_menu_state(bool active,bool title=false);
 HazeMenuPointer haze_input_take_pointer();

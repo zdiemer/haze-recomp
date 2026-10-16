@@ -529,6 +529,41 @@ int main() {
     haze_input_menu_state(false); sample();
     keys[VK_RETURN]=true; assert(!sample().buttons);
     keys[VK_RETURN]=false;
+    // The Press Start page is menu-owned, but its event requires Start.
+    // Keep the configured binding (and its prompt) when Start is rebound.
+    haze_input_menu_state(true,true);
+    keys[VK_RETURN]=true; assert(!sample().buttons);
+    keys[VK_RETURN]=false; sample();
+    keys['K']=true; assert(sample().buttons==CELL_PAD_CTRL_START);
+    keys['K']=false; sample();
+    bindings[10].vk=VK_RETURN;
+    keys[VK_RETURN]=true; window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    assert(sample().buttons==CELL_PAD_CTRL_START && !pause_requested);
+    haze_input_menu_state(true,true); // Repeated publication cannot eat the press.
+    assert(sample().buttons==CELL_PAD_CTRL_START);
+    // A held title Start must not confirm the next page while menu ownership
+    // stays true, including a delayed/repeated key message.
+    haze_input_menu_state(true);
+    window_proc(window,WM_KEYDOWN,VK_RETURN,1ll<<30);
+    assert(!sample().buttons);
+    window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    assert(!sample().buttons && !pause_requested);
+    keys[VK_RETURN]=false; window_proc(window,WM_KEYUP,VK_RETURN,0); sample();
+    keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    keys[VK_RETURN]=false; sample();
+    // Returning from a dialog to the title also requires a fresh press.
+    keys[VK_RETURN]=true; assert(sample().buttons==CELL_PAD_CTRL_CROSS);
+    haze_input_menu_state(true,true); assert(!sample().buttons);
+    keys[VK_RETURN]=false; sample();
+    window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    window_proc(window,WM_KEYUP,VK_RETURN,0);
+    assert(sample().buttons==CELL_PAD_CTRL_START); // Buffered short tap.
+    assert(!sample().buttons);
+    controller_state.connected=true;
+    controller_state.input.buttons=CELL_PAD_CTRL_START;
+    assert(sample().buttons==CELL_PAD_CTRL_START);
+    controller_state={};
+    haze_input_menu_state(false); sample();
     // With Enter bound to Start again, a menu press still reports Cross only:
     // one press cannot both confirm and toggle pause.
     bindings[10].vk=VK_RETURN;
