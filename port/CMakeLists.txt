@@ -539,7 +539,7 @@ add_executable(${PROJECT_NAME}
     ${SPU_SOURCES}
 )
 if(WIN32)
-    target_sources(${PROJECT_NAME} PRIVATE haze_profile_transaction.cpp)
+    target_sources(${PROJECT_NAME} PRIVATE haze_profile_transaction.cpp haze_save_backup.cpp)
     add_subdirectory(net)
     target_sources(${PROJECT_NAME} PRIVATE haze_coop.cpp haze_coop_menu.cpp haze_coop_settings.cpp)
     target_link_libraries(${PROJECT_NAME} PRIVATE haze_network)
