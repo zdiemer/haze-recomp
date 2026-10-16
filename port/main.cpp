@@ -671,6 +671,13 @@ int main(int argc, char** argv)
     spu_workload_allow_worker_reuse(0x6840DFFCF7F63411ULL, 33);
     spu_workload_allow_worker_reuse(0x6336AB246138D1D7ULL, 41);
     spu_workload_allow_worker_reuse(0x3AAE86BBB6D9BAA1ULL, 43);
+    // Returning PhysX tasks: fresh context/LS and task completion remain per run.
+    // Whole-image identities only; the image-23 overlay stays context-owned.
+    // Refs #147, #36: these tasks otherwise create thousands of threads per sweep.
+    spu_workload_allow_worker_reuse(0xE46D42668F892B23ULL, 20);
+    spu_workload_allow_worker_reuse(0xAB81BEA7288D74A1ULL, 23);
+    spu_workload_allow_worker_reuse(0xEDBC87A478910707ULL, 25);
+    spu_workload_allow_worker_reuse(0xDDA82DBB5E4EE71BULL, 26);
 #endif
 #if defined(HAZE_JOB_TRACE) && defined(_WIN32)
     const char* job_trace_path = getenv("HAZE_JOB_TRACE_CSV");

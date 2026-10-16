@@ -303,7 +303,9 @@ if(WIN32)
     # Terminal shader-bundle persistence detaches only source/blob caches after
     # the final draw. Its worker owns those allocations; settings transactions
     # and GPU resource/display lifetime remain on the renderer owner thread.
-    if(NOT HAZE_RSX_HASH STREQUAL "c1cfbde5394d0fcbe2d75d321ca9c2778f76152ea655904a0ecff8db3ad03859")
+    # Exact-validated fragment-program plans own CPU metadata only. Mutable
+    # constants, PSO keys, descriptors, GPU fences and settings stay unchanged.
+    if(NOT HAZE_RSX_HASH STREQUAL "0cf91856b237299ed1f5ea07057528335e0de20bbe4a27a9dc772cfd55165ad1")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
