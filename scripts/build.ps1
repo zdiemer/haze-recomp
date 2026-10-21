@@ -352,6 +352,8 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Native job wait test compilation failed.' }
     & "$root/local/test_job_wait.exe"
     if ($LASTEXITCODE -ne 0) { throw 'Native job wait scope validation failed.' }
+    & $python "$root/tests/test_ppu_inline_writes.py" --compiler $clang --sdk $sdk --recomp $jobWaitInclude --output-dir "$root/local/inline-write-tests"
+    if ($LASTEXITCODE -ne 0) { throw 'Experimental PPU write boundary validation failed.' }
     if (-not $RuntimeOnly) {
         & $python "$root/tests/test_spu_job_modes.py"
         if ($LASTEXITCODE -ne 0) { throw 'SPU job mode-summary validation failed.' }
