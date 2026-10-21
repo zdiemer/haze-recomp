@@ -42,6 +42,16 @@ VSync, FXAA, texture filtering, mip bias, sharpening and brightness. The page
 explains saved values that differ from active launch overrides. Monitor choices
 are currently numbered; unavailable displays fail validation on Apply.
 
+The frame limit releases presents on a fixed interval grid, using a
+high-resolution timer followed by a short spin of about one millisecond. Timer
+wake latency and presentation cost do not accumulate, so a scene that can exceed
+the cap averages the cap rather than slightly below it. A frame that is late by
+more than an eighth of the interval restarts the grid instead of compensating
+with a burst. On a variable-refresh (G-SYNC/FreeSync) display, select VSync
+**On** with a frame limit below the refresh rate. On a fixed-refresh display, a
+limit that does not divide the refresh rate, such as 60 on 144 Hz, is presented
+evenly but scanned out unevenly.
+
 While the PC page owns input, the host mapper neutralizes gameplay buttons,
 sticks and mouse motion. Back waits for focused neutral physical input before
 reporting Circle to the untouched retail page, returning through its normal
