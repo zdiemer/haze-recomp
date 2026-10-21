@@ -45,6 +45,9 @@ static uint32_t rejected_range_address;
 static bool lock_held;
 static unsigned lock_calls;
 static unsigned unlock_calls;
+static bool publish_on_lock;
+static bool poison_on_unlock;
+static bool accessor_queue;
 static bool throw_inside;
 static unsigned syscall_duration = 330;
 static bool handled;
@@ -62,12 +65,18 @@ extern "C" void spu_lockline_lock(void) {
     assert(!lock_held && "queue lock nested unexpectedly");
     lock_held = true;
     ++lock_calls;
+    // Publish only after lock acquisition: a pre-lock snapshot sees an empty
+    // queue and fails the one-poll assertion below.
+    if (publish_on_lock) guest_memory[kQueueEa + 7u] = 1;
 }
 
 extern "C" void spu_lockline_unlock(void) {
     assert(lock_held && "queue lock released without acquisition");
     lock_held = false;
     ++unlock_calls;
+    // Reads must finish before release, even when another writer changes the
+    // descriptor immediately afterward.
+    if (poison_on_unlock) guest_memory[kQueueEa + 31u] = 2;
 }
 
 static uint32_t guest_be32(uint32_t address) {
@@ -146,6 +155,7 @@ static void reset_guest(uint8_t state, uint8_t completion) {
     rejected_range_address = 0;
     lock_held = false;
     lock_calls = unlock_calls = 0;
+    publish_on_lock = poison_on_unlock = false;
     std::memset(guest_memory, 0, sizeof(guest_memory));
     guest_memory[kStateEa] = state;
     guest_memory[kStateEa + 1u] = completion;
@@ -216,6 +226,29 @@ static void test_completion_queue() {
     expect_invalid_queue_fallback([] { set_guest_be32(kQueueEa + 0x1Cu, 2u); });
     expect_invalid_queue_fallback([] { set_guest_be32(kQueueEa + 0x00u, 1024u); });
     expect_invalid_queue_fallback([] { set_guest_be32(kQueueEa + 0x04u, 513u); });
+
+    // A descriptor with a nonzero high address half must never be truncated.
+    expect_invalid_queue_fallback([] { set_guest_be64(kQueueEa + 0x10u, 0x100030000ull); });
+
+    reset_guest(1, 2);
+    publish_on_lock = poison_on_unlock = true;
+    auto publication = caller();
+    haze_job_wait_call(&publication);
+    assert(handled && original_syscalls == 0 && lock_calls == 1 && unlock_calls == 1);
+    assert(read32_calls == (accessor_queue ? 10u : 5u));
+
+    // A subsequent wait must reject a descriptor that changed after a ready
+    // observation. Previously validated queue metadata cannot be reused.
+    reset_guest(1, 2);
+    publish_on_lock = true;
+    auto fresh = caller();
+    haze_job_wait_call(&fresh);
+    assert(handled && lock_calls == 1 && unlock_calls == 1);
+    reset_guest(1, 2);
+    set_guest_be32(kQueueEa + 8u, 32u);
+    auto changed = caller();
+    haze_job_wait_call(&changed);
+    assert(!handled && original_syscalls == 1 && lock_calls == 1 && unlock_calls == 1);
 }
 
 static void test_policy() {
@@ -275,8 +308,8 @@ static void test_final_counts() {
 
     // Counts are per completed guarded delay, not per poll. Empty and busy
     // queue cases must be expired, while queue wrap/nonempty cases are ready.
-    assert(native == 8 && ready == 3 && primary == 1 && queue == 2);
-    assert(expired == 5 && fallback == 14);
+    assert(native == 10 && ready == 5 && primary == 1 && queue == 4);
+    assert(expired == 5 && fallback == 16);
 }
 #endif
 
@@ -291,8 +324,8 @@ static void test_disabled_child(const char* executable) {
     (void)executable;
 }
 
-static void run_disabled_child(const char* executable) {
-    std::string command = "\"" + std::string(executable) + "\" --disabled-child";
+static void run_child(const char* executable, const char* argument) {
+    std::string command = "\"" + std::string(executable) + "\" " + argument;
     STARTUPINFOA startup = {};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process = {};
@@ -306,6 +339,7 @@ static void run_disabled_child(const char* executable) {
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
 }
+
 #endif
 
 int main(int argc, char** argv) {
@@ -314,10 +348,18 @@ int main(int argc, char** argv) {
         test_disabled_child(argv[0]);
         return 0;
     }
+    if (argc > 1 && std::strcmp(argv[1], "--accessor-queue-child") == 0) {
+        _putenv_s("HAZE_NATIVE_JOB_WAIT", "");
+        _putenv_s("HAZE_NATIVE_QUEUE_SNAPSHOT", "0");
+        accessor_queue = true;
+        test_completion_queue();
+        return 0;
+    }
 #endif
     test_policy();
     // Exercise the production default; the child below checks explicit opt-out.
     _putenv_s("HAZE_NATIVE_JOB_WAIT", "");
+    _putenv_s("HAZE_NATIVE_QUEUE_SNAPSHOT", "");
     test_completion_queue();
 
     reset_guest(2, 0);
@@ -331,7 +373,7 @@ int main(int argc, char** argv) {
     auto compound_ready = caller();
     haze_job_wait_call(&compound_ready);
     assert(handled && compound_ready.gpr[3] == 0);
-    assert(read32_calls >= 10 && read8_calls == 0 && original_syscalls == 0);
+    assert(read32_calls == 5 && read8_calls == 0 && original_syscalls == 0);
     assert(lock_calls == 1 && unlock_calls == 1 && !lock_held);
 
     reset_guest(0, 0);
@@ -385,7 +427,8 @@ int main(int argc, char** argv) {
     assert(std::memcmp(&unwound, &before, sizeof(unwound)) == 0);
 
 #ifdef _WIN32
-    run_disabled_child(argv[0]);
+    run_child(argv[0], "--disabled-child");
+    run_child(argv[0], "--accessor-queue-child");
     test_final_counts();
 #endif
     std::puts("PASS: readiness policy, queue validation/wrap/busy/fallback, non-mutation, exact delay guard, and scope unwind");

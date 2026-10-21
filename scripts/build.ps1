@@ -345,6 +345,13 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Firmware ELF relocation tests failed.' }
     & $python "$root/tests/test_present_modes.py"
     if ($LASTEXITCODE -ne 0) { throw 'Present-window benchmark validation failed.' }
+    # CI has no private lift. Exercise the same native wait boundary against
+    # the SDK context and stub guest services; prepared builds use the lift.
+    $jobWaitInclude = if ($RuntimeOnly) { "$root/tests/fixtures/job_wait" } else { "$assets/generated/ppu" }
+    & $clang /nologo /EHsc /W0 /O2 "/I$jobWaitInclude" "/I$sdk/runtime/ppu" "/Fe$root/local/test_job_wait.exe" "/Fo$root/local/" "$root/tests/test_job_wait.cpp" "$root/port/haze_job_wait.cpp"
+    if ($LASTEXITCODE -ne 0) { throw 'Native job wait test compilation failed.' }
+    & "$root/local/test_job_wait.exe"
+    if ($LASTEXITCODE -ne 0) { throw 'Native job wait scope validation failed.' }
     if (-not $RuntimeOnly) {
         & $python "$root/tests/test_spu_job_modes.py"
         if ($LASTEXITCODE -ne 0) { throw 'SPU job mode-summary validation failed.' }
@@ -372,10 +379,6 @@ if ($Test) {
         if ($LASTEXITCODE -ne 0) { throw 'Job completion profiler accounting failed.' }
         & $python "$root/tests/test_job_completion_summary.py"
         if ($LASTEXITCODE -ne 0) { throw 'Job completion summary validation failed.' }
-        & $clang /nologo /EHsc /W0 /O2 "/I$assets/generated/ppu" "/Fe$root/local/test_job_wait.exe" "/Fo$root/local/" "$root/tests/test_job_wait.cpp" "$root/port/haze_job_wait.cpp"
-        if ($LASTEXITCODE -ne 0) { throw 'Native job wait test compilation failed.' }
-        & "$root/local/test_job_wait.exe"
-        if ($LASTEXITCODE -ne 0) { throw 'Native job wait scope validation failed.' }
         & $python "$root/tests/test_bulk_fill.py" --compiler $clang --sdk $sdk --generated "$assets/generated/ppu" --output-dir "$root/build/bulk-fill-tests"
         if ($LASTEXITCODE -ne 0) { throw 'Native slot-fill source/boundary differential regression failed.' }
         & $python "$root/tests/test_slot_copy.py" --compiler $clang --sdk $sdk --generated "$assets/generated/ppu" --output-dir "$root/build/slot-copy-tests"

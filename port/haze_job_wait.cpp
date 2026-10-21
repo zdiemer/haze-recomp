@@ -113,17 +113,46 @@ bool resolve_completion_queue(uint32_t* queue_ea) {
     return true;
 }
 
+bool queue_snapshot_enabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("HAZE_NATIVE_QUEUE_SNAPSHOT");
+        const bool result = !value || !*value || std::strcmp(value, "1") == 0;
+        std::fprintf(stderr, "[haze-queue-snapshot] enabled=%u\n", result ? 1u : 0u);
+        return result;
+    }();
+    return enabled;
+}
+
 haze_job_wait_policy::ProbeResult queue_nonempty(uint32_t queue_ea) {
     if (!queue_ea || (queue_ea & 127u) || !ppu_native_memory_range(queue_ea, 128))
         return haze_job_wait_policy::ProbeResult::invalid;
 
+    const bool snapshot = queue_snapshot_enabled();
+    uint32_t head, tail, entry_size, depth, direction;
+    uint64_t buffer;
     spu_lockline_lock();
-    const uint32_t head = vm_read32(queue_ea + 0x00u);
-    const uint32_t tail = vm_read32(queue_ea + 0x04u);
-    const uint32_t entry_size = vm_read32(queue_ea + 0x08u);
-    const uint32_t depth = vm_read32(queue_ea + 0x0Cu);
-    const uint64_t buffer = vm_read64(queue_ea + 0x10u);
-    const uint32_t direction = vm_read32(queue_ea + 0x1Cu);
+    if (snapshot) {
+        // The caller rejects memory diagnostics before reaching this probe,
+        // and the range guard above excludes special memory. Copy a fresh
+        // header under the same reservation lock on every poll. Do not cache
+        // descriptors or indices across polls, or consume queue entries here.
+        uint8_t header[32];
+        std::memcpy(header, vm_base + queue_ea, sizeof(header));
+        const auto word = [&header](unsigned offset) {
+            return uint32_t(header[offset]) << 24 | uint32_t(header[offset + 1]) << 16 |
+                   uint32_t(header[offset + 2]) << 8 | uint32_t(header[offset + 3]);
+        };
+        head = word(0); tail = word(4); entry_size = word(8); depth = word(12);
+        buffer = (uint64_t(word(16)) << 32) | word(20);
+        direction = word(28);
+    } else {
+        head = vm_read32(queue_ea + 0x00u);
+        tail = vm_read32(queue_ea + 0x04u);
+        entry_size = vm_read32(queue_ea + 0x08u);
+        depth = vm_read32(queue_ea + 0x0Cu);
+        buffer = vm_read64(queue_ea + 0x10u);
+        direction = vm_read32(queue_ea + 0x1Cu);
+    }
 
     bool valid = entry_size == 16u && depth && depth <= 0x3FFFFFFFu &&
         buffer && buffer <= UINT32_MAX && !(buffer & 15u) && direction == 1u;
