@@ -348,18 +348,21 @@ int main(int argc, char** argv) {
         test_disabled_child(argv[0]);
         return 0;
     }
-    if (argc > 1 && std::strcmp(argv[1], "--accessor-queue-child") == 0) {
+    if (argc > 1 && (std::strcmp(argv[1], "--accessor-queue-child") == 0 ||
+                    std::strcmp(argv[1], "--default-queue-child") == 0)) {
         _putenv_s("HAZE_NATIVE_JOB_WAIT", "");
-        _putenv_s("HAZE_NATIVE_QUEUE_SNAPSHOT", "0");
+        _putenv_s("HAZE_NATIVE_QUEUE_SNAPSHOT",
+            std::strcmp(argv[1], "--default-queue-child") == 0 ? "" : "0");
         accessor_queue = true;
         test_completion_queue();
         return 0;
     }
 #endif
     test_policy();
-    // Exercise the production default; the child below checks explicit opt-out.
+    // Exercise the snapshot experiment; children check the accessor default
+    // and explicit opt-out, plus disabling the entire native wait.
     _putenv_s("HAZE_NATIVE_JOB_WAIT", "");
-    _putenv_s("HAZE_NATIVE_QUEUE_SNAPSHOT", "");
+    _putenv_s("HAZE_NATIVE_QUEUE_SNAPSHOT", "1");
     test_completion_queue();
 
     reset_guest(2, 0);
@@ -429,6 +432,7 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     run_child(argv[0], "--disabled-child");
     run_child(argv[0], "--accessor-queue-child");
+    run_child(argv[0], "--default-queue-child");
     test_final_counts();
 #endif
     std::puts("PASS: readiness policy, queue validation/wrap/busy/fallback, non-mutation, exact delay guard, and scope unwind");

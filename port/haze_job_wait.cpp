@@ -116,7 +116,9 @@ bool resolve_completion_queue(uint32_t* queue_ea) {
 bool queue_snapshot_enabled() {
     static const bool enabled = [] {
         const char* value = std::getenv("HAZE_NATIVE_QUEUE_SNAPSHOT");
-        const bool result = !value || !*value || std::strcmp(value, "1") == 0;
+        // Keep this experiment opt-in until repeated gameplay comparisons
+        // establish a benefit; fewer accessor calls alone are not evidence.
+        const bool result = value && std::strcmp(value, "1") == 0;
         std::fprintf(stderr, "[haze-queue-snapshot] enabled=%u\n", result ? 1u : 0u);
         return result;
     }();
