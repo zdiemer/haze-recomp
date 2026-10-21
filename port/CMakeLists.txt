@@ -779,6 +779,24 @@ foreach(HAZE_READ_SOURCE IN LISTS RECOMP_SOURCES)
     endif()
 endforeach()
 
+# Keep write inlining build-time opt-in until repeated gameplay measurements
+# establish a benefit. Runtime HAZE_INLINE_WRITES=1 also explicitly opts in.
+option(HAZE_EXPERIMENT_INLINE_WRITES "Compile guarded ordinary PPU write experiment" OFF)
+if(HAZE_EXPERIMENT_INLINE_WRITES)
+    foreach(HAZE_WRITE_SOURCE IN LISTS RECOMP_SOURCES)
+        get_filename_component(HAZE_WRITE_NAME "${HAZE_WRITE_SOURCE}" NAME)
+        if(HAZE_WRITE_NAME MATCHES "^ppu_recomp_00[35]\\.cpp$")
+            if(MSVC)
+                set_property(SOURCE "${HAZE_WRITE_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
+                    "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_writes.h")
+            else()
+                set_property(SOURCE "${HAZE_WRITE_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
+                    "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_writes.h")
+            endif()
+        endif()
+    endforeach()
+endif()
+
 # ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
