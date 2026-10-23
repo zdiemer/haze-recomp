@@ -76,6 +76,7 @@ extern "C" void haze_movie_render_init(void);
 extern "C" int haze_movie_present_tick(void);
 extern "C" void haze_movie_render_guest_flip(void);
 extern "C" void haze_movie_set_root(const char* root);
+#include "haze_save_backup.h"
 #endif
 #ifdef __EMSCRIPTEN__
 #include "haze_wasm_vm.h"
@@ -773,6 +774,9 @@ int main(int argc, char** argv)
     }
     cellSaveData_set_strict_load_errors(1);
     printf("[boot] Save-data root: %s\n", save_root);
+#ifdef _WIN32
+    haze_backup_recover_all(save_root); /* finish or reverse interrupted commits */
+#endif
     haze_player_profile_initialize(std::filesystem::u8path(save_root));
     char sfo_path[1200];
     snprintf(sfo_path, sizeof sfo_path, "%s/PS3_GAME/PARAM.SFO", ppu_vfs_root);

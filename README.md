@@ -97,6 +97,9 @@ The executable is `build/haze/HazeRecomp.exe`. Saves live in
 `local/state/savedata`, session logs in `local/sessions`, and reusable shaders
 in `local/cache/rsx-shaders`. Game assets, generated translations, and build
 outputs are ignored by Git. The first launch installs about 4 GB of game data.
+Each save is staged and swapped in only after it completes, the last three
+versions are kept under `local/state/savedata/.haze-saves`, and a missing or
+damaged save is restored from them; see [docs/native-saves.md](docs/native-saves.md).
 
 ## Controls and settings
 

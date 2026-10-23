@@ -42,7 +42,8 @@ Each attempt has its own portable RPCS3 directory and does not change another
 RPCS3 installation. Do not delete the successful attempt referenced by launcher.ini.
 
 MSI upgrades/repairs preserve `launcher.ini`, customized `config/*.ini` and
-user-created data. Saves default to `local/state/savedata`. Back up saves before
+user-created data. Saves default to `local/state/savedata`, with automatic
+backups in its `.haze-saves` directory (docs/native-saves.md). Back up saves before
 upgrading. Uninstall from Windows Settings retains user-created data and settings.
 
 The portable ZIP is for an already prepared installation: extract it to a writable
