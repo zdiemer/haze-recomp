@@ -486,6 +486,21 @@ if(PORT_ENABLE_SPU)
             set_property(SOURCE "${HAZE_JOB0_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES
                 "${SPU_DIR}/spu_0029_at_00EC9A80" "${CMAKE_CURRENT_SOURCE_DIR}")
         endif()
+        set(HAZE_JOB13_SOURCE "${SPU_DIR}/spu_0031_at_00ECEC00/spu_recomp.c")
+        if(EXISTS "${HAZE_JOB13_SOURCE}")
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+            set(HAZE_JOB13_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/haze_job13_native/spu_recomp.c")
+            add_custom_command(OUTPUT "${HAZE_JOB13_PATCHED}"
+                COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" job13-native
+                    "${HAZE_JOB13_SOURCE}" "${HAZE_JOB13_PATCHED}"
+                    --registration "${SPU_DIR}/spu_workloads.c"
+                DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_JOB13_SOURCE}" "${SPU_DIR}/spu_workloads.c"
+                VERBATIM)
+            list(REMOVE_ITEM SPU_LIFTED "${HAZE_JOB13_SOURCE}")
+            list(APPEND SPU_LIFTED "${HAZE_JOB13_PATCHED}")
+            set_property(SOURCE "${HAZE_JOB13_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES
+                "${SPU_DIR}/spu_0031_at_00ECEC00" "${CMAKE_CURRENT_SOURCE_DIR}")
+        endif()
         list(LENGTH SPU_LIFTED SPU_IMAGE_COUNT)
         message(STATUS "Lifted SPU:      ${SPU_IMAGE_COUNT} image(s)")
         # The musttail indirect-branch fast path. Excluded from the runtime
@@ -530,6 +545,7 @@ add_executable(${PROJECT_NAME}
     haze_job0_capture.cpp
     haze_job0_kernel.cpp
     haze_spu_triplet_copy.cpp
+    haze_job13_native.cpp
     haze_graphics.cpp
     haze_graphics_live.cpp
     haze_menu_pointer.cpp
