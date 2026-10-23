@@ -500,6 +500,9 @@ if(PORT_ENABLE_SPU)
             list(APPEND SPU_LIFTED "${HAZE_JOB13_PATCHED}")
             set_property(SOURCE "${HAZE_JOB13_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES
                 "${SPU_DIR}/spu_0031_at_00ECEC00" "${CMAKE_CURRENT_SOURCE_DIR}")
+            # The native particle update shares the lifted image's SPU float helpers
+            # and compile flags; it is added with the SPU sources below.
+            set(HAZE_JOB13_NATIVE_UPDATE "${CMAKE_CURRENT_SOURCE_DIR}/haze_job13_native_update.cpp")
         endif()
         list(LENGTH SPU_LIFTED SPU_IMAGE_COUNT)
         message(STATUS "Lifted SPU:      ${SPU_IMAGE_COUNT} image(s)")
@@ -508,7 +511,7 @@ if(PORT_ENABLE_SPU)
         # here, by clang, or the tail call degrades to a plain call and a guest
         # loop that branches indirectly walks the thread stack off its guard
         # page a few thousand iterations in.
-        list(APPEND SPU_SOURCES ${SPU_LIFTED}
+        list(APPEND SPU_SOURCES ${SPU_LIFTED} ${HAZE_JOB13_NATIVE_UPDATE}
              "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c")
         # Generated beside the lift; each is present only once its generator
         # has been run, so each is included only if it is actually here.

@@ -2,6 +2,7 @@
 #include "spu_context.h"
 #include "haze_job13_native_divide.h"
 #include "haze_job13_native_math.h"
+#include "haze_job13_native_update.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,7 +12,7 @@ void haze_job13_native_note(unsigned operation);
 }
 #endif
 
-enum { HAZE_JOB13_NATIVE_DIVIDE = 0, HAZE_JOB13_NATIVE_SQRT = 1 };
+enum { HAZE_JOB13_NATIVE_DIVIDE = 0, HAZE_JOB13_NATIVE_SQRT = 1, HAZE_JOB13_NATIVE_UPDATE = 2 };
 
 /* Image 32 (effects batch). Native operations replace audited arithmetic only;
  * every unsupported state keeps the original translation. Debug watches and

@@ -1,19 +1,22 @@
-"""Insert opt-in native arithmetic into Haze's audited image-32 effects batch.
+"""Insert native arithmetic into Haze's audited image-32 effects batch.
 
-Two guarded operations, both validated against complete captured combat
+Three guarded operations, validated against complete captured combat
 batches on experiment/native-job13 (#142):
 
 * EB10: the first 60 restoring-division steps run on host integers; the final
   original step still builds the rounding state and scratch registers.
 * DA08: the effects square root runs its exact polynomial and three Newton
   divisions in host scalar SSE, preserving the unused lane's FP status.
+* 09A00: the complete particle loop (age/retire, integrate, drag, forces,
+  bounds) runs on typed host data and commits the object and particle ranges
+  once; any unsupported object, particle or helper case runs the original loop.
 
-Both always run, and fall back to the unchanged translation whenever inputs or
+All always run, and fall back to the unchanged translation whenever inputs or
 FP modes are unsupported, debug LS watches are armed, or the image constants
-differ. A changed
-image fails closed. Never modify or publish the generated input.
+differ. A changed image fails closed. Never modify or publish the generated input.
 """
 import hashlib
+import re
 
 PREFIX = 'spu_0031_at_00ECEC00_spu_func_'
 IMAGE_DIGEST = '98222b50bfa6fa2015ee9b9e1e592eae11c166b05f57c46136ce69d5c925a694'
@@ -103,7 +106,25 @@ void spu_0031_at_00ECEC00_spu_func_0000DA08(spu_context* ctx) {
     spu_drain_call(ctx, return_pc);
 }
 /* END HAZE JOB13 NATIVE SQRT */
+
+/* BEGIN HAZE JOB13 NATIVE PARTICLE UPDATE */
+void spu_0031_at_00ECEC00_spu_func_00009A00(spu_context* ctx) {
+    if (haze_job13_native_ready(ctx) && haze_job13_native_update_try(ctx)) {
+        haze_job13_native_note(HAZE_JOB13_NATIVE_UPDATE);
+        ctx->pc = 0x9BC4;
+        g_spu_trampoline_fn = spu_0031_at_00ECEC00_spu_func_00009BC4;
+        return;
+    }
+    spu_0031_at_00ECEC00_spu_func_00009A00_reference(ctx);
+}
+/* END HAZE JOB13 NATIVE PARTICLE UPDATE */
 '''
+UPDATE_ENTRY = 'void ' + PREFIX + '00009A00(spu_context* ctx) {'
+UPDATE_REFERENCE = 'void ' + PREFIX + '00009A00_reference(spu_context* ctx) {'
+UPDATE_EXIT = 'void ' + PREFIX + '00009BC4(spu_context* ctx) {'
+# Digest of the 09A00 loop-entry block body, between its brace and the
+# closing line. The native particle update owns 09A00 -> 09BC4.
+UPDATE_ENTRY_BODY = '9f88830479ba5d357eb8a64b997410da95a231cd8a6c91ba1d4d913a9b9cca08'
 
 
 def function_body(source, entry):
@@ -114,11 +135,15 @@ def function_body(source, entry):
 def patch(source):
     if hashlib.sha256(source.encode()).hexdigest() != IMAGE_DIGEST:
         raise ValueError('Haze image-32 source changed; re-audit the native effects arithmetic')
-    if source.count(INCLUDE) != 1 or source.count(DIVIDE_ENTRY) != 1 or source.count(SQRT_ENTRY) != 1:
+    if (source.count(INCLUDE) != 1 or source.count(DIVIDE_ENTRY) != 1 or source.count(SQRT_ENTRY) != 1 or
+            source.count(UPDATE_ENTRY) != 1 or source.count(UPDATE_EXIT) != 1):
         raise ValueError('Image-32 native arithmetic boundaries are not unique')
+    update = re.search(re.escape(UPDATE_ENTRY) + r'(.*?)\n\}', source, re.S)
+    if hashlib.sha256(update.group(1).encode()).hexdigest() != UPDATE_ENTRY_BODY:
+        raise ValueError('Image-32 particle loop entry changed')
     divide = function_body(source, DIVIDE_ENTRY)
     if divide.count(DIVIDE_ANCHOR) != 1:
         raise ValueError('Image-32 division entry changed')
     source = source.replace(divide, divide.replace(DIVIDE_ANCHOR, DIVIDE_INSERT + DIVIDE_ANCHOR), 1)
-    source = source.replace(SQRT_ENTRY, SQRT_REFERENCE, 1)
+    source = source.replace(SQRT_ENTRY, SQRT_REFERENCE, 1).replace(UPDATE_ENTRY, UPDATE_REFERENCE, 1)
     return source.replace(INCLUDE, HEADER, 1) + WRAPPER

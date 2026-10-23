@@ -6,7 +6,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
 from patches.patch_job13_native import (
-    DIVIDE_ANCHOR, DIVIDE_INSERT, HEADER, INCLUDE, SQRT_ENTRY, SQRT_REFERENCE, WRAPPER, patch)
+    DIVIDE_ANCHOR, DIVIDE_INSERT, HEADER, INCLUDE, SQRT_ENTRY, SQRT_REFERENCE, UPDATE_ENTRY,
+    UPDATE_REFERENCE, WRAPPER, patch)
 
 SOURCE = ROOT/'generated/spu/spu_0031_at_00ECEC00/spu_recomp.c'
 
@@ -23,8 +24,11 @@ class Job13NativePatch(unittest.TestCase):
         self.assertEqual(patched.count('haze_job13_native_divide_prefix(ctx)'), 1)
         self.assertEqual(patched.count(SQRT_REFERENCE), 1)
         self.assertEqual(patched.count(SQRT_ENTRY), 1)
+        self.assertEqual(patched.count(UPDATE_REFERENCE), 1)
+        self.assertEqual(patched.count(UPDATE_ENTRY), 1)
         self.assertTrue(patched.endswith(WRAPPER))
         restored = patched[:-len(WRAPPER)].replace(SQRT_REFERENCE, SQRT_ENTRY, 1).replace(
+            UPDATE_REFERENCE, UPDATE_ENTRY, 1).replace(
             DIVIDE_INSERT + DIVIDE_ANCHOR, DIVIDE_ANCHOR, 1).replace(HEADER, INCLUDE, 1)
         self.assertEqual(restored, self.source)
 

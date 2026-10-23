@@ -295,7 +295,7 @@ if ($Test) {
             & $python "$root/scripts/patch.py" job13-native $job13Source "$job13Out/spu_recomp.c" --registration "$assets/generated/spu/spu_workloads.c"
             if ($LASTEXITCODE -ne 0) { throw 'Native job-13 replay source preparation failed.' }
             Copy-Item ([IO.Path]::ChangeExtension($job13Source, '.h')) "$job13Out/spu_recomp.h" -Force
-            & $clang /nologo /TC /std:c17 /O2 /MD /W0 /DSPU_FLOAT_NATIVE_RUNTIME=1 /DSPU_USE_DISPATCH_MT /clang:-msse4.1 /clang:-fno-strict-aliasing "/I$sdk/runtime/spu" "/I$root/port" "/I$root/tests" "/I$job13Out" "/Fo$job13Out/" "/Fe$job13Out/replay.exe" "$root/tests/test_job13_native_replay.c" "$job13Out/spu_recomp.c" "$sdk/runtime/spu/spu_float_native.c"
+            & $clang /nologo /TC /std:c17 /O2 /MD /W0 /DSPU_FLOAT_NATIVE_RUNTIME=1 /DSPU_USE_DISPATCH_MT /clang:-msse4.1 /clang:-fno-strict-aliasing "/I$sdk/runtime/spu" "/I$root/port" "/I$root/tests" "/I$job13Out" "/Fo$job13Out/" "/Fe$job13Out/replay.exe" "$root/tests/test_job13_native_replay.c" "$job13Out/spu_recomp.c" "$root/port/haze_job13_native_update.cpp" "$sdk/runtime/spu/spu_float_native.c"
             if ($LASTEXITCODE -ne 0) { throw 'Native job-13 replay compilation failed.' }
             $job13Divides = 0
             foreach ($fixture in $job13Fixtures) {
