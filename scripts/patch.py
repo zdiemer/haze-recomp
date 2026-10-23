@@ -12,7 +12,7 @@ import sys
 
 PATCHES = (
     'audio-tick', 'bulk-fill', 'guest-pacer', 'job0-capture', 'job0-kernel',
-    'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
+    'job13-native', 'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
     'menu-lifetime', 'menu-material', 'menu-pages', 'movie-poll', 'native-cursor',
     'producer-profile', 'save-status', 'savedata', 'slot-copy', 'spu-idle',
     'spu-triplet-copy', 'startup-splash', 'teammate-name', 'title-prompt', 'vp-upload',
@@ -28,6 +28,7 @@ ORACLES = {
 REGISTRATIONS = {
     'job0-capture': 'spu_begin_image(30); spu_0029_at_00EC9A80_spu_recomp_register();',
     'job0-kernel': 'spu_begin_image(30); spu_0029_at_00EC9A80_spu_recomp_register();',
+    'job13-native': 'spu_begin_image(32); spu_0031_at_00ECEC00_spu_recomp_register();',
     'native-cursor': 'spu_begin_image(40); spu_0039_at_00F1C100_spu_recomp_register();',
     'spu-idle': 'spu_begin_image(29); spu_0028_at_00EC7980_spu_recomp_register();',
     'spu-triplet-copy': 'spu_begin_image(42); spu_0041_at_00F2E380_spu_recomp_register();',

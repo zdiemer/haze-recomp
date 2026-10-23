@@ -283,6 +283,32 @@ if ($Test) {
         if ($LASTEXITCODE -ne 0) { throw 'Job-0 fixture recorder test failed.' }
         & $python "$root/tests/test_job0_patch.py"
         if ($LASTEXITCODE -ne 0) { throw 'Job-0 patch guard tests failed.' }
+        $job13Source = "$assets/generated/spu/spu_0031_at_00ECEC00/spu_recomp.c"
+        & $python "$root/tests/test_job13_native_patch.py" --source $job13Source
+        if ($LASTEXITCODE -ne 0) { throw 'Native job-13 patch guard tests failed.' }
+        # Private captured combat batches (format v2) are optional local inputs.
+        $job13Fixtures = @(Get-ChildItem "$assets/local/later-job13-capture-*-fixtures/*.bin" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.Name -ne 'later-job13-capture-a1-fixtures' })
+        if ($job13Fixtures.Count) {
+            $job13Out = Join-Path $root 'local/job13-native-replay'
+            New-Item -ItemType Directory -Force $job13Out | Out-Null
+            & $python "$root/scripts/patch.py" job13-native $job13Source "$job13Out/spu_recomp.c" --registration "$assets/generated/spu/spu_workloads.c"
+            if ($LASTEXITCODE -ne 0) { throw 'Native job-13 replay source preparation failed.' }
+            Copy-Item ([IO.Path]::ChangeExtension($job13Source, '.h')) "$job13Out/spu_recomp.h" -Force
+            & $clang /nologo /TC /std:c17 /O2 /MD /W0 /DSPU_FLOAT_NATIVE_RUNTIME=1 /DSPU_USE_DISPATCH_MT /clang:-msse4.1 /clang:-fno-strict-aliasing "/I$sdk/runtime/spu" "/I$root/port" "/I$root/tests" "/I$job13Out" "/Fo$job13Out/" "/Fe$job13Out/replay.exe" "$root/tests/test_job13_native_replay.c" "$job13Out/spu_recomp.c" "$sdk/runtime/spu/spu_float_native.c"
+            if ($LASTEXITCODE -ne 0) { throw 'Native job-13 replay compilation failed.' }
+            $job13Divides = 0
+            foreach ($fixture in $job13Fixtures) {
+                $replay = & "$job13Out/replay.exe" $fixture.FullName
+                if ($LASTEXITCODE -ne 0) { throw "Native job-13 captured batch replay failed: $($fixture.Name)" }
+                $match = [regex]::Match(($replay -join "`n"), 'NATIVE divide=(\d+)')
+                $job13Divides += [int]$match.Groups[1].Value
+            }
+            if (-not $job13Divides) { throw 'Native job-13 replay never exercised the division prefix.' }
+            Write-Host "Native job-13 replay passed $($job13Fixtures.Count) captured batches."
+        } else {
+            Write-Host 'Native job-13 replay skipped: no private captured batches.'
+        }
     }
     $abiStorageTest = Join-Path $root 'local/test_abi_storage.exe'
     & $clang /nologo /W0 /O2 /clang:-msse4.1 "/I$sdk/include" "/Fe$abiStorageTest" "/Fo$root/local/test_abi_storage.obj" "$sdk/runtime/spu/tests/test_abi_storage.c"
