@@ -86,6 +86,8 @@ def wix_source(stage: Path, output: Path, release_version: str) -> None:
     menu = node(package, "StandardDirectory", Id="ProgramMenuFolder")
     component = node(menu, "Component", Id="StartMenu", Guid="*")
     node(component, "Shortcut", Id="Launch", Name="Haze Recomp", Target="[INSTALLFOLDER]HazeLauncher.exe", WorkingDirectory="INSTALLFOLDER")
+    node(component, "Shortcut", Id="Diagnostics", Name="Haze Recomp diagnostics", Target="[INSTALLFOLDER]HazeLauncher.exe",
+         Arguments="--diagnostics", WorkingDirectory="INSTALLFOLDER")
     node(component, "RegistryValue", Root="HKCU", Key="Software\\HazeRecomp", Name="Installed", Value="1", Type="integer", KeyPath="yes")
     node(component, "RegistryValue", Root="HKCU", Key="Software\\HazeRecomp", Name="InstallFolder", Value="[INSTALLFOLDER]", Type="string")
     node(feature, "ComponentRef", Id="StartMenu")

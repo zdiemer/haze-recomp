@@ -83,7 +83,9 @@ $env:PS3_DEV_FLASH = 'C:\path\to\dev_flash'
 
 **HazeLauncher.exe** starts the game without a scripting console, preserves
 save/settings/cache paths and retains session logs. Native dialogs select
-missing game or firmware paths; see the [launcher guide](docs/executable-launcher.md).
+missing game or firmware paths. After a failed run, or from the **Haze Recomp
+diagnostics** shortcut (`HazeLauncher.exe --diagnostics`), it exports a redacted
+diagnostics ZIP to attach to an issue; see the [launcher guide](docs/executable-launcher.md#diagnostics-reports).
 
 Already extracted files belong in `game/disc/PS3_GAME/`, including `PARAM.SFO`
 and `USRDIR/EBOOT.BIN`. Decryption produces `USRDIR/EBOOT.ELF`. Set
