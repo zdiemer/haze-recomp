@@ -1,24 +1,26 @@
-Haze Recomp 0.1.11 for Windows x64
+Haze Recomp 0.1.12 for Windows x64
 
-Reduces repeated CPU work with vertex-program metadata reuse, ready-aware job
-completion waits, guarded native fill/copy helpers, selective PPU memory-read
-inlining, and streamlined SPU quadword shifts and rotates. Existing fallback
-paths and diagnostic opt-outs remain available.
+Raises gameplay frame rate substantially. The effects batch's square root
+and division now run natively; ordinary frames are submitted into two
+fence-owned storage slots so the game and renderer overlap; the guest command
+ring is handed out in 64 KB segments instead of draining completely at each
+wrap; and lifted game code is compiled with a committed gameplay profile
+(profile-guided optimization). The frame limiter now paces on a fixed deadline
+grid for steadier capped frames, and the launcher can export a diagnostics
+report for bug reports.
 
-Targeted correctness regressions and a later-combat gameplay run were completed
-for the optimization stack. Other workloads contended for CPU during the final
-run, so a gameplay FPS improvement has not been established. This release does
-not promise 60 FPS. The final integration with the latest SDK has not received
-a new interactive acceptance run or a fresh Windows installation test.
+Gameplay was measured on one PC (RTX 5080, Ryzen 7 9800X3D, 1440p) with an
+uncapped later-combat camera sweep, comparing builds in alternating runs.
+Average frame time fell from about 21 ms (~47 FPS) before these changes to
+about 13.6 ms (~73 FPS). Results on other hardware and in other levels will
+differ, and heavy moments can still drop below 60 FPS. The default frame limit
+stays at 30 FPS because game timing above 30 FPS has not been verified across
+the campaign. This build has not received a full campaign run or a fresh
+Windows installation test; asset-free checks and targeted gameplay sessions
+were completed.
 
-Supersedes 0.1.10, whose release build stopped before packaging: two build-time
-guards had not been updated for the integrated SDK revision and the new default
-hot-module read inlining. No 0.1.10 binaries were published; game code is
-otherwise unchanged from 0.1.10.
-
-Preserves the 0.1.9 title-screen Enter fix and earlier controls, graphics,
-campaign co-op and save support. Also includes the integrated SDK fixes for
-SPU decrementer overflow and PPU system-call fallthrough.
+Preserves the 0.1.11 fixes, the 0.1.9 title-screen Enter fix, and earlier
+controls, graphics, campaign co-op and save support.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3
