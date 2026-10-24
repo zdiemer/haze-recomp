@@ -1,6 +1,13 @@
+import re
 import unittest
 
 from check_profile_configuration import check_rules
+
+PGO = ' -fprofile-instr-use=build/pgo/lifted.profdata'
+LIFTED = re.compile(r'ppu_(?:recomp_\d+|hle_nids)\.cpp\.obj:')
+LIFTED_SOURCES = ('ppu_recomp_000.cpp', 'ppu_recomp_001.cpp', 'ppu_recomp_002.cpp',
+                  'ppu_recomp_004.cpp', 'ppu_recomp_005.cpp', 'ppu_recomp_006.cpp',
+                  'ppu_hle_nids.cpp')
 
 
 def rule(target, source, defines=''):
@@ -55,8 +62,9 @@ class ProfileConfigurationTests(unittest.TestCase):
                         'ppu_recomp_004.cpp', 'ppu_recomp_005.cpp', 'ppu_recomp_006.cpp',
                         'ppu_hle_nids.cpp')]
             return '\n\n'.join(
-                block + '\n  FLAGS = /FIport/haze_ppu_inline_reads.h'
-                if any(f'{source}.obj:' in block.splitlines()[0] for source in inlined) else block
+                block + '\n  FLAGS = /FIport/haze_ppu_inline_reads.h' + PGO
+                if any(f'{source}.obj:' in block.splitlines()[0] for source in inlined)
+                else block + ('\n  FLAGS =' + PGO if LIFTED.search(block.splitlines()[0]) else '')
                 for block in blocks)
         hot = ('ppu_recomp_003.cpp', 'ppu_recomp_005.cpp')
         check_rules(inline_ninja(hot), False, False, False)
@@ -67,6 +75,33 @@ class ProfileConfigurationTests(unittest.TestCase):
             check_rules(inline_ninja(('ppu_recomp_003.cpp',)), False, False, False)
         with self.assertRaisesRegex(ValueError, 'ppu_recomp_000'):
             check_rules(inline_ninja(hot + ('ppu_recomp_000.cpp',)), False, False, False)
+
+    def test_every_lifted_module_uses_the_pgo_profile(self):
+        def pgo_ninja(skip=None, extra=None):
+            blocks = synthetic_ninja(False, False).split('\n\n')
+            blocks += [rule('HazeRecomp', source) for source in LIFTED_SOURCES]
+            out = []
+            for block in blocks:
+                first = block.splitlines()[0]
+                flags = '/FIport/haze_ppu_inline_reads.h' if re.search(r'ppu_recomp_00[35]', first) else ''
+                if LIFTED.search(first) and not (skip and skip in first):
+                    flags += PGO
+                if extra and extra[0] in first:
+                    flags += extra[1]
+                out.append(block + '\n  FLAGS = ' + flags)
+            return '\n\n'.join(out)
+        check_rules(pgo_ninja(), False, False, False)
+        with self.assertRaisesRegex(ValueError, 'without the PGO profile.*ppu_recomp_004'):
+            check_rules(pgo_ninja(skip='ppu_recomp_004'), False, False, False)
+        with self.assertRaisesRegex(ValueError, 'instrumentation'):
+            check_rules(pgo_ninja(extra=('ppu_recomp_001', ' -fprofile-instr-generate')), False, False, False)
+        with self.assertRaisesRegex(ValueError, 'runtime code'):
+            check_rules(pgo_ninja(extra=('main.cpp', PGO)), False, False, False)
+        instrumented = pgo_ninja(skip='ppu_').replace(
+            '.cpp.obj: CXX_COMPILER__HazeRecomp_ ppu_', '.cpp.obj: CXX_COMPILER__HazeRecomp_ -fprofile-instr-generate ppu_')
+        check_rules(instrumented, False, False, False, pgo_generate=True)
+        with self.assertRaisesRegex(ValueError, 'not PGO-instrumented'):
+            check_rules(pgo_ninja(), False, False, False, pgo_generate=True)
 
 
 if __name__ == '__main__':

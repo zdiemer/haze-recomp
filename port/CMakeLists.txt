@@ -828,6 +828,36 @@ if(HAZE_EXPERIMENT_INLINE_WRITES)
     endforeach()
 endif()
 
+# Profile-guided optimization of the lifted modules. The producer walks
+# megabytes of lifted code per frame with no dominant function, so it is bound
+# by instruction fetch; a gameplay profile lets the compiler lay hot paths out
+# together. The committed profile (docs/pgo.md) is always applied under Clang.
+# It is sparse: functions it never saw keep ordinary optimization rather than
+# being treated as cold, and functions whose lifted body changed are ignored.
+# HAZE_PGO_GENERATE builds the instrumented binary used to record a new one.
+option(HAZE_PGO_GENERATE "Instrument lifted modules to record a new PGO profile" OFF)
+set(HAZE_PGO_ARCHIVE "${CMAKE_CURRENT_SOURCE_DIR}/pgo/lifted.profdata.tar.xz")
+if(HAZE_PGO_GENERATE)
+    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-fprofile-instr-generate")
+    get_filename_component(HAZE_LLVM_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    file(GLOB HAZE_PGO_RUNTIME "${HAZE_LLVM_BIN}/../lib/clang/*/lib/windows/clang_rt.profile-x86_64.lib")
+    if(NOT HAZE_PGO_RUNTIME)
+        message(FATAL_ERROR "clang_rt.profile-x86_64.lib was not found next to ${CMAKE_CXX_COMPILER}")
+    endif()
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${HAZE_PGO_RUNTIME})
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT EMSCRIPTEN)
+    set(HAZE_PGO_DIR "${CMAKE_CURRENT_BINARY_DIR}/pgo")
+    file(REMOVE_RECURSE "${HAZE_PGO_DIR}")
+    file(ARCHIVE_EXTRACT INPUT "${HAZE_PGO_ARCHIVE}" DESTINATION "${HAZE_PGO_DIR}")
+    if(NOT EXISTS "${HAZE_PGO_DIR}/lifted.profdata")
+        message(FATAL_ERROR "${HAZE_PGO_ARCHIVE} does not contain lifted.profdata")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HAZE_PGO_ARCHIVE}")
+    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+        "-fprofile-instr-use=${HAZE_PGO_DIR}/lifted.profdata")
+    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY OBJECT_DEPENDS "${HAZE_PGO_ARCHIVE}")
+endif()
+
 # ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
