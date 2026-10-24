@@ -5,9 +5,12 @@ static void haze_movie_capture_backbuffer(uint32_t backbuffer);
 static void haze_overlay_draw(uint32_t backbuffer);
 static void haze_overlay_start(void);
 static void haze_overlay_destroy(void);
+static void ld_submit_frame(void);
+static void ld_slots_shutdown(void);
 #include "haze_rsx_live_draw.c"
 #include "haze_video_backend.h"
 #ifndef HAZE_VIDEO_BACKEND_TEST
+#include "haze_submission_slots.h"
 #include "haze_overlay_d3d12.h"
 #endif
 

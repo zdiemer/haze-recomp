@@ -329,6 +329,21 @@ if(WIN32)
     string(REPLACE "ld_flush(LD_FLUSH_MOVIE_PRESENT);"
         "ld_flush(LD_FLUSH_MOVIE_PRESENT);\n    haze_movie_capture_backbuffer(bbi);"
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    # Ordinary presentation submits into fence-owned storage slots instead of
+    # waiting for GPU idle; the hashed text has exactly one of each anchor.
+    set(HAZE_RSX_PRESENT_FLUSH "    ld_flush(LD_FLUSH_PRESENT);\n    if (!g.ready) return;\n    {\n        g_ld_frame_limit_wait_ticks")
+    set(HAZE_RSX_SHUTDOWN_FLUSH "    ld_flush(LD_FLUSH_SHUTDOWN);\n    if (!g.ready) {\n        return;\n    }\n")
+    foreach(anchor IN ITEMS HAZE_RSX_PRESENT_FLUSH HAZE_RSX_SHUTDOWN_FLUSH)
+        string(FIND "${HAZE_RSX_TEXT}" "${${anchor}}" HAZE_RSX_ANCHOR_AT)
+        if(HAZE_RSX_ANCHOR_AT EQUAL -1)
+            message(FATAL_ERROR "Renderer submission anchor ${anchor} not found")
+        endif()
+    endforeach()
+    string(REPLACE "${HAZE_RSX_PRESENT_FLUSH}"
+        "    ld_submit_frame();\n    if (!g.ready) return;\n    {\n        g_ld_frame_limit_wait_ticks"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    string(REPLACE "${HAZE_RSX_SHUTDOWN_FLUSH}" "${HAZE_RSX_SHUTDOWN_FLUSH}    ld_slots_shutdown();\n"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/haze_rsx_live_draw.c" "${HAZE_RSX_TEXT}")
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c"
         TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}")
