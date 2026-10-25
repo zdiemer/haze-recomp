@@ -447,7 +447,7 @@ if ($Test) {
     & $padTest
     if ($LASTEXITCODE -ne 0) { throw 'Host pad input packet test failed.' }
     $hazeInputTest = Join-Path $root 'local/test_haze_input.exe'
-    & $clang /nologo /W0 /O1 /std:c++20 "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/Fe$hazeInputTest" "/Fo$root/local/test_haze_input.obj" "$root/tests/test_haze_input.cpp" /link user32.lib gdi32.lib
+    & $clang /nologo /W0 /O1 /std:c++20 "/I$root/tests/fixtures/camera" "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/Fe$hazeInputTest" "/Fo$root/local/test_haze_input.obj" "$root/tests/test_haze_input.cpp" /link user32.lib gdi32.lib
     if ($LASTEXITCODE -ne 0) { throw 'Haze keyboard/mouse test compilation failed.' }
     & $hazeInputTest
     if ($LASTEXITCODE -ne 0) { throw 'Haze keyboard/mouse mapping test failed.' }

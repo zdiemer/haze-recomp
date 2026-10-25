@@ -12,7 +12,8 @@ The failure was reproduced in the published 0.1.12 game with Windows keyboard
 input, and its live page layout was inspected. New regressions exercise that
 layout through both the production menu detector and keyboard mapper; they
 fail before the fix and pass afterward. Automated input and menu tests cover
-short taps, held-key transitions, dialogs and stale widget handles. The fixed build has not received an
+short taps, held-key transitions, dialogs and stale widget handles. The fixed
+build has not received an
 interactive gameplay run or a fresh Windows installation acceptance test.
 
 Includes the performance, controls, graphics, campaign co-op, diagnostics and
