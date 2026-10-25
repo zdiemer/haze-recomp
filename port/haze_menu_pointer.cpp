@@ -62,11 +62,17 @@ bool has_menu(uint32_t context) {
 }
 bool title_page(uint32_t context) {
     // BLUS30094's frontend resource assigns startButton to fefl_DC_page3.
-    // Inspect the top page ID, so a dialog above the title still uses Confirm.
-    const auto count=vm_read32(context+0x50),stack=vm_read32(context+0x54);
-    if (!count || count>64 || !valid(stack) || uint64_t(stack)+count*16>0xc0000000) return false;
+    // +50/+54 is optional navigation history, empty at the live title. Read
+    // the top active page handle instead, using the same stack as has_menu().
+    // A dialog above the title must still use Confirm, even if history names
+    // the title or the title remains underneath it in the active stack.
+    if (!valid(context)) return false;
+    const auto count=vm_read32(context+0x28c),stack=vm_read32(context+0x290);
+    if (!count || count>256 || !valid(stack) || uint64_t(stack)+count*8>=0xc0000000) return false;
+    const auto page=resolve_widget(context,vm_read32(stack+(count-1)*8));
+    if (!page || uint64_t(page)+0x28>0xc0000000) return false;
     char name[17]{};
-    for (unsigned i=0;i<16;++i) name[i]=char(vm_read8(stack+(count-1)*16+i));
+    for (unsigned i=0;i<16;++i) name[i]=char(vm_read8(page+0x18+i));
     return !std::strcmp(name,"fefl_DC_page3");
 }
 bool owns_input(bool* title=nullptr) {
@@ -177,12 +183,12 @@ void haze_menu_context(uint32_t context) {
     haze_input_menu_state(owned,title);
     if (trace) {
         static uint32_t previous_context=0,previous_count=~0u;
-        static bool previous_owned=false;
+        static bool previous_owned=false,previous_title=false;
         const auto count=valid(context) ? vm_read32(context+0x28c) : 0;
-        if (previous_context!=context || previous_count!=count || previous_owned!=owned)
-            std::fprintf(stderr,"[menu] context=%08X stack=%u input=%08X owned=%d\n",context,count,
-                valid(context) ? vm_read32(context+0x170) : 0,owned);
-        previous_context=context; previous_count=count; previous_owned=owned;
+        if (previous_context!=context || previous_count!=count || previous_owned!=owned || previous_title!=title)
+            std::fprintf(stderr,"[menu] context=%08X stack=%u input=%08X owned=%d title=%d\n",context,count,
+                valid(context) ? vm_read32(context+0x170) : 0,owned,title);
+        previous_context=context; previous_count=count; previous_owned=owned; previous_title=title;
     }
 }
 void haze_menu_context_reset(uint32_t context) {

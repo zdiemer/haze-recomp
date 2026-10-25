@@ -5,6 +5,7 @@
 #include <cassert>
 #include <string>
 #include <fstream>
+#include <unordered_map>
 static bool focused=true;
 static bool keys[256];
 static ULONGLONG ticks=100;
@@ -74,6 +75,19 @@ static LRESULT test_window_proc(WNDPROC,HWND,UINT msg,WPARAM,LPARAM lp) {
 #undef DefWindowProc
 #define DefWindowProc test_default_proc
 #include "../port/haze_input.cpp"
+#include "../port/haze_menu_pointer.cpp"
+static std::unordered_map<uint64_t,uint32_t> guest_memory;
+uint32_t vm_read32(uint64_t address) { return guest_memory[address]; }
+uint8_t vm_read8(uint64_t address) { return uint8_t(guest_memory[address]); }
+void vm_write32(uint64_t address,uint32_t value) { guest_memory[address]=value; }
+void vm_write8(uint64_t address,uint8_t value) { guest_memory[address]=value; }
+extern "C" void ppu_register_function(uint64_t,void (*)(ppu_context*)) {}
+void func_00095EA8(ppu_context*) {}
+void func_002EFC20(ppu_context*) {}
+void func_002F2978(ppu_context*) {}
+void func_00311060(ppu_context*) {}
+void func_00098038(ppu_context*) {}
+void func_00305510(ppu_context*) {}
 extern "C" void cellPad_set_host_input_callback(CellPadHostInputCallback,void*) {}
 extern "C" void cellSail_set_host_playback_callback(CellSailHostPlaybackCallback,void*) {}
 static HazeGamepadState fake_pad;
@@ -563,6 +577,45 @@ int main() {
     controller_state.input.buttons=CELL_PAD_CTRL_START;
     assert(sample().buttons==CELL_PAD_CTRL_START);
     controller_state={};
+    haze_input_menu_state(false); sample();
+    // Reproduce the shipped title's live GUI layout through BOTH production
+    // bridges. Its optional page history (+50/+54) is empty; the active page
+    // is a generation-checked handle in +28c/+290, observed in release 0.1.12.
+    // Setting haze_input_menu_state(true,true) directly missed this failure.
+    constexpr uint32_t guest_context=0x495b82c0,guest_page=0x49744a40;
+    supported=true;
+    guest_memory[guest_context+0x1f0]=0x49600000;
+    guest_memory[guest_context+0x1f4]=2;
+    guest_memory[guest_context+0x1f8]=8;
+    guest_memory[0x49600008]=guest_page;
+    guest_memory[0x4960000c]=0x00100001;
+    guest_memory[guest_context+0x28c]=1;
+    guest_memory[guest_context+0x290]=0x49610000;
+    guest_memory[0x49610000]=0x00100001;
+    const char live_title[16]="fefl_DC_page3";
+    for (unsigned i=0;i<16;++i) guest_memory[guest_page+0x18+i]=live_title[i];
+    haze_menu_context(guest_context);
+    keys[VK_RETURN]=true; window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    assert(sample().buttons==CELL_PAD_CTRL_START && !pause_requested);
+    haze_menu_context(guest_context);
+    assert(sample().buttons==CELL_PAD_CTRL_START); // Repeated GUI dispatch.
+    guest_memory[guest_page+0x18+12]='4'; // Advance to a regular frontend page.
+    haze_menu_context(guest_context);
+    assert(!sample().buttons); // Holding Start cannot confirm the next page.
+    keys[VK_RETURN]=false; window_proc(window,WM_KEYUP,VK_RETURN,0); sample();
+    window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    window_proc(window,WM_KEYUP,VK_RETURN,0);
+    assert(sample().buttons==CELL_PAD_CTRL_CROSS); // Fresh short tap confirms.
+    assert(!sample().buttons);
+    guest_memory[guest_page+0x18+12]='3';
+    haze_menu_context(guest_context);
+    sample();
+    window_proc(window,WM_KEYDOWN,VK_RETURN,0);
+    window_proc(window,WM_KEYUP,VK_RETURN,0);
+    assert(sample().buttons==CELL_PAD_CTRL_START); // Fresh title tap starts.
+    assert(!sample().buttons);
+    haze_menu_context_reset(guest_context);
+    guest_memory.clear(); supported=false;
     haze_input_menu_state(false); sample();
     // With Enter bound to Start again, a menu press still reports Cross only:
     // one press cannot both confirm and toggle pause.
