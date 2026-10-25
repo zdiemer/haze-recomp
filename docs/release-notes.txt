@@ -1,26 +1,23 @@
-Haze Recomp 0.1.12 for Windows x64
+Haze Recomp 0.1.13 for Windows x64
 
-Raises gameplay frame rate substantially. The effects batch's square root
-and division now run natively; ordinary frames are submitted into two
-fence-owned storage slots so the game and renderer overlap; the guest command
-ring is handed out in 64 KB segments instead of draining completely at each
-wrap; and lifted game code is compiled with a committed gameplay profile
-(profile-guided optimization). The frame limiter now paces on a fixed deadline
-grid for steadier capped frames, and the launcher can export a diagnostics
-report for bug reports.
+Fixes Enter failing to advance from the "Press Enter to begin" screen. The
+previous fix read optional menu history, which is empty on the live title
+screen, and mistakenly sent Confirm instead of Start. The port now resolves
+the top active page through its validated widget handle. Enter sends Start
+at the title and Confirm in ordinary menus; holding it across that transition
+cannot also select the next item. Rebound Start keys and controller Start
+remain supported, and a dialog above the title still receives Confirm.
 
-Gameplay was measured on one PC (RTX 5080, Ryzen 7 9800X3D, 1440p) with an
-uncapped later-combat camera sweep, comparing builds in alternating runs.
-Average frame time fell from about 21 ms (~47 FPS) before these changes to
-about 13.6 ms (~73 FPS). Results on other hardware and in other levels will
-differ, and heavy moments can still drop below 60 FPS. The default frame limit
-stays at 30 FPS because game timing above 30 FPS has not been verified across
-the campaign. This build has not received a full campaign run or a fresh
-Windows installation test; asset-free checks and targeted gameplay sessions
-were completed.
+The failure was reproduced in the published 0.1.12 game with Windows keyboard
+input, and its live page layout was inspected. New regressions exercise that
+layout through both the production menu detector and keyboard mapper; they
+fail before the fix and pass afterward. Automated input and menu tests cover
+short taps, held-key transitions, dialogs and stale widget handles. The fixed
+build has not received an
+interactive gameplay run or a fresh Windows installation acceptance test.
 
-Preserves the 0.1.11 fixes, the 0.1.9 title-screen Enter fix, and earlier
-controls, graphics, campaign co-op and save support.
+Includes the performance, controls, graphics, campaign co-op, diagnostics and
+save support from 0.1.12. This patch makes no new performance claims.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3

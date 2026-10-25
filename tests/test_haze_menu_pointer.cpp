@@ -85,24 +85,36 @@ int main() {
     memory[context+0x170]=input;
     assert(!haze_menu_gameplay_allowed()); // Live state, before publication.
     haze_menu_context(context); assert(menu);
-    // The title's Start event is distinct from ordinary menu confirmation.
-    constexpr uint32_t page_stack=0x49710000;
-    memory[context+0x50]=1; memory[context+0x54]=page_stack;
+    // The live title has no page history (+50/+54). Resolve the active handle,
+    // not that optional history, to select Start rather than menu Confirm.
+    assert(memory[context+0x50]==0);
     const char title_name[16]="fefl_DC_page3";
-    for (unsigned i=0;i<16;++i) memory[page_stack+i]=title_name[i];
+    for (unsigned i=0;i<16;++i) memory[page+0x18+i]=title_name[i];
     haze_menu_context(context); assert(menu && title);
     memory[manager+0x48]=0;
     haze_menu_context(context); assert(menu && title); // Retained frontend context.
     memory[manager+0x48]=context;
-    memory[context+0x50]=2;
+    memory[context+0x28c]=2;
+    memory[context+0x2008]=tutorial_handle;
     haze_menu_context(context); assert(menu && !title); // Modal above the title.
-    memory[context+0x50]=65;
+    memory[context+0x2000]=tutorial_handle;
+    memory[context+0x2008]=page_handle;
+    haze_menu_context(context); assert(menu && title); // Only the top page wins.
+    memory[context+0x2000]=page_handle;
+    memory[context+0x28c]=257;
     haze_menu_context(context); assert(menu && !title); // Invalid stack count.
-    memory[context+0x50]=1; memory[context+0x54]=0xbffffffc;
+    memory[context+0x28c]=1; memory[context+0x290]=0xbffffffc;
     haze_menu_context(context); assert(menu && !title); // Invalid stack extent.
-    memory[context+0x54]=page_stack;
-    memory[page_stack+5]='K';
+    memory[context+0x290]=context+0x2000;
+    memory[context+0x100c]=page_handle+1;
+    assert(!title_page(context)); // Recycled generation cannot identify a title.
+    memory[context+0x100c]=page_handle;
+    memory[page+0x18+5]='K';
     haze_menu_context(context); assert(menu && !title); // Other frontend page.
+    constexpr uint32_t history=0x49710000;
+    memory[context+0x50]=1; memory[context+0x54]=history;
+    for (unsigned i=0;i<16;++i) memory[history+i]=title_name[i];
+    haze_menu_context(context); assert(menu && !title); // History is not active.
     memory[context+0x50]=0;
     memory[manager+0x48]=0;
     assert(!haze_menu_gameplay_allowed()); // Current-context slot is temporary.
