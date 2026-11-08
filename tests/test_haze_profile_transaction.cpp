@@ -10,6 +10,8 @@
 #include <cstring>
 #include <cstdio>
 #include "cellSaveData.h"
+// The staged-save layer underneath uses real file APIs; faults target Audio.
+#include "../port/haze_save_backup.cpp"
 enum class Fault { None, ShortWrite, Flush, Close, Replace };
 static Fault fault;
 static bool fail_close;
@@ -84,11 +86,17 @@ static int run() {
 static void reset() {
     fault=Fault::None; callback_result=0; settings=true;
     extra_write=change_metadata=skip_metadata=external_change=false;
+    disk::remove_all(fixture/".haze-saves");
     put(fixture/"profile/_PROFILE.DAT",old_bytes); put(fixture/"profile/PARAM.SFO",metadata);
 }
 static void clean() {
-    assert(!haze_profile_pending);
-    for (const auto& file:disk::directory_iterator(fixture)) assert(file.path().filename()=="profile");
+    assert(!haze_profile_pending && !haze_backup_pending);
+    for (const auto& file:disk::directory_iterator(fixture))
+        assert(file.path().filename()=="profile" || file.path().filename()==".haze-saves");
+    if (disk::exists(fixture/".haze-saves")) for (const auto& file:disk::directory_iterator(fixture/".haze-saves/profile")) {
+        const auto name=file.path().filename().wstring();
+        assert(name==L"current.manifest" || name.rfind(L"backup.",0)==0);
+    }
 }
 static void unchanged() {
     assert(get(fixture/"profile/_PROFILE.DAT")==old_bytes);
@@ -118,12 +126,15 @@ int main() {
     }
     reset(); assert(run()==0); assert(get(fixture/"profile/_PROFILE.DAT")==new_bytes);
     assert(get(fixture/"profile/PARAM.SFO")==metadata); clean();
+    // The committed Audio profile is also the newest backup; the old one is next.
+    assert(get(fixture/".haze-saves/profile/backup.1/_PROFILE.DAT")==new_bytes);
+    assert(get(fixture/".haze-saves/profile/backup.2/_PROFILE.DAT")==old_bytes);
     reset(); settings=false; assert(run()==456 && legacy_calls==1); unchanged();
     settings=true; assert(savedata_execute("profile",0,nullptr,nullptr,nullptr,nullptr)==456 && legacy_calls==2);
     assert(savedata_execute("profile",1,nullptr,nullptr,nullptr,nullptr)==CELL_SAVEDATA_ERROR_PARAM);
     assert(process_file_op("unused",nullptr)==123 && legacy_calls==3); unchanged();
     // Remove only the exact fixture files and directories this test created.
     assert(disk::remove(fixture/"profile/_PROFILE.DAT")); assert(disk::remove(fixture/"profile/PARAM.SFO"));
-    assert(disk::remove(fixture/"profile")); assert(disk::remove(fixture));
+    assert(disk::remove(fixture/"profile")); disk::remove_all(fixture/".haze-saves"); assert(disk::remove(fixture));
     puts("Audio profile transaction: real-file short write, flush, close, replace, callback, metadata, contention, external edit, commit and legacy routing passed.");
 }

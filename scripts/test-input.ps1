@@ -26,9 +26,9 @@ if ($env:HAZE_LLVM_ROOT) { $clang = Join-Path $env:HAZE_LLVM_ROOT 'bin/clang-cl.
 if (-not $Python) { $Python = "$assets/.venv/Scripts/python.exe" }
 New-Item -ItemType Directory -Path "$root/local" -Force | Out-Null
 $ErrorActionPreference='Continue' # Windows PowerShell promotes native stderr warnings.
-foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test_haze_graphics','test_haze_video_backend','test_haze_display_preview','test_haze_menu_guest','test_haze_menu','test_haze_menu_cleanup','test_haze_player_profile','test_haze_coop_menu','test_haze_menu_pointer','test_haze_save_status','test_haze_controls','test_haze_quit','test_haze_audio_shutdown','test_haze_audio_limiter','test_haze_quit_ui','test_haze_steam_menu','test_haze_profile_transaction','test_haze_pad_guest')) {
+foreach ($test in @('test_haze_input','test_haze_camera','test_haze_title','test_haze_graphics','test_haze_video_backend','test_haze_display_preview','test_haze_menu_guest','test_haze_menu','test_haze_menu_cleanup','test_haze_player_profile','test_haze_coop_menu','test_haze_menu_pointer','test_haze_save_status','test_haze_controls','test_haze_quit','test_haze_audio_shutdown','test_haze_audio_limiter','test_haze_quit_ui','test_haze_steam_menu','test_haze_profile_transaction','test_haze_save_backup','test_haze_pad_guest')) {
     $extraFlags=@()
-    if ($test -in @('test_haze_profile_transaction','test_haze_player_profile','test_haze_coop_menu')) { $extraFlags += '/EHsc' }
+    if ($test -in @('test_haze_profile_transaction','test_haze_player_profile','test_haze_coop_menu','test_haze_save_backup')) { $extraFlags += '/EHsc' }
     & $clang /nologo /W4 /O1 /std:c++20 @extraFlags "/I$root/tests/fixtures/camera" "/I$root/tests/fixtures/video" "/I$root/tests/fixtures/audio" "/I$sdk/include" "/I$sdk/libs/input" "/I$sdk/libs/codec" "/I$sdk/libs/video" "/I$sdk/libs/system" "/Fe$root/local/$test.exe" "/Fo$root/local/$test.obj" "$root/tests/$test.cpp" /link user32.lib gdi32.lib comdlg32.lib
     if ($LASTEXITCODE -ne 0) { throw "$test compilation failed" }
     & "$root/local/$test.exe"
@@ -52,6 +52,25 @@ if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic oracle link failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Audio DSP arithmetic/fallback oracle failed.' }
 & $Python "$root/tests/test_savedata_patch.py" "$sdk/libs/system/cellSaveData.c"
 if ($LASTEXITCODE -ne 0) { throw 'Save-data transaction patch guard failed.' }
+# Drive the patched SDK save path itself over real files, as the game build compiles it.
+$saveSource=Join-Path $root 'local/haze_savedata/cellSaveData.c'
+& $Python "$root/scripts/patch.py" savedata "$sdk/libs/system/cellSaveData.c" "$root/port" $saveSource
+if ($LASTEXITCODE -ne 0) { throw 'Save-data patch failed.' }
+$saveObjects=@()
+foreach ($source in @('port/haze_save_backup.cpp','port/haze_profile_transaction.cpp')) {
+    $object=Join-Path $root ('local/' + [IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
+    & $clang /nologo /W4 /O1 /std:c++20 /EHsc /c "/Fo$object" "$root/$source"
+    if ($LASTEXITCODE -ne 0) { throw "Save transaction compilation failed: $source" }
+    $saveObjects += $object
+}
+$saveTest=Join-Path $root 'local/test_haze_savedata_backup.exe'
+$saveTestObject=Join-Path $root 'local/test_haze_savedata_backup.obj'
+& $clang /nologo /W0 /O1 "/I$(Split-Path $saveSource -Parent)" "/I$sdk/include" /c "/Fo$saveTestObject" "$root/tests/test_haze_savedata_backup.c"
+if ($LASTEXITCODE -ne 0) { throw 'Patched save-data backup test compilation failed.' }
+& $clang /nologo $saveTestObject @saveObjects "/Fe$saveTest"
+if ($LASTEXITCODE -ne 0) { throw 'Patched save-data backup test link failed.' }
+& $saveTest
+if ($LASTEXITCODE -ne 0) { throw 'Patched save-data backup test failed.' }
 if ($AssetFree) {
     Write-Output 'Local-only: generated guest title/menu/save/audio patch guards and guest audio/quit ABI tests.'
     exit 0
