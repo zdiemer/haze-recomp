@@ -31,6 +31,34 @@ pass `-SdkRoot` explicitly so validation uses the intended revision. Keep
 builds/logs local to the worktree. Report gameplay or device checks separately
 from synthetic tests; do not claim full campaign compatibility from a boot test.
 
+## Temporary files and cleanup
+
+Cleanup is part of completing every task; do it before the final handoff.
+Temporary builds, worktrees and diagnostic captures previously accumulated
+terabytes here. Do not leave another task's worth of disposable outputs behind.
+
+- Reuse prepared game inputs with `-SharedRoot`; avoid copying game data,
+  firmware, SDKs or generated translations into each experiment.
+- Keep temporary outputs in a named task directory. Bound trace duration and
+  file sizes; stop capture processes when the check ends. Inspect disk usage
+  before and after large builds, captures or packaging runs.
+- After validation, delete this task's disposable builds, staging directories,
+  dumps, raw traces and duplicate captures. Keep only concise results and the
+  minimum evidence needed for unresolved problems. An ignored file is not
+  automatically disposable: preserve saves, settings, keys, shared inputs,
+  SDK checkouts and uncommitted or untracked source work.
+- Remove this task's temporary worktrees with `git worktree remove` once work
+  is committed and safely retained on a branch or PR. Check nested SDK
+  repositories first; preserve unpublished commits and local changes. Never
+  force-remove dirty worktrees or delete other active tasks' files.
+- Before recursive deletion, resolve each absolute target, verify that it is
+  inside the intended task directory, and reject junctions/symlinks that could
+  lead outside it. Use PowerShell `Remove-Item -LiteralPath`; do not run blanket
+  `git clean -fdx` or remove all of `local/` or `.worktrees/`.
+- Report what was cleaned and any large artifacts intentionally retained,
+  with their location and reason. If a worktree must remain for ongoing work,
+  remove its disposable outputs and explain why the checkout is retained.
+
 ## SDK branch and pin hygiene
 
 The SDK fork is **zdiemer/ps3recomp**, integration branch **haze**. Its upstream
