@@ -1,10 +1,46 @@
 # SDK integration and upstream review
 
+## November 2026 review
+
+Reviewed on 2026-11-21: upstream `0fe7dbf..d81c393e` (v0.20.0, 617
+non-merge commits) against the fork's `haze` at `9eed2aa6`, which was also the
+pin. `git cherry` found no patch-identical commits already in the fork.
+
+Imported with `git cherry-pick -x` (zdiemer/ps3recomp#14):
+
+| Upstream | Reason |
+| --- | --- |
+| `b074d964` | Event queues were marked active before their critical section was initialised, so a host producer could enter a zeroed lock. New race test: crashes 3/3 before, passes after. |
+| `daa17fbc` | stwcx./stdcx. re-check the reservation after taking the lock-line lock. |
+| `20122d59` | Reservation contexts were added on every thread start; after about 127 starts new contexts were never scanned. The test was adapted to `ppu_resv_break_store`, because the fork has no `ppu_resv_break_line`. |
+| `b3a75d98`, `48958fef` | Every HLE→guest callback started at `0xCFFE0000`, so concurrent or nested callbacks shared frames. Each host thread now gets its own callback stack (top 16 MB of the stack region). |
+| `cd926aa1`, `86353eb3` | Per-thread HLE NID and indirect-call-target caches; the GCM pump skips its lock when idle. |
+| `f0b28621` | An empty XInput slot cost about 140 µs per poll; empty slots are now re-polled once a second. |
+
+Measured on the frame-locked later-combat benchmark ([benchmark
+clock](benchmark-clock.md)), 5 ABBA pairs: −0.19 ms (−1.2%) draw-adjusted,
+p≈0.28. That is within noise, so these are integrated as correctness fixes,
+not as a speedup.
+
+Deferred:
+
+| Upstream | Reason |
+| --- | --- |
+| `6bea2d59`, `81344af1`, `4609b3f0` | SPU channel wake/event-status atomicity and Win64 halt longjmp. They touch `spu_channels.c`, which the port hash-guards; re-audit the port extensions first. |
+| `ff7c9eef`, `e2589800` | Atomic taskset bit updates; they intersect Haze's SPURS task ownership in `spu_workload.c` (also guarded). |
+| `fcfc3054`, `fb7da2bf` and related | SPURS per-worker wakes need upstream's persistent coordinator scheduler (the deferred `dbff6e0` lineage). |
+| `dc37f00b`, `9a3fbffd`, `61978373`, `f453a07f` | lwmutex atomics and handoff. Measure whether Haze is lwmutex-bound first; handoff can create convoys. |
+| `9efa74be`, `9d6f012a` | Host-boot time base and real-clock flip timestamps; the latter must route through Haze's benchmark clock. |
+| `2e028084`, `3b27abdb`, `62dce119`, `07f1aed3` | Adapter selection (renderer is hash-guarded), walker getenv caching, directory-open retries and free-space overflow: low risk, left for a later pass. |
+| Fragment-program semantics, FIFO walker rework, cellAudio, SDL2 pad, Vulkan/Metal, lifter-only changes | Would invalidate validated shader bundles, overlap Haze's own implementations, or matter only for a re-lift. |
+
+## October 2026 review
+
 Reviewed on 2026-10-16 from Haze Recomp `origin/main` at `99d5e72`.
 The SDK pin was `2f67212fb16214854d0662aba7161b5c786726e6`, while the fork's
 published `haze` was `4b69e56b70c41255684ec6bc89d04b9959debca0`.
 
-## Restore the integration branch
+### Restore the integration branch
 
 The pin was five commits ahead of `haze`, with no divergent commits on `haze`:
 
@@ -29,7 +65,7 @@ now checks the committed canonical URL/branch, checkout identity, cleanliness
 and ancestry against the fetched fork branch. Asset-free CI and the release
 workflow run it. See `AGENTS.md` for the publication order.
 
-## Upstream comparison
+### Upstream comparison
 
 Upstream is [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp).
 The reviewed tip is
@@ -46,7 +82,7 @@ arithmetic/coherence, PPU loading, rendering, SAIL and lifters. A full sync is
 possible, but needs a separate integration and gameplay validation effort.
 Cherry-picking isolated fixes keeps this update reviewable.
 
-## Selected upstream fixes
+### Selected upstream fixes
 
 | Upstream commit | Reason and validation |
 | --- | --- |
@@ -64,7 +100,7 @@ fall-through checks pass. Pin-hygiene tests use isolated real Git histories,
 including a local bare fork for the fetch path. Full game relifting and
 gameplay were not performed for this update.
 
-## Already covered or deferred
+### Already covered or deferred
 
 | Upstream area | Decision |
 | --- | --- |
