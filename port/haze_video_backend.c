@@ -7,8 +7,105 @@ static void haze_overlay_start(void);
 static void haze_overlay_destroy(void);
 static void ld_submit_frame(void);
 static void ld_slots_shutdown(void);
+static void haze_fingerprint_method(uint32_t method,uint32_t arg);
 #include "haze_rsx_live_draw.c"
 #include "haze_video_backend.h"
+
+/* RSX_FRAME_FINGERPRINT_CSV=<path>: per presented guest frame, hash the 3D
+ * stream's transform constants and count its draws. Constants carry every
+ * visible object's matrices, so deterministic benchmark replays whose
+ * simulations agree produce identical hashes; memory offsets are excluded
+ * because they depend on allocation history. The renderer thread drains the
+ * FIFO up to each completed flip before presenting it, so one row is one
+ * guest frame in stream order. Written only at normal shutdown. */
+typedef struct { uint64_t hash; uint32_t flips,constants,draws,pad; } haze_fingerprint_row;
+#define HAZE_FINGERPRINT_CAP (1u<<18)
+static int haze_fingerprint_enabled=-1;
+static haze_fingerprint_row* haze_fingerprint_rows;
+static uint64_t haze_fingerprint_total,haze_fingerprint_hash=0xCBF29CE484222325ull;
+static uint32_t haze_fingerprint_constants,haze_fingerprint_draws;
+/* Bounded constant trace for divergence diagnosis: the words of the frames
+ * whose flip counts fall in [first, first+count), requested by the benchmark
+ * clock at gameplay frame 0 and written with the fingerprint. */
+typedef struct { uint32_t frame,draw,lane,value; } haze_trace_entry;
+#define HAZE_TRACE_FRAMES 60u
+#define HAZE_TRACE_CAP (1u<<21)
+static volatile long haze_trace_first=-1;
+static uint32_t haze_trace_load;
+static haze_trace_entry* volatile haze_trace;
+static uint32_t haze_trace_used,haze_trace_frame_start,haze_trace_kept;
+void haze_fingerprint_trace_from(uint32_t flips) {
+    if(haze_fingerprint_enabled<=0 || haze_trace_first>=0) return;
+    haze_trace_entry* buffer=(haze_trace_entry*)calloc(HAZE_TRACE_CAP,sizeof(*buffer));
+    if(!buffer) return;
+    haze_trace_first=(long)flips;
+    MemoryBarrier();
+    haze_trace=buffer;
+}
+static void haze_trace_word(uint32_t lane,uint32_t value) {
+    if(!haze_trace || haze_trace_kept>=HAZE_TRACE_FRAMES || haze_trace_used>=HAZE_TRACE_CAP) return;
+    haze_trace_entry* e=&haze_trace[haze_trace_used++];
+    e->frame=haze_trace_kept; e->draw=haze_fingerprint_draws; e->lane=lane; e->value=value;
+}
+static void haze_trace_frame(uint32_t flips) {
+    if(!haze_trace || haze_trace_kept>=HAZE_TRACE_FRAMES) return;
+    if((long)flips>=haze_trace_first && (long)flips<haze_trace_first+(long)HAZE_TRACE_FRAMES) {
+        haze_trace_kept++; haze_trace_frame_start=haze_trace_used;
+    } else haze_trace_used=haze_trace_frame_start;
+}
+static void haze_fingerprint_method(uint32_t method,uint32_t arg) {
+    if(haze_fingerprint_enabled<0) {
+        const char* path=getenv("RSX_FRAME_FINGERPRINT_CSV");
+        haze_fingerprint_rows=path && *path ? (haze_fingerprint_row*)
+            calloc(HAZE_FINGERPRINT_CAP,sizeof(*haze_fingerprint_rows)) : NULL;
+        haze_fingerprint_enabled=haze_fingerprint_rows!=NULL;
+    }
+    if(!haze_fingerprint_enabled) return;
+    const uint32_t canonical=method&0x1FFCu;
+    if(canonical==0x1EFCu || (canonical>=0x1F00u && canonical<0x1F80u)) {
+        haze_fingerprint_hash=(haze_fingerprint_hash^((uint64_t)canonical<<32|arg))*0x100000001B3ull;
+        ++haze_fingerprint_constants;
+        if(canonical==0x1EFCu) haze_trace_load=arg;
+        else haze_trace_word(haze_trace_load*4u+((canonical-0x1F00u)>>2),arg);
+    } else if(canonical==0x1808u && arg) ++haze_fingerprint_draws;
+}
+void haze_fingerprint_frame(uint32_t flips) {
+    if(haze_fingerprint_enabled<=0) return;
+    haze_trace_frame(flips);
+    haze_fingerprint_row* row=&haze_fingerprint_rows[haze_fingerprint_total++&(HAZE_FINGERPRINT_CAP-1u)];
+    row->hash=haze_fingerprint_hash; row->flips=flips;
+    row->constants=haze_fingerprint_constants; row->draws=haze_fingerprint_draws;
+    haze_fingerprint_hash=0xCBF29CE484222325ull;
+    haze_fingerprint_constants=haze_fingerprint_draws=0;
+}
+void haze_fingerprint_dump(void) {
+    const char* path=getenv("RSX_FRAME_FINGERPRINT_CSV");
+    if(haze_fingerprint_enabled<=0 || !path) return;
+    FILE* file=fopen(path,"wb");
+    if(!file) { fprintf(stderr,"[frame-fingerprint] cannot open %s\n",path); return; }
+    fprintf(file,"frame,flips,hash,constants,draws\n");
+    const uint64_t first=haze_fingerprint_total>HAZE_FINGERPRINT_CAP ?
+        haze_fingerprint_total-HAZE_FINGERPRINT_CAP : 0;
+    for(uint64_t i=first;i<haze_fingerprint_total;++i) {
+        const haze_fingerprint_row* row=&haze_fingerprint_rows[i&(HAZE_FINGERPRINT_CAP-1u)];
+        fprintf(file,"%llu,%u,%016llX,%u,%u\n",(unsigned long long)i,row->flips,
+            (unsigned long long)row->hash,row->constants,row->draws);
+    }
+    fclose(file);
+    fprintf(stderr,"[frame-fingerprint] wrote %llu frames\n",(unsigned long long)(haze_fingerprint_total-first));
+    if(haze_trace && haze_trace_kept) {
+        char trace_path[1100];
+        snprintf(trace_path,sizeof trace_path,"%s.trace.csv",path);
+        if((file=fopen(trace_path,"wb"))!=NULL) {
+            fprintf(file,"first_flips=%ld\nframe,draw,lane,value\n",haze_trace_first);
+            for(uint32_t i=0;i<haze_trace_frame_start;++i)
+                fprintf(file,"%u,%u,%u,%08X\n",haze_trace[i].frame,haze_trace[i].draw,
+                    haze_trace[i].lane,haze_trace[i].value);
+            fclose(file);
+        }
+    }
+}
+
 #ifndef HAZE_VIDEO_BACKEND_TEST
 #include "haze_submission_slots.h"
 #include "haze_overlay_d3d12.h"

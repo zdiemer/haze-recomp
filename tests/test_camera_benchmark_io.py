@@ -54,6 +54,8 @@ static volatile LONG control_tid_count;
 static volatile DWORD output_open_tid;
 static volatile DWORD race_audit_tid;
 static uint32_t guest_words[0x10000 / 4];
+// No benchmark timeline in this fixture: the token file schedules the sweep.
+static bool haze_benchmark_clock_sweep(unsigned&, double&) {{ return false; }}
 
 static FILE* camera_test_fopen(const char* path, const char* mode)
 {{

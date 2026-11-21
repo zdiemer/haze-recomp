@@ -1,5 +1,6 @@
 #include "ppu_recomp.h"
 #include "haze_camera.h"
+#include "haze_benchmark_clock.h"
 #include "haze_input.h"
 #include "haze_mouse.h"
 #include "haze_menu.h"
@@ -81,7 +82,10 @@ struct CameraBenchmark {
             if (!reader) { failed=true; return false; }
         }
         QueryPerformanceCounter(&clock); sample_qpc=clock.QuadPart;
-        const unsigned requested=requested_token.load(std::memory_order_acquire);
+        unsigned requested=requested_token.load(std::memory_order_acquire);
+        // A benchmark timeline schedules the sweep in gameplay frames instead.
+        double timeline_seconds=0;
+        const bool timeline=haze_benchmark_clock_sweep(requested,timeline_seconds);
         if (requested!=token) {
             token=requested; origin=sample_qpc;
             std::fprintf(stderr,"[benchmark-camera-mode] token=%u qpc=%lld period_s=4 amplitude_deg=30\n",token,sample_qpc);
@@ -102,7 +106,7 @@ struct CameraBenchmark {
             std::fprintf(stderr,"[benchmark-camera-anchor] motor=%08X yaw=%.9f pitch=%.9f qpc=%lld\n",owner,anchor_yaw,anchor_pitch,sample_qpc);
         }
         constexpr double pi=3.14159265358979323846;
-        const double seconds=double(sample_qpc-origin)/frequency;
+        const double seconds=timeline ? timeline_seconds : double(sample_qpc-origin)/frequency;
         wanted_yaw=anchor_yaw+(pi/6)*std::sin(seconds*(2*pi/4));
         wanted_pitch=std::clamp(anchor_pitch,double(lower),double(upper));
         write_float(motor+0xb0,static_cast<float>(std::remainder(wanted_yaw-base,2*pi)));
@@ -191,6 +195,7 @@ void update_look(ppu_context* ctx) {
             }
         }
 #ifdef _WIN32
+        if (haze_menu_gameplay_allowed() && vm_read8(motor+0xa0)) haze_benchmark_clock_note_gameplay();
         if (benchmark.path && *benchmark.path && haze_menu_gameplay_allowed() && vm_read8(motor+0xa0))
             benchmark_applied=benchmark.apply(motor);
 #endif

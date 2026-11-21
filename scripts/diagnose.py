@@ -30,6 +30,7 @@ COMMANDS = {
     'pump-stacks': ('correlate_pump_stacks', 'Correlate pump intervals and stack samples'),
     'pump-waits': ('correlate_pump_waits', 'Correlate pump intervals and guest waits'),
     'compare-draws': ('compare_draw_frames', 'Compare submissions in two captured frames'),
+    'timedemo': ('compare_timedemo', 'Compare frame-locked benchmark runs'),
     'capture': ('capture_sequence', 'Request consecutive native frame readbacks'),
     'detach-pad': ('detach_pad_file', 'Detach diagnostic PAD_FILE input with acknowledgement'),
     'native-cpu': ('profile_native_cpu', 'Sample native Windows threads and stacks'),

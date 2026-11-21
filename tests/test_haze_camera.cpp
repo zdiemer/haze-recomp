@@ -26,6 +26,9 @@ bool haze_input_take_mouse(double& x,double& y,double& speed,bool& invert) {
     return capture;
 }
 bool haze_menu_gameplay_allowed() { return gameplay; }
+// No benchmark clock: the camera control token schedules any sweep.
+void haze_benchmark_clock_note_gameplay() {}
+bool haze_benchmark_clock_sweep(unsigned&,double&) { return false; }
 void func_0024D3A0(ppu_context*) {
     ++original_calls;
     observed_yaw=read_float(motor+0xb0); observed_pitch=read_float(motor+0xac);
