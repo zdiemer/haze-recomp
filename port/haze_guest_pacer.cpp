@@ -1,5 +1,6 @@
 #include "ppu_recomp.h"
 #include "haze_frame_pacer_settings.h"
+#include "haze_benchmark_clock.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,7 +35,9 @@ int haze_guest_pacer_bypass()
             std::fclose(file);
         }
     }
-    const int effective=supported && enabled;
+    // The benchmark clock is frozen within a frame, so the legacy wait that
+    // polls it for the next 30 Hz deadline must not run.
+    const int effective=supported && (enabled || haze_benchmark_clock_active());
     if (reported!=effective) {
         if (control || enabled) {
             LARGE_INTEGER now; QueryPerformanceCounter(&now);

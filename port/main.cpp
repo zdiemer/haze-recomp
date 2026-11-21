@@ -84,6 +84,7 @@ extern "C" void haze_movie_set_root(const char* root);
 #endif
 #include "haze_input.h"
 #include "haze_camera.h"
+#include "haze_benchmark_clock.h"
 #include "haze_menu.h"
 #include "haze_player_profile.h"
 #include "haze_graphics.h"
@@ -245,6 +246,8 @@ int rsx_live_draw_init(void*, uint32_t, uint32_t,
 void rsx_live_draw_present(uint32_t);
 void rsx_live_draw_dump_present_samples(void);
 void rsx_live_draw_dump_shader_cache(void);
+void haze_fingerprint_frame(uint32_t flips);
+void haze_fingerprint_dump(void);
 int rsx_null_backend_init(uint32_t, uint32_t, const char*);
 int rsx_null_backend_pump_messages(void);
 void* rsx_null_backend_get_hwnd(void);
@@ -320,6 +323,9 @@ extern "C" unsigned ppu_boot_frames_presented(void)
 
 static void present_guest_frame(void)
 {
+#ifdef _WIN32
+    haze_fingerprint_frame(cellGcm_flip_request_count());
+#endif
     const auto profile_begin = g_pump_profile.now();
     static const bool trace = getenv("HAZE_FRAME_TRACE") != nullptr;
     if (trace) {
@@ -457,10 +463,12 @@ static DWORD WINAPI frame_clock(LPVOID)
             if (pump_messages() != 0) {
                 haze_input_shutdown();
                 haze_camera_dump_benchmark();
+                haze_benchmark_clock_dump();
 #ifdef _WIN32
                 haze_movie_shutdown();
                 haze_movie_present_tick();
                 if (s_rsx_live) rsx_live_draw_dump_present_samples();
+                if (s_rsx_live) haze_fingerprint_dump();
                 dump_shutdown_profiles();
                 if (s_rsx_live) rsx_live_draw_dump_shader_cache();
 #endif
@@ -478,9 +486,11 @@ static DWORD WINAPI frame_clock(LPVOID)
                 haze_movie_present_tick();
                 haze_input_shutdown();
                 haze_camera_dump_benchmark();
+                haze_benchmark_clock_dump();
                 const int audio_stopped=haze_audio_stop_output(2000);
                 if (s_rsx_live) {
                     rsx_live_draw_dump_present_samples();
+                    haze_fingerprint_dump();
                     haze_video_stop(2000);
                 }
                 dump_shutdown_profiles();
@@ -787,6 +797,7 @@ int main(int argc, char** argv)
     haze_coop_register();
 #endif
     ppu_hle_init();          /* firmware import NID -> HLE handlers */
+    haze_benchmark_clock_register(); /* diagnostic only; precedes the real clock */
     haze_player_profile_register();
     ppu_sysprx_register();   /* boot-critical CRT */
     ppu_fs_register();       /* cellFs over the game directory */

@@ -344,6 +344,14 @@ if(WIN32)
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     string(REPLACE "${HAZE_RSX_SHUTDOWN_FLUSH}" "${HAZE_RSX_SHUTDOWN_FLUSH}    ld_slots_shutdown();\n"
         HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
+    # Diagnostic benchmark fingerprint; inert unless RSX_FRAME_FINGERPRINT_CSV is set.
+    set(HAZE_RSX_METHOD_ENTRY "void rsx_live_draw_method(u32 method, u32 arg)\n{\n")
+    string(FIND "${HAZE_RSX_TEXT}" "${HAZE_RSX_METHOD_ENTRY}" HAZE_RSX_ANCHOR_AT)
+    if(HAZE_RSX_ANCHOR_AT EQUAL -1)
+        message(FATAL_ERROR "Renderer method anchor not found")
+    endif()
+    string(REPLACE "${HAZE_RSX_METHOD_ENTRY}" "${HAZE_RSX_METHOD_ENTRY}    haze_fingerprint_method(method, arg);\n"
+        HAZE_RSX_TEXT "${HAZE_RSX_TEXT}")
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/haze_rsx_live_draw.c" "${HAZE_RSX_TEXT}")
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c"
         TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}")
@@ -379,6 +387,24 @@ if(WIN32)
     endif()
     list(REMOVE_ITEM HAZE_SDK_SOURCES "${PS3RECOMP_DIR}/libs/codec/cellSail.c")
     list(APPEND HAZE_SDK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/haze_sail_backend.c")
+    # The diagnostic benchmark clock owns the lifted mftb/mftbu entry point and
+    # forwards to the SDK timebase unless HAZE_BENCHMARK_CLOCK_US is set.
+    set(HAZE_TIMER_SOURCE "${PS3RECOMP_DIR}/runtime/syscalls/sys_timer.c")
+    file(READ "${HAZE_TIMER_SOURCE}" HAZE_TIMER_TEXT)
+    string(REPLACE "\r\n" "\n" HAZE_TIMER_TEXT "${HAZE_TIMER_TEXT}")
+    set(HAZE_TIMEBASE_ENTRY "uint64_t ppu_timebase_now(void)\n{\n")
+    string(FIND "${HAZE_TIMER_TEXT}" "${HAZE_TIMEBASE_ENTRY}" HAZE_TIMER_ANCHOR_AT)
+    if(HAZE_TIMER_ANCHOR_AT EQUAL -1)
+        message(FATAL_ERROR "SDK timebase anchor not found")
+    endif()
+    string(REPLACE "${HAZE_TIMEBASE_ENTRY}" "uint64_t ppu_timebase_real(void)\n{\n"
+        HAZE_TIMER_TEXT "${HAZE_TIMER_TEXT}")
+    set(HAZE_TIMER_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/haze_sys_timer.c")
+    file(WRITE "${HAZE_TIMER_OUTPUT}" "${HAZE_TIMER_TEXT}")
+    set_property(SOURCE "${HAZE_TIMER_OUTPUT}" TARGET_DIRECTORY ps3recomp_runtime
+        APPEND PROPERTY INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/syscalls")
+    list(REMOVE_ITEM HAZE_SDK_SOURCES "${HAZE_TIMER_SOURCE}")
+    list(APPEND HAZE_SDK_SOURCES "${HAZE_TIMER_OUTPUT}")
     set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${HAZE_SDK_SOURCES}")
     if(HAZE_RSX_PROFILE)
         set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/haze_video_backend.c"
@@ -543,6 +569,7 @@ add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
     haze_input.cpp
+    haze_benchmark_clock.cpp
     haze_camera.cpp
     haze_menu.cpp
     haze_player_profile.cpp

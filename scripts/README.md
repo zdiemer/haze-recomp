@@ -16,6 +16,7 @@ Use `python scripts/diagnose.py --help` to list diagnostics and append
 | Play or collect a bounded run | `play.ps1`, `run.ps1 -Seconds 90` |
 | Inspect captures and performance | `diagnose.py <command>` |
 | Native microbenchmarks | `benchmark.ps1 <benchmark>` |
+| Frame-locked gameplay benchmark | `diagnose.py timedemo`; see [benchmark clock](../docs/benchmark-clock.md) |
 | Browser development | `bootstrap-wasm.py`, `build-wasm.ps1`, `serve-wasm.py`, `playtest-wasm.py` |
 | Package releases | `build-release.ps1`, `publish-release.ps1`; see [release documentation](../docs/releasing.md) |
 | Asset maintenance | `haze_pak.py`, `import-input-prompts.py`, `build-icon.ps1` |

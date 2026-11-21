@@ -173,6 +173,8 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Wait timeline syscall naming and interval-union tests failed.' }
     & $python "$root/tests/test_camera_sweep.py"
     if ($LASTEXITCODE -ne 0) { throw 'Camera benchmark trajectory evidence tests failed.' }
+    & $python "$root/tests/test_compare_timedemo.py"
+    if ($LASTEXITCODE -ne 0) { throw 'Frame-locked benchmark comparison tests failed.' }
     & $python "$root/tests/test_camera_benchmark_io.py" --compiler $clang --output-dir "$root/build/camera-benchmark-io"
     if ($LASTEXITCODE -ne 0) { throw 'Camera benchmark asynchronous control and deferred audit tests failed.' }
     $graphicsTest = Join-Path $root 'local/test_haze_graphics.exe'
@@ -371,6 +373,11 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Frame-pump test compilation failed.' }
     & $frameTest
     if ($LASTEXITCODE -ne 0) { throw 'Frame-boundary presentation test failed.' }
+    $benchmarkClockTest = Join-Path $root 'local/test_haze_benchmark_clock.exe'
+    & $clang /nologo /W0 /O1 /std:c++20 "/Fe$benchmarkClockTest" "/Fo$root/local/test_haze_benchmark_clock.obj" "$root/tests/test_haze_benchmark_clock.cpp"
+    if ($LASTEXITCODE -ne 0) { throw 'Benchmark clock test compilation failed.' }
+    & $benchmarkClockTest
+    if ($LASTEXITCODE -ne 0) { throw 'Benchmark clock test failed.' }
     & $python "$root/tests/test_firmware_relocation.py"
     if ($LASTEXITCODE -ne 0) { throw 'Firmware ELF relocation tests failed.' }
     & $python "$root/tests/test_present_modes.py"

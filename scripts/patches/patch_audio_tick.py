@@ -7,11 +7,14 @@ DIGEST='56f434e9a85787e2471f2569106c05ee280af91f84d1b37efeecf10ffbf0ae1e'
 # The convergence label remains outside those call scopes. Both variants keep
 # exact digest guards so an unrelated source change still requires an audit.
 PROFILED_DIGEST='e9c026d348865c105f8c2c839d5e0382ac8fb48e8e9c8cb55b7118c88bea44a7'
-DECL='\n        extern void haze_audio_guest_tick(ppu_context*);\n        extern void haze_quit_guest_tick(ppu_context*);'
+DECL=('\n        extern void haze_audio_guest_tick(ppu_context*);\n        extern void haze_quit_guest_tick(ppu_context*);'
+      '\n        extern void haze_benchmark_clock_frame(ppu_context*);')
 # All frame paths converge here, including menus that bypass the optional
-# guest pacing branch at 00681358 entirely.
+# guest pacing branch at 00681358 entirely. The diagnostic benchmark clock
+# advances its virtual time at this boundary.
 SITE='loc_006812DC:\n'
-CALL='        haze_audio_guest_tick(ctx);\n        haze_quit_guest_tick(ctx);\n'
+CALL=('        haze_audio_guest_tick(ctx);\n        haze_quit_guest_tick(ctx);\n'
+      '        haze_benchmark_clock_frame(ctx);\n')
 def patch(source):
     if source.count(ENTRY)!=1: raise ValueError('Expected one guest frame function')
     start=source.index(ENTRY); end=source.index('\nvoid ',start+len(ENTRY))
