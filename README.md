@@ -155,7 +155,7 @@ edits. Display changes offer a 15-second **Keep/Revert** confirmation. Render
 resolution and shadow resolution require restarting.
 
 Alternatively, edit [config/graphics.ini](config/graphics.ini), then press **F6** to apply
-filtering, FXAA, sharpening, exposure, VSync, frame-limit, and performance-overlay changes live.
+filtering, FXAA, sharpening, exposure, VSync, frame-limit, character-detail and performance-overlay changes live.
 Editing alone does not apply changes; the window title reports the reload result.
 Display mode, monitor, window size, render resolution, and shadow resolution
 changes made in the file require restarting.
@@ -168,6 +168,14 @@ simulation rate), draw packets per guest frame,
 cached textures, and process working-set RAM. CPU/GPU timings are marked N/A
 because the normal renderer does not expose reliable per-frame measurements.
 Launch overrides remain in effect after reloading.
+
+**Character detail** defaults to **Full**: soldiers and other characters keep
+their highest-detail models at every distance instead of switching to the
+game's lower-detail models a short distance away. **Original** restores the
+game's distance-based character detail (`character_detail = original`, or
+`HAZE_CHARACTER_DETAIL=original` for one run). Props and level geometry keep
+their original detail levels. See [character detail](docs/character-detail.md).
+
 Defaults are borderless at the monitor's desktop resolution with a 30 FPS cap.
 Override resolution for one run with
 `.\scripts\play.ps1 -RenderResolution 1920x1080`.

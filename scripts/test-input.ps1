@@ -66,6 +66,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Menu page patch guard failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Native menu material patch guard failed.' }
 & $Python "$root/tests/test_native_menu_lifetime_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Native menu lifetime patch guard failed.' }
+& $Python "$root/tests/test_character_lod_patch.py" "$assets/generated/ppu/ppu_recomp_001.cpp" "$clang"
+if ($LASTEXITCODE -ne 0) { throw 'Character LOD patch regression failed.' }
 & $Python "$root/tests/test_save_status_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"
 if ($LASTEXITCODE -ne 0) { throw 'Save status patch guard failed.' }
 & $Python "$root/tests/test_audio_tick_patch.py" "$assets/generated/ppu/ppu_recomp_003.cpp"

@@ -77,7 +77,8 @@ int main() {
         "[graphics]\nframe_limit=-1\n", "[graphics]\nmip_lod_bias=3\n",
         "[graphics]\ndisplay_mode=exclusive\n", "[graphics]\nwindow_size=native\n",
         "[graphics]\nmonitor=0\n", "[graphics]\nmonitor=1.5\n",
-        "[graphics]\nperformance_overlay=yes\n", "[graphics]\noverlay_position=center\n"};
+        "[graphics]\nperformance_overlay=yes\n", "[graphics]\noverlay_position=center\n",
+        "[graphics]\ncharacter_detail=high\n"};
     for (auto text:bad) {
         clear_options(); config(text); assert(!haze_graphics_initialize());
         assert(!std::getenv("RSX_MAX_FPS")); // Failed file never partially applies.
@@ -131,6 +132,22 @@ int main() {
         assert(haze_graphics_state().effective.at("performance_overlay")==mode);
         std::ifstream saved("local/test-graphics.ini"); haze_video::Values readback; std::string detail;
         assert(haze_video::parse(saved,readback,detail) && readback.at("performance_overlay")==mode);
+    }
+    // Character detail defaults to the full LOD mask and applies live.
+    assert(before.configured.at("character_detail")=="full" && haze_live_character_full_detail);
+    {
+        auto original=before.configured; original["character_detail"]="original"; std::string detail;
+        assert(haze_graphics_apply(original,false,detail) && !haze_live_character_full_detail);
+        assert(haze_graphics_state().restart.empty());
+        assert(haze_graphics_apply(before.configured,false,detail) && haze_live_character_full_detail);
+        clear_options(); config("[graphics]\ncharacter_detail=original\n");
+        assert(haze_graphics_initialize() && !haze_live_character_full_detail);
+        assert(!std::strcmp(std::getenv("HAZE_CHARACTER_DETAIL"),"original"));
+        clear_options(); config("[graphics]\ncharacter_detail=original\n"); _putenv_s("HAZE_CHARACTER_DETAIL","full");
+        assert(haze_graphics_initialize() && haze_live_character_full_detail);
+        assert(haze_graphics_state().overrides.at("character_detail")=="full");
+        clear_options(); _putenv_s("RSX_EXPOSURE","0.25"); config("[graphics]\nframe_limit=30\n");
+        assert(haze_graphics_initialize());
     }
     auto overlay=before.configured; overlay["performance_overlay"]="expanded"; overlay["overlay_position"]="bottom-right";
     std::string overlay_error;

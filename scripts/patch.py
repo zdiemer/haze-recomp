@@ -11,7 +11,7 @@ import sys
 
 
 PATCHES = (
-    'audio-tick', 'bulk-fill', 'guest-pacer', 'job0-capture', 'job0-kernel',
+    'audio-tick', 'bulk-fill', 'character-lod', 'guest-pacer', 'job0-capture', 'job0-kernel',
     'job13-native', 'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
     'menu-lifetime', 'menu-material', 'menu-pages', 'movie-poll', 'native-cursor',
     'producer-profile', 'save-status', 'savedata', 'slot-copy', 'spu-idle',
@@ -33,7 +33,7 @@ REGISTRATIONS = {
     'spu-idle': 'spu_begin_image(29); spu_0028_at_00EC7980_spu_recomp_register();',
     'spu-triplet-copy': 'spu_begin_image(42); spu_0041_at_00F2E380_spu_recomp_register();',
 }
-LATIN1_PATCHES = {'audio-tick', 'menu-lifetime', 'menu-material', 'menu-pages',
+LATIN1_PATCHES = {'audio-tick', 'character-lod', 'menu-lifetime', 'menu-material', 'menu-pages',
                  'movie-poll', 'save-status'}
 
 

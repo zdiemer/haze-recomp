@@ -70,6 +70,7 @@ std::vector<HazeMenuRow> rows() {
         choices("overlay_position","Overlay position",{{"top-left","Top left"},{"top-right","Top right"},{"bottom-left","Bottom left"},{"bottom-right","Bottom right"}},"Place the performance display away from important HUD content."),
         choices("anti_aliasing","Anti-aliasing",{{"off","Off"},{"fxaa","FXAA"}},"Smooth final-image edges. FXAA can soften text."),
         choices("anisotropic_filtering","Texture filtering",{{"1","Game default"},{"2","2x"},{"4","4x"},{"8","8x"},{"16","16x"}},"Improve filtered textures viewed at an angle."),
+        choices("character_detail","Character detail",{{"full","Full"},{"original","Original"}},"Full keeps soldiers and other characters at their highest-detail models at every distance. Original uses the game's distance-based detail levels."),
         choices("shadow_resolution","Shadow resolution",{{"native","Game default (2048)"},{"follow","Follow render resolution"},{"1024","1024"},{"2048","2048"},{"4096","4096"},{"8192","8192"}},"Larger shadow maps use more memory; existing shadow artifacts may remain."),
         slider("mip_lod_bias","Texture detail bias",-2,2,.1,"Negative values sharpen mip selection and may shimmer."),
         slider("sharpening","Sharpening",0,1,.05,"Increase final-image detail contrast."),

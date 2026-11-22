@@ -14,6 +14,7 @@ inline const std::vector<rsx_graphics_option>& options() {
         std::vector<rsx_graphics_option> out(std::begin(rsx_graphics_options),std::end(rsx_graphics_options));
         out.push_back({"performance_overlay","HAZE_PERFORMANCE_OVERLAY","off","off, compact or expanded",9,0,0});
         out.push_back({"overlay_position","HAZE_OVERLAY_POSITION","top-left","top-left, top-right, bottom-left or bottom-right",10,0,0});
+        out.push_back({"character_detail","HAZE_CHARACTER_DETAIL","full","full or original",11,0,0});
         return out;
     }();
     return result;
@@ -41,6 +42,7 @@ inline bool valid(const rsx_graphics_option& o,const char* value) {
     if (o.kind==9) return !std::strcmp(value,"off") || !std::strcmp(value,"compact") || !std::strcmp(value,"expanded");
     if (o.kind==10) return !std::strcmp(value,"top-left") || !std::strcmp(value,"top-right") ||
         !std::strcmp(value,"bottom-left") || !std::strcmp(value,"bottom-right");
+    if (o.kind==11) return !std::strcmp(value,"full") || !std::strcmp(value,"original");
     return (automatic_size(o) && value && !std::strcmp(value,"auto")) || rsx_graphics_valid(&o,value);
 }
 inline Values defaults() {

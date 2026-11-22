@@ -2,6 +2,7 @@
 #include "haze_video_backend.h"
 #include "haze_frame_pacer_settings.h"
 #include "haze_display.h"
+#include "haze_character_lod.h"
 #include <atomic>
 #include <algorithm>
 #include <fstream>
@@ -90,6 +91,7 @@ void haze_graphics_started(const haze_video::Values& configured,
     for (const auto& [key,value]:overrides) startup_requested[key]=value;
     source_text.clear(); read_text(path,source_text);
     haze_live_frame_limit=std::stoi(effective.at("frame_limit"));
+    haze_live_character_full_detail=haze_character_detail_full(effective.at("character_detail").c_str());
 }
 namespace {
 bool target_values(const HazeGraphicsState& before,const haze_video::Values& configured,bool display,haze_video::Values& target,std::string& error) {
@@ -141,6 +143,7 @@ bool apply_values(const haze_video::Values& configured,bool persist,bool display
     }
     haze_video_finish(1);
     haze_live_frame_limit=static_cast<int>(live.frame_limit);
+    haze_live_character_full_detail=haze_character_detail_full(target.at("character_detail").c_str());
     result.configured=configured; result.effective=std::move(target); result.restart=std::move(restart);
     if (persist) source_text=std::move(serialized); else read_text(result.path,source_text);
     result.notice=result.restart.empty() ? "Video settings applied" : "Video settings applied; some changes need restart";
