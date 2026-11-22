@@ -64,11 +64,15 @@ def extract_source(sdk: Path, baseline: bool, sample: bool) -> str:
         source, "static inline bool vm_memory_probes(void)",
         "/* Generated PPU TUs may opt into an inline ordinary-RAM read path",
     )
+    # The public accessors try the plain-RAM page table first
+    # (test_vm_plain_pages.py); these are the full bodies they fall back to.
     read8 = extract_section(
-        source, "uint8_t  vm_read8 (uint64_t a)", "uint16_t vm_read16(uint64_t a)",
+        source, "static __attribute__((noinline)) uint8_t vm_read8_full(",
+        "static __attribute__((noinline)) uint16_t vm_read16_full(",
     )
     read16 = extract_section(
-        source, "uint16_t vm_read16(uint64_t a)", "static uint32_t vm_read32_slow(",
+        source, "static __attribute__((noinline)) uint16_t vm_read16_full(",
+        "static uint32_t vm_read32_slow(",
     )
 
     for accessor, body, anchor in (
@@ -114,6 +118,8 @@ static uint32_t ppu_prof_resolve_host(void*) {{ return 0; }}
 {probes}
 {read8}
 {read16}
+static uint8_t vm_read8(uint64_t a) {{ return vm_read8_full(a, nullptr); }}
+static uint16_t vm_read16(uint64_t a) {{ return vm_read16_full(a, nullptr); }}
 
 int main() {{
     const char* which = getenv("FASTPATH_CASE");
