@@ -1,23 +1,31 @@
-Haze Recomp 0.1.13 for Windows x64
+Haze Recomp 0.1.14 for Windows x64
 
-Fixes Enter failing to advance from the "Press Enter to begin" screen. The
-previous fix read optional menu history, which is empty on the live title
-screen, and mistakenly sent Confirm instead of Start. The port now resolves
-the top active page through its validated widget handle. Enter sends Start
-at the title and Confirm in ordinary menus; holding it across that transition
-cannot also select the next item. Rebound Start keys and controller Start
-remain supported, and a dialog above the title still receives Confirm.
+Performance update. The game's main thread spends less time in the runtime
+around recompiled code, so busy combat runs at a higher frame rate:
 
-The failure was reproduced in the published 0.1.12 game with Windows keyboard
-input, and its live page layout was inspected. New regressions exercise that
-layout through both the production menu detector and keyboard mapper; they
-fail before the fix and pass afterward. Automated input and menu tests cover
-short taps, held-key transitions, dialogs and stale widget handles. The fixed
-build has not received an
-interactive gameplay run or a fresh Windows installation acceptance test.
+- Ordinary guest memory reads and writes take a short fast path. These
+  accesses were about 40% of the main thread's work in combat; every special
+  case (device windows, SPU reservations, diagnostics) keeps its previous
+  handling.
+- SPU floating-point arithmetic runs in native registers, which shortens the
+  effects jobs the main thread waits for each frame.
+- The SPU job loop's per-step checks are cheaper.
 
-Includes the performance, controls, graphics, campaign co-op, diagnostics and
-save support from 0.1.12. This patch makes no new performance claims.
+In the developer's later-combat benchmark (a fixed checkpoint, frame-locked
+camera sweep, RTX 5080 / Ryzen 7 9800X3D), mean frame time fell from about
+15.3 ms to about 13.0 ms, roughly 65 to 77 FPS. Each change was measured
+separately in alternating A/B runs; the total is the sum of those results,
+not a separate 0.1.13-to-0.1.14 comparison. Other scenes and hardware will
+differ, and heavy scenes can still drop below 60 FPS.
+
+Also includes selected upstream runtime fixes: an event-queue initialization
+race, store-conditional reservation checks, per-thread callback stacks and
+re-polling of empty XInput slots. Developers get a frame-locked benchmark
+clock for repeatable measurements; it is off unless explicitly enabled.
+
+The A/B gameplay runs used local builds of the same code and private inputs.
+The hosted release build has not received an interactive gameplay run or a
+fresh Windows installation acceptance test.
 
 Run HazeRecomp-<version>-Setup.exe and select your disc-decrypted Haze USA ISO
 (BLUS30094, 01.02 / 01.00). The installer downloads the pinned official RPCS3
