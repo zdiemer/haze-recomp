@@ -38,7 +38,7 @@ restoration remains visible with a retry action rather than claiming success.
 The timer runs in the render loop independently of menu visibility.
 
 Render resolution and shadow resolution still require a restart. Other live changes include frame limit,
-VSync, FXAA, texture filtering, mip bias, sharpening and brightness. The page
+VSync, FXAA, texture filtering, mip bias, sharpening, brightness and character detail. The page
 explains saved values that differ from active launch overrides. Monitor choices
 are currently numbered; unavailable displays fail validation on Apply.
 
