@@ -76,13 +76,21 @@ submodule initialization is expected and is not a hygiene violation.
 2. Inspect upstream changes for equivalent Haze fixes and dependencies. Use
    `git cherry-pick -x` for selected fixes and run their regressions plus the
    relevant Haze checks. Record deferred changes and reasons.
-3. Integrate and publish validated SDK commits to `haze` before committing a
-   new parent gitlink. Preserve history; do not force-push or rewind `haze`.
-   Experimental branches may exist, but do not pin commits unique to them.
-4. Commit the exact SDK SHA in the parent, then run
+3. Land every SDK change as a pull request into `zdiemer/ps3recomp:haze`,
+   and merge it before opening the Haze change that needs it. Preserve history;
+   do not force-push or rewind `haze`. Experimental branches may exist, but do
+   not pin commits unique to them; work that should ship goes through a `haze`
+   PR first.
+4. In the Haze pull request, re-pin the gitlink to the head of `haze` after
+   that merge, not to the feature-branch commit. If `haze` moved again before
+   the Haze PR merges, re-pin to the new head and rerun the checks. Then run
    `python scripts/check_sdk_pin.py --fetch`. It checks the committed gitlink,
    clean SDK checkout, canonical configuration and ancestry on fetched `haze`.
-   CI and release builds enforce the same rule. A pin may lag `haze`; it need
-   not equal the branch tip. Revalidate after changing either repository.
+   CI and release builds enforce ancestry, so a pin already committed stays
+   valid as `haze` advances; only new pins must be its head.
+5. After a pin change merges, run `git submodule update --init --recursive` in
+   each checkout you build from, including the main checkout, so its SDK
+   matches the committed gitlink. Check the SDK for local commits or changes
+   first.
 
 See `docs/sdk-upstream.md` for the upstream review and selected fixes.
