@@ -162,6 +162,8 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'PPU coherency predicate startup/store regression failed.' }
     & $python "$root/tests/test_vm_plain_pages.py" --compiler $clang --sdk $sdk --output-dir "$root/build/vm-plain-pages"
     if ($LASTEXITCODE -ne 0) { throw 'Guest memory plain-page fast-path regression failed.' }
+    & $python "$root/tests/test_stack_access.py" --compiler $clang --sdk $sdk --output-dir "$root/build/stack-access"
+    if ($LASTEXITCODE -ne 0) { throw 'Guest stack-access transform/accessor regression failed.' }
     if (-not $RuntimeOnly) {
         & $python "$root/tests/test_ppu_inline_reads.py" --compiler $clang --sdk $sdk --recomp "$assets/generated/ppu" --output-dir "$root/build/ppu-inline-reads"
         if ($LASTEXITCODE -ne 0) { throw 'Generated inline memory-read regression failed.' }

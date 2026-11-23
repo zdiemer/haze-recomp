@@ -15,7 +15,8 @@ PATCHES = (
     'job13-native', 'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
     'menu-lifetime', 'menu-material', 'menu-pages', 'movie-poll', 'native-cursor',
     'producer-profile', 'save-status', 'savedata', 'slot-copy', 'spu-idle',
-    'spu-triplet-copy', 'startup-splash', 'teammate-name', 'title-prompt', 'vp-upload',
+    'spu-triplet-copy', 'stack-access', 'startup-splash', 'teammate-name', 'title-prompt',
+    'vp-upload',
 )
 ORACLES = {
     'oracle-bulk-fill': 'extract_bulk_fill_oracle',
@@ -34,7 +35,7 @@ REGISTRATIONS = {
     'spu-triplet-copy': 'spu_begin_image(42); spu_0041_at_00F2E380_spu_recomp_register();',
 }
 LATIN1_PATCHES = {'audio-tick', 'character-lod', 'menu-lifetime', 'menu-material', 'menu-pages',
-                 'movie-poll', 'save-status'}
+                 'movie-poll', 'save-status', 'stack-access'}
 
 
 def main():

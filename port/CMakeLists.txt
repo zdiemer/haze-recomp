@@ -240,6 +240,34 @@ if(EXISTS "${RECOMP_DIR}/ppu_recomp_001.cpp")
     set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 
+# Guest stack accesses (the stack pointer plus a constant: spills, restores and
+# back-chain stores) are a large share of all guest accesses. A final copy of
+# each lifted module sends them to the SDK's inline accessors, which fall back
+# to the original accessor for anything but ordinary RAM.
+option(HAZE_INLINE_STACK "Inline guest stack accesses in lifted PPU modules" ON)
+if(HAZE_INLINE_STACK)
+    set(HAZE_STACK_INPUTS ${RECOMP_SOURCES})
+    set(RECOMP_SOURCES)
+    foreach(HAZE_STACK_INPUT IN LISTS HAZE_STACK_INPUTS)
+        get_filename_component(HAZE_STACK_NAME "${HAZE_STACK_INPUT}" NAME)
+        if(NOT HAZE_STACK_NAME MATCHES "^ppu_recomp_[0-9]+\\.cpp$")
+            list(APPEND RECOMP_SOURCES "${HAZE_STACK_INPUT}")
+            continue()
+        endif()
+        set(HAZE_STACK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/haze_stack_access/${HAZE_STACK_NAME}")
+        add_custom_command(OUTPUT "${HAZE_STACK_OUTPUT}"
+            COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" stack-access
+                  "${HAZE_STACK_INPUT}" "${HAZE_STACK_OUTPUT}"
+            DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_STACK_INPUT}"
+            VERBATIM)
+        set_property(SOURCE "${HAZE_STACK_OUTPUT}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+        if(HAZE_STACK_INPUT STREQUAL HAZE_MAIN_LOOP_PATCHED)
+            set(HAZE_MAIN_LOOP_PATCHED "${HAZE_STACK_OUTPUT}")
+        endif()
+        list(APPEND RECOMP_SOURCES "${HAZE_STACK_OUTPUT}")
+    endforeach()
+endif()
+
 # Built from source as a subdirectory rather than imported as a prebuilt
 # archive. A static library carries none of its own link requirements, so an
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the

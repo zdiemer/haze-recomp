@@ -32,6 +32,7 @@ uint32_t ppu_hle_inject_base = 0x30000u;
 uint32_t g_barrier_sync_watch, g_null_sweep_hi;
 unsigned char spu_coh_reservation_bitmap[SPU_COH_BITMAP_SIZE];
 uint32_t spu_coh_reservations_armed;
+unsigned char vm_inline_page[0x10000];
 static int ps3_log_verbose() { return 0; }
 static int full_calls;
 static uint64_t full_address;
@@ -89,6 +90,24 @@ int main(int argc, char** argv) {
             assert(s_vm_plain_page[page] == enabled);
         assert(!s_vm_plain_page[(SPU_RAW_BASE + SPU_RAW_SPAN - 1) >> 16]);
         assert(s_vm_plain_page[(SPU_RAW_BASE + SPU_RAW_SPAN) >> 16] == enabled);
+        // With nothing reserved or watched, the inline pages are the plain ones.
+        for (uint32_t page = 0; page < 0x10000u; ++page)
+            assert(vm_inline_page[page] == s_vm_plain_page[page]);
+        puts("PASS"); return 0;
+    }
+    if (!strcmp(mode, "marked")) {
+        // A line reserved before startup keeps its page off the inline path only.
+        spu_coh_reservation_bitmap[(2u << 6) + 63] = 0x80;
+        ppu_native_reads_inline_init(); vm_plain_pages_init();
+        assert(s_vm_plain_page[1] && s_vm_plain_page[2]);
+        assert(vm_inline_page[1] && !vm_inline_page[2]);
+        puts("PASS"); return 0;
+    }
+    if (!strcmp(mode, "atom-watch")) {
+        // SPU_ATOM_EA arms a write watch later, so no page is inline.
+        ppu_native_reads_inline_init(); vm_plain_pages_init();
+        assert(s_vm_plain_page[1] && s_vm_plain_page[2]);
+        for (uint32_t page = 0; page < 0x10000u; ++page) assert(!vm_inline_page[page]);
         puts("PASS"); return 0;
     }
     if (!strcmp(mode, "null-init")) vm_base = nullptr;
@@ -96,6 +115,7 @@ int main(int argc, char** argv) {
     vm_base = storage;
     // Pages 1 and 2 are ordinary; 0 is the null page, 3 the GCM window, and
     // 4 ends at the bounded guest size.
+    for (uint32_t page = 0; page < 5u; ++page) assert(vm_inline_page[page] == s_vm_plain_page[page]);
     assert(reads_fast(0x10000) == enabled && reads_fast(0x2FFF0) == enabled);
     assert(writes_fast(0x10010) == enabled && writes_fast(0x2FFF0) == enabled);
     for (uint32_t ea : {0x100u, 0x30004u, 0x40000u}) assert(!reads_fast(ea) && !writes_fast(ea));
@@ -140,19 +160,20 @@ def main() -> None:
     cases = [('ordinary', 1, {}), ('whole-space', 1, {}), ('null-init', 0, {}),
              ('ordinary', 0, {'PPU_INLINE_COH_CHECK': 'OFF'}),
              ('whole-space', 0, {'PPU_INLINE_COH_CHECK': 'OFF'}),
-             ('ordinary', 1, {'PPU_INLINE_READS': 'OFF'})]
+             ('ordinary', 1, {'PPU_INLINE_READS': 'OFF'}),
+             ('marked', 1, {}), ('atom-watch', 1, {'SPU_ATOM_EA': '40000'})]
     cases += [('ordinary', 0, {name: '1'}) for name in PROBE_ENV_NAMES]
     checks = 0
     for mode, enabled, extra in cases:
         env = os.environ.copy()
-        for name in (*PROBE_ENV_NAMES, 'PPU_INLINE_READS', 'PPU_INLINE_COH_CHECK'):
+        for name in (*PROBE_ENV_NAMES, 'PPU_INLINE_READS', 'PPU_INLINE_COH_CHECK', 'SPU_ATOM_EA'):
             env.pop(name, None)
         env.update(extra)
         run = subprocess.run([str(exe), mode, str(enabled)], env=env,
                              capture_output=True, text=True, timeout=10)
         assert run.returncode == 0 and 'PASS' in run.stdout, (mode, extra, run.stdout, run.stderr)
         checks += 1
-    print(f'PASS {checks} plain-page table, fast-path and fallback cases')
+    print(f'PASS {checks} plain/inline page table, fast-path and fallback cases')
 
 
 if __name__ == '__main__':
