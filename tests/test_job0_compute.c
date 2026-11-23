@@ -4,6 +4,7 @@
 #include "spu_helpers.h"
 #include "spu_float_native.h"
 #include "haze_job0_kernel.h"
+#include "haze_job0_simd.h"
 #include <windows.h>
 #include <assert.h>
 
@@ -18,6 +19,8 @@ void job0_inline_000036F0(spu_context*);
 void job0_inline_00003F48(spu_context*);
 void job0_integrated_00003408(spu_context*);
 void job0_integrated_000036F0(spu_context*);
+unsigned job0_direct_simd_000036F0(spu_context*);
+static unsigned simd_calls,simd_repeats;
 static int kernel_enabled=1;
 static unsigned accepted;
 int haze_job0_kernel_enabled(void) { return kernel_enabled; }
@@ -49,6 +52,10 @@ static void synthetic(unsigned site,unsigned count)
         baseline.gpr[86]=spu_il(count);baseline.gpr[16]=spu_il(0);
         baseline.gpr[85]=spu_il(0x10000);baseline.gpr[14]=spu_il(0x20000);
     } else if(site==1) {
+        // Shuffle controls of the generated SIMD kernel: no special selectors.
+        static const unsigned controls[]={69,70,71,73,75,76,77,78,79,85,88,89,90,91,94,95,97};
+        for(unsigned c=0;c<sizeof(controls)/sizeof(controls[0]);++c)
+            for(unsigned b=0;b<16;++b) baseline.gpr[controls[c]]._u8[b]&=0x7f;
         baseline.gpr[68]=spu_il(0x10000);baseline.gpr[72]=spu_il(0x20000);
     } else {
         baseline.gpr[45]=spu_il(0);baseline.gpr[40]=spu_il(0x10000);
@@ -60,6 +67,10 @@ static void reset(spu_context* ctx)
 static void run(spu_context* ctx,unsigned site,int candidate)
 {
     g_spu_trampoline_fn=NULL;
+    if(candidate==4) {
+        unsigned result=job0_direct_simd_000036F0(ctx);assert(result);
+        ++simd_calls;simd_repeats+=result-1;
+    } else
     (candidate==3?integrated[site]:candidate==2?inline_candidates[site]:candidate?candidates[site]:references[site])(ctx);
     unsigned limit=65536;
     while(ctx->pc!=ends[site]) {
@@ -139,6 +150,7 @@ int main(int argc,char** argv)
             for(unsigned i=0;i<96;++i) {
                 synthetic(site,counts[i%6]);verify(site,1);++checks;
                 if(mode) { verify(site,2);++checks; }
+                if(mode && site==1 && haze_job0_simd_supported()) { verify(site,4);++checks; }
                 if(site<2) {
                     unsigned before=accepted;verify(site,3);++checks;
                     assert(accepted-before==mode);
@@ -154,10 +166,12 @@ int main(int argc,char** argv)
             if(mode && !spu_float_native_available()) continue;
             spu_float_native_set_mode(mode);verify(site,1);++checks;
             if(mode) { verify(site,2);++checks; }
+            if(mode && site==1 && haze_job0_simd_supported()) { verify(site,4);++checks; }
             if(site<2) { unsigned before=accepted;verify(site,3);++checks;assert(accepted-before==mode); }
         }
         benchmark(site,spu_float_native_active()?"captured hardware arithmetic":"captured scalar arithmetic",1);
         if(spu_float_native_active()) benchmark(site,"captured inline arithmetic",2);
+        if(spu_float_native_active() && site==1 && haze_job0_simd_supported()) benchmark(site,"captured SIMD kernel",4);
     }
     if(spu_float_native_active()) {
         synthetic(0,4);reset(&native);g_spu_trampoline_fn=NULL;
@@ -172,5 +186,6 @@ int main(int argc,char** argv)
         g_spu_smc_watch=1;assert(!haze_job0_kernel_accept(&native,0x3408));g_spu_smc_watch=0;
         g_spu_ls_watch_n=1;assert(!haze_job0_kernel_accept(&native,0x3408));g_spu_ls_watch_n=0;
     }
-    printf("%u full-state compute comparisons passed\n",checks);return 0;
+    printf("%u full-state compute comparisons passed; SIMD kernel calls=%u repeated iterations=%u\n",
+        checks,simd_calls,simd_repeats);return 0;
 }
