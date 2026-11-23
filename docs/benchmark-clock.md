@@ -31,6 +31,39 @@ a packet. A run normally also sets `HAZE_BENCHMARK_CAMERA_FILE` (the camera
 audit path), loads a checkpoint save, waits for `<csv>.done`, and closes the
 window so the fingerprint is written.
 
+## Running the benchmark
+
+```powershell
+python scripts/diagnose.py timedemo-run <stem> --scene later [--exe build\haze\HazeRecomp.exe] [--shared-root <checkout>]
+python scripts/diagnose.py timedemo-ab <tag> --control <exe> --candidate <exe> --scene later [--pairs 4]
+```
+
+`timedemo-run` starts the game on a private copy of a committed checkpoint,
+loads it through the main menu, settles for `--settle` gameplay frames, runs
+the camera sweep for `--sweep` frames and closes the game. Reports land in
+`local/timedemo/out/<stem>-*`; the private game copy is deleted. It needs a
+prepared checkout (`game/disc`, firmware) and an interactive desktop, and the
+game window keeps focus. `timedemo-ab` runs ABBA pairs on a quiet host and
+reports raw and draw-adjusted differences with an exact permutation test.
+
+| Scene | Checkpoint |
+| --- | --- |
+| `later` | Later combat, the default |
+| `deck` | The campaign's opening carrier deck |
+| `mine` | Desert mine, vehicle start |
+
+`config/benchmarks/scenes/<scene>.tar.xz` holds only the checkpoint's save
+state (`PARAM.SFO`, `_PROFILE.DAT`, `CHCKPNTS.SAV`). The save's icons and
+sound are copied from the local disc, and no shader cache is committed: the
+first run of a scene on a machine records one under `local/timedemo/cache`
+and is not a measurement. The graphics profile is
+`config/benchmarks/timedemo.ini`. To add a scene, play to a checkpoint, then
+pack those three files from the save's profile directory with
+`mtime` 0; `tests/test_benchmark_scenes.py` checks the archive contents.
+
+Menu navigation is timed in wall-clock seconds. An occasional session misses
+it and never reaches gameplay; `timedemo-run` retries it once.
+
 ## Comparing runs
 
 ```powershell
