@@ -223,6 +223,10 @@ def run(args):
         detach(Path(env['PAD_FILE']), stdout, 30)
         print('gameplay reached; waiting for the timeline', flush=True)
         if args.sample:
+            # scripts/build_profiler.ps1 builds the stack walker in a checkout's local/.
+            stack_library = next((path for path in (ROOT/'local'/'native_stackwalk.dll',
+                                                    assets/'local'/'native_stackwalk.dll') if path.exists()),
+                                 ROOT/'local'/'native_stackwalk.dll')
             while '[benchmark-camera-mode] token=1 ' not in text():
                 if time.monotonic() > deadline+args.timeout:
                     raise RuntimeError('sweep never started')
@@ -232,7 +236,7 @@ def run(args):
                  *([] if args.sample_all else ['--tid', str(initial['tid'])]),
                  '--scan-every', '50' if args.sample_all else '1000', '--stack-depth', '16' if args.sample_all else '24',
                  '--stack-every', '1', '--interval-ms', '7', '--stack-limit', '2000', '--raw-limit', '400',
-                 '--symbol-path', str(exe.parent)],
+                 '--symbol-path', str(exe.parent), '--stack-library', str(stack_library)],
                 stdout=Path(f'{prefix}-samples.json').open('wb'), stderr=Path(f'{prefix}-sampler.err').open('wb'),
                 creationflags=subprocess.CREATE_NO_WINDOW)
         done = Path(f'{timeline}.done'); deadline = time.monotonic()+args.timeout
