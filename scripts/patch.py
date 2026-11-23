@@ -11,7 +11,7 @@ import sys
 
 
 PATCHES = (
-    'audio-tick', 'bulk-fill', 'character-lod', 'guest-pacer', 'job0-capture', 'job0-kernel',
+    'audio-tick', 'bulk-fill', 'character-lod', 'dead-spills', 'guest-pacer', 'job0-capture', 'job0-kernel',
     'job13-native', 'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
     'menu-lifetime', 'menu-material', 'menu-pages', 'movie-poll', 'native-cursor',
     'producer-profile', 'save-status', 'savedata', 'slot-copy', 'spu-idle',
@@ -33,8 +33,8 @@ REGISTRATIONS = {
     'spu-idle': 'spu_begin_image(29); spu_0028_at_00EC7980_spu_recomp_register();',
     'spu-triplet-copy': 'spu_begin_image(42); spu_0041_at_00F2E380_spu_recomp_register();',
 }
-LATIN1_PATCHES = {'audio-tick', 'character-lod', 'menu-lifetime', 'menu-material', 'menu-pages',
-                 'movie-poll', 'save-status'}
+LATIN1_PATCHES = {'audio-tick', 'character-lod', 'dead-spills', 'menu-lifetime', 'menu-material',
+                 'menu-pages', 'movie-poll', 'save-status'}
 
 
 def main():
@@ -60,6 +60,8 @@ def main():
         arguments.add_argument('--caller-source', type=Path, required=True)
     if name == 'slot-copy':
         arguments.add_argument('--memmove-source', type=Path, required=True)
+    if name == 'dead-spills':
+        arguments.add_argument('--lift', type=Path, required=True, help='directory of every lifted PPU module')
     args = arguments.parse_args(command.arguments)
     if name in REGISTRATIONS and REGISTRATIONS[name] not in args.registration.read_text():
         raise ValueError(f'{name}: runtime image registration changed; re-audit before patching')
@@ -77,6 +79,8 @@ def main():
             extra.append(args.caller_source.read_text())
         elif name == 'slot-copy':
             extra.append(args.memmove_source.read_text())
+        elif name == 'dead-spills':
+            extra.append(module.lift_slots(args.lift))
         result = module.patch(source, *extra)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if name in LATIN1_PATCHES:

@@ -240,6 +240,32 @@ if(EXISTS "${RECOMP_DIR}/ppu_recomp_001.cpp")
     set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 
+# The lifter restores callee-saved registers from host copies, so most of their
+# prologue spills to the guest stack are never read. A final copy of each
+# lifted module drops those stores (scripts/patches/patch_dead_spills.py).
+# Each copy scans the whole lift for stack slots other functions reload.
+file(GLOB HAZE_SPILL_LIFT CONFIGURE_DEPENDS "${RECOMP_DIR}/ppu_recomp_*.cpp")
+set(HAZE_SPILL_INPUTS ${RECOMP_SOURCES})
+set(RECOMP_SOURCES)
+foreach(HAZE_SPILL_INPUT IN LISTS HAZE_SPILL_INPUTS)
+    get_filename_component(HAZE_SPILL_NAME "${HAZE_SPILL_INPUT}" NAME)
+    if(NOT HAZE_SPILL_NAME MATCHES "^ppu_recomp_[0-9]+\\.cpp$")
+        list(APPEND RECOMP_SOURCES "${HAZE_SPILL_INPUT}")
+        continue()
+    endif()
+    set(HAZE_SPILL_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/haze_dead_spills/${HAZE_SPILL_NAME}")
+    add_custom_command(OUTPUT "${HAZE_SPILL_OUTPUT}"
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" dead-spills
+              "${HAZE_SPILL_INPUT}" "${HAZE_SPILL_OUTPUT}" --lift "${RECOMP_DIR}"
+        DEPENDS ${HAZE_PATCH_DEPENDS} "${HAZE_SPILL_INPUT}" ${HAZE_SPILL_LIFT}
+        VERBATIM)
+    set_property(SOURCE "${HAZE_SPILL_OUTPUT}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+    if(HAZE_SPILL_INPUT STREQUAL HAZE_MAIN_LOOP_PATCHED)
+        set(HAZE_MAIN_LOOP_PATCHED "${HAZE_SPILL_OUTPUT}")
+    endif()
+    list(APPEND RECOMP_SOURCES "${HAZE_SPILL_OUTPUT}")
+endforeach()
+
 # Built from source as a subdirectory rather than imported as a prebuilt
 # archive. A static library carries none of its own link requirements, so an
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
