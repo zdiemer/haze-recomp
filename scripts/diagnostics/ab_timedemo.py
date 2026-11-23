@@ -67,7 +67,8 @@ def run(stem, exe, a):
             print(f'  waiting for quiet host: {load:.2f} cores ({top})', flush=True)
             time.sleep(20); load, top = host_load()
         subprocess.run([sys.executable, str(ROOT/'scripts'/'diagnose.py'), 'timedemo-run', stem, '--exe', str(exe),
-                        '--settle', str(a.settle), '--sweep', str(a.sweep), '--scene', a.scene], check=True)
+                        '--settle', str(a.settle), '--sweep', str(a.sweep), '--scene', a.scene,
+                        '--shared-root', str(a.shared_root)], check=True)
     return load_run(out)
 
 def main():
@@ -78,6 +79,7 @@ def main():
     p.add_argument('--sweep', type=int, default=1500); p.add_argument('--max-draw-diff', type=float, default=100.0)
     p.add_argument('--quiet-cores', type=float, default=1.5)
     p.add_argument('--scene', default='later', help='benchmark scene (see timedemo-run --help)')
+    p.add_argument('--shared-root', type=Path, default=ROOT, help='prepared checkout (see timedemo-run)')
     a = p.parse_args()
     pairs = []
     for i in range(a.pairs):

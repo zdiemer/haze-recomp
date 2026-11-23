@@ -105,6 +105,8 @@ def parse_args(argv=None):
     parser.add_argument('--sample-all', action='store_true', help='sample every thread')
     parser.add_argument('--keep-intro', action='store_true', help='do not auto-skip logos and attract')
     parser.add_argument('--attempts', type=int, default=2, help='sessions to try when menu navigation misses')
+    parser.add_argument('--env', action='append', default=[], metavar='KEY=VALUE',
+                        help='extra environment for a diagnostic build (repeatable)')
     args = parser.parse_args(argv)
     if args.scene not in scenes():
         parser.error(f'unknown scene {args.scene}; choose from {", ".join(scenes())}')
@@ -151,6 +153,11 @@ def run(args):
                HAZE_BENCHMARK_CAMERA_FILE=f'{prefix}-camera.txt', RSX_FRAME_FINGERPRINT_CSV=f'{prefix}-fingerprint.csv',
                HAZE_BENCHMARK_CLOCK_US=str(args.clock_us),
                HAZE_BENCHMARK_TIMELINE=f'{args.settle},{args.sweep},{timeline}')
+    for item in args.env:
+        key, separator, value = item.partition('=')
+        if not separator or not key:
+            raise SystemExit(f'--env expects KEY=VALUE, got {item!r}')
+        env[key] = value
     if args.producer_profile:
         env['HAZE_PRODUCER_PROFILE_CSV'] = f'{prefix}-producer.csv'
     if args.job_trace:
