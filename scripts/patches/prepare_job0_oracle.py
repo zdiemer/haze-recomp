@@ -47,7 +47,7 @@ def inline_arithmetic(block):
 def prepare(source):
     if hashlib.sha256(source.encode()).hexdigest() != IMAGE_DIGEST:
         raise ValueError('Job-0 image changed; re-audit extraction boundaries')
-    text = '#include "spu_helpers.h"\n#include "haze_job0_arithmetic.h"\n#include "haze_job0_kernel.h"\n#include "haze_job0_capture.h"\n'
+    text = '#include "spu_helpers.h"\n#include "haze_job0_arithmetic.h"\n#include "haze_job0_kernel.h"\n#include "haze_job0_capture.h"\n#include "haze_job0_simd.h"\n'
     for address in ('00003500', '00003B38', '000041D0'):
         text += f'static void {PREFIX}{address}(spu_context* ctx) {{ (void)ctx; }}\n'
     for address in ('00003408', '000036F0', '00003F48', '00004000'):
@@ -70,7 +70,9 @@ def prepare(source):
     for block in localized:
         text += block + '\n'
         text += inline_arithmetic(block) + '\n'
-    from .patch_job0_kernel import patch
+    from .patch_job0_kernel import patch, simd_kernels
+    text += simd_kernels(source)
+    text += 'unsigned job0_direct_simd_000036F0(spu_context* ctx) { return job0_simd_000036F0(ctx); }\n'
     integrated = patch(source)
     for pc in ('00003408', '000036F0'):
         text += body(integrated, pc).replace(PREFIX + pc, 'job0_integrated_' + pc, 1) + '\n'

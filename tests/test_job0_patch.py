@@ -38,6 +38,9 @@ class Job0Patch(unittest.TestCase):
         changed = kernel_patch(self.source)
         self.assertEqual(changed.count('if (haze_job0_kernel_accept(ctx,'), 2)
         self.assertNotIn('haze_job0_kernel_accept(ctx, 0x00003F48)', changed)
+        # Only 0x36F0 has a generated SIMD kernel, tried before the inline copy.
+        self.assertEqual(changed.count('haze_job0_simd_supported() && job0_simd_'), 1)
+        self.assertIn('job0_simd_000036F0(ctx)) return;\n            job0_inline_000036F0(ctx);', changed)
         with self.assertRaises(ValueError):
             kernel_patch(changed)
 
