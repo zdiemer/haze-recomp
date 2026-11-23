@@ -861,14 +861,20 @@ endif()
 # Profile-guided optimization of the lifted modules. The producer walks
 # megabytes of lifted code per frame with no dominant function, so it is bound
 # by instruction fetch; a gameplay profile lets the compiler lay hot paths out
-# together. The committed profile (docs/pgo.md) is always applied under Clang.
-# It is sparse: functions it never saw keep ordinary optimization rather than
-# being treated as cold, and functions whose lifted body changed are ignored.
-# HAZE_PGO_GENERATE builds the instrumented binary used to record a new one.
+# together. The lifted SPU images that the producer waits on are profiled too.
+# The committed profiles (docs/pgo.md) are always applied under Clang: PPU
+# modules use lifted.profdata and SPU images spu.profdata, so neither moves the
+# other's hot/cold thresholds. They are sparse: functions a profile never saw
+# keep ordinary optimization rather than being treated as cold, and functions
+# whose lifted body changed are ignored. HAZE_PGO_GENERATE builds the
+# instrumented binary used to record new ones.
 option(HAZE_PGO_GENERATE "Instrument lifted modules to record a new PGO profile" OFF)
-set(HAZE_PGO_ARCHIVE "${CMAKE_CURRENT_SOURCE_DIR}/pgo/lifted.profdata.tar.xz")
+set(HAZE_PGO_ARCHIVES
+    "${CMAKE_CURRENT_SOURCE_DIR}/pgo/lifted.profdata.tar.xz"
+    "${CMAKE_CURRENT_SOURCE_DIR}/pgo/spu.profdata.tar.xz")
 if(HAZE_PGO_GENERATE)
-    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-fprofile-instr-generate")
+    set_property(SOURCE ${RECOMP_SOURCES} ${SPU_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+        "-fprofile-instr-generate")
     get_filename_component(HAZE_LLVM_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
     file(GLOB HAZE_PGO_RUNTIME "${HAZE_LLVM_BIN}/../lib/clang/*/lib/windows/clang_rt.profile-x86_64.lib")
     if(NOT HAZE_PGO_RUNTIME)
@@ -878,14 +884,22 @@ if(HAZE_PGO_GENERATE)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT EMSCRIPTEN)
     set(HAZE_PGO_DIR "${CMAKE_CURRENT_BINARY_DIR}/pgo")
     file(REMOVE_RECURSE "${HAZE_PGO_DIR}")
-    file(ARCHIVE_EXTRACT INPUT "${HAZE_PGO_ARCHIVE}" DESTINATION "${HAZE_PGO_DIR}")
-    if(NOT EXISTS "${HAZE_PGO_DIR}/lifted.profdata")
-        message(FATAL_ERROR "${HAZE_PGO_ARCHIVE} does not contain lifted.profdata")
-    endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HAZE_PGO_ARCHIVE}")
+    foreach(HAZE_PGO_ARCHIVE IN LISTS HAZE_PGO_ARCHIVES)
+        file(ARCHIVE_EXTRACT INPUT "${HAZE_PGO_ARCHIVE}" DESTINATION "${HAZE_PGO_DIR}")
+    endforeach()
+    foreach(HAZE_PGO_FILE lifted.profdata spu.profdata)
+        if(NOT EXISTS "${HAZE_PGO_DIR}/${HAZE_PGO_FILE}")
+            message(FATAL_ERROR "port/pgo does not provide ${HAZE_PGO_FILE}")
+        endif()
+    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${HAZE_PGO_ARCHIVES})
     set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
         "-fprofile-instr-use=${HAZE_PGO_DIR}/lifted.profdata")
-    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY OBJECT_DEPENDS "${HAZE_PGO_ARCHIVE}")
+    if(SPU_SOURCES)
+        set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+            "-fprofile-instr-use=${HAZE_PGO_DIR}/spu.profdata")
+    endif()
+    set_property(SOURCE ${RECOMP_SOURCES} ${SPU_SOURCES} APPEND PROPERTY OBJECT_DEPENDS ${HAZE_PGO_ARCHIVES})
 endif()
 
 # ---------------------------------------------------------------------------
