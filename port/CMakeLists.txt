@@ -240,6 +240,45 @@ if(EXISTS "${RECOMP_DIR}/ppu_recomp_001.cpp")
     set_property(SOURCE "${HAZE_MENU_PATCHED}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
 endif()
 
+# Callee-save spills whose stack slot nothing reads again are the most frequent
+# out-of-line guest store in the producer. A final pass over every module
+# drops them; it sees all modules at once because a tail branch into another
+# function can read the slot. POISON stores a marker instead, for validation.
+option(HAZE_ELIDE_STACK_SAVES "Drop unread callee-save stores from lifted PPU modules" ON)
+option(HAZE_STACK_SAVES_POISON "Store a marker in place of each dropped callee save" OFF)
+if(HAZE_ELIDE_STACK_SAVES)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HAZE_SAVES_DIR "${CMAKE_CURRENT_BINARY_DIR}/haze_stack_saves")
+    set(HAZE_SAVES_INPUTS)
+    set(HAZE_SAVES_OUTPUTS)
+    set(HAZE_SAVES_SOURCES)
+    foreach(HAZE_SAVES_INPUT IN LISTS RECOMP_SOURCES)
+        get_filename_component(HAZE_SAVES_NAME "${HAZE_SAVES_INPUT}" NAME)
+        if(NOT HAZE_SAVES_NAME MATCHES "^ppu_recomp_[0-9]+\\.cpp$")
+            list(APPEND HAZE_SAVES_SOURCES "${HAZE_SAVES_INPUT}")
+            continue()
+        endif()
+        set(HAZE_SAVES_OUTPUT "${HAZE_SAVES_DIR}/${HAZE_SAVES_NAME}")
+        list(APPEND HAZE_SAVES_INPUTS "${HAZE_SAVES_INPUT}")
+        list(APPEND HAZE_SAVES_OUTPUTS "${HAZE_SAVES_OUTPUT}")
+        list(APPEND HAZE_SAVES_SOURCES "${HAZE_SAVES_OUTPUT}")
+        set_property(SOURCE "${HAZE_SAVES_OUTPUT}" APPEND PROPERTY INCLUDE_DIRECTORIES "${RECOMP_DIR}")
+        if(HAZE_SAVES_INPUT STREQUAL HAZE_MAIN_LOOP_PATCHED)
+            set(HAZE_MAIN_LOOP_PATCHED "${HAZE_SAVES_OUTPUT}")
+        endif()
+    endforeach()
+    set(HAZE_SAVES_FLAGS)
+    if(HAZE_STACK_SAVES_POISON)
+        set(HAZE_SAVES_FLAGS --poison)
+    endif()
+    add_custom_command(OUTPUT ${HAZE_SAVES_OUTPUTS}
+        COMMAND "${Python3_EXECUTABLE}" "${HAZE_PATCH_TOOL}" stack-saves
+            "${HAZE_SAVES_DIR}" ${HAZE_SAVES_INPUTS} ${HAZE_SAVES_FLAGS}
+        DEPENDS ${HAZE_PATCH_DEPENDS} ${HAZE_SAVES_INPUTS}
+        VERBATIM)
+    set(RECOMP_SOURCES ${HAZE_SAVES_SOURCES})
+endif()
+
 # Built from source as a subdirectory rather than imported as a prebuilt
 # archive. A static library carries none of its own link requirements, so an
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
