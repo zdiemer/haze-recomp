@@ -15,7 +15,8 @@ PATCHES = (
     'job13-native', 'job-dispatch-trace', 'job-wait', 'local-dispatch', 'menu-input',
     'menu-lifetime', 'menu-material', 'menu-pages', 'movie-poll', 'native-cursor',
     'producer-profile', 'save-status', 'savedata', 'slot-copy', 'spu-idle',
-    'spu-triplet-copy', 'startup-splash', 'teammate-name', 'title-prompt', 'vp-upload',
+    'spu-triplet-copy', 'stack-saves', 'startup-splash', 'teammate-name', 'title-prompt',
+    'vp-upload',
 )
 ORACLES = {
     'oracle-bulk-fill': 'extract_bulk_fill_oracle',
@@ -50,6 +51,27 @@ def main():
 
     module = importlib.import_module('patches.patch_' + name.replace('-', '_'))
     arguments = argparse.ArgumentParser(prog=f'{parser.prog} {name}', description=module.__doc__)
+    if name == 'stack-saves':
+        # One pass over every final module: a slot may be read by a function in
+        # another module. Unchanged outputs keep their timestamps.
+        arguments.add_argument('output_dir', type=Path)
+        arguments.add_argument('sources', type=Path, nargs='+')
+        arguments.add_argument('--poison', action='store_true',
+                               help='store a marker value instead of dropping each store')
+        args = arguments.parse_args(command.arguments)
+        sources = {path.name: path.read_bytes().replace(b'\r\n', b'\n').decode('latin1')
+                   for path in args.sources}
+        if len(sources) != len(args.sources):
+            raise ValueError('stack-saves: module names must be unique')
+        results, dropped = module.patch_modules(sources, poison=args.poison)
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        for file_name, text in results.items():
+            output = args.output_dir / file_name
+            data = text.encode('latin1')
+            if not output.exists() or output.read_bytes() != data:
+                output.write_bytes(data)
+        print(f'stack-saves: {dropped} callee-save stores {"poisoned" if args.poison else "dropped"}')
+        return
     arguments.add_argument('source', type=Path)
     if name == 'savedata':
         arguments.add_argument('port', type=Path)
