@@ -19,11 +19,13 @@ from pathlib import Path
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('pid',type=int)
 parser.add_argument('seconds',type=float,nargs='?',default=20)
-parser.add_argument('--scan-every',type=int,default=100,
-    help='Thread snapshot cadence in sampling iterations; 1 helps find short jobs but adds overhead.')
+parser.add_argument('--scan-every',type=int,default=1,
+    help='Thread enumeration cadence in sampling iterations; 1 keeps short jobs in proportion.')
 parser.add_argument('--tid',type=int,action='append',help='Sample only these thread IDs, after checking process ownership.')
 parser.add_argument('--window-thread',action='store_true',
     help='Select the thread owning this process\'s ps3recomp_null window (the native render pump).')
+parser.add_argument('--skip-idle',action='store_true',
+    help='Do not suspend threads that used under ~0.2 ms of cycles since the previous round; keeps rounds short when sampling all threads, but drops most wait locations.')
 parser.add_argument('--interval-ms',type=float,default=9,
     help='Mean randomized interval between sample rounds; use separately from FPS benchmarks.')
 parser.add_argument('--raw-limit',type=int,default=20,help='Maximum individual instruction locations per thread.')
@@ -60,6 +62,8 @@ if args.stack_depth and not args.stack_library.is_file():
     parser.error('Build the native stackwalk helper DLL before requesting stacks')
 if not 1<=args.timeline_limit<=1000000:
     parser.error('timeline-limit must be 1..1000000')
+if args.skip_idle and args.stall_ms is not None:
+    parser.error('--skip-idle cannot be combined with stall sampling')
 if args.stall_ms is not None:
     if not 10<=args.stall_ms<=1000 or not 1<=args.stall_samples<=10:
         parser.error('stall-ms must be 10..1000 and stall-samples must be 1..10')
@@ -107,11 +111,8 @@ def qpc():
     value=c.c_longlong()
     if not k.QueryPerformanceCounter(c.byref(value)): raise c.WinError(c.get_last_error())
     return value.value
-class THREADENTRY32(c.Structure):
-    _fields_=[('dwSize',w.DWORD),('cntUsage',w.DWORD),('th32ThreadID',w.DWORD),('th32OwnerProcessID',w.DWORD),('tpBasePri',w.LONG),('tpDeltaPri',w.LONG),('dwFlags',w.DWORD)]
-k.CreateToolhelp32Snapshot.argtypes=[w.DWORD,w.DWORD]; k.CreateToolhelp32Snapshot.restype=w.HANDLE
-k.Thread32First.argtypes=[w.HANDLE,c.POINTER(THREADENTRY32)]
-k.Thread32Next.argtypes=[w.HANDLE,c.POINTER(THREADENTRY32)]
+k.GetCurrentProcess.restype=w.HANDLE
+k.DuplicateHandle.argtypes=[w.HANDLE,w.HANDLE,w.HANDLE,c.POINTER(w.HANDLE),w.DWORD,w.BOOL,w.DWORD]
 k.GetThreadTimes.argtypes=[w.HANDLE,c.c_void_p,c.c_void_p,c.c_void_p,c.c_void_p]
 k.GetProcessTimes.argtypes=k.GetThreadTimes.argtypes
 k.GetExitCodeThread.argtypes=[w.HANDLE,c.POINTER(w.DWORD)]
@@ -126,43 +127,64 @@ started_filetime=c.c_ulonglong()
 def running(th):
     code=w.DWORD()
     return bool(k.GetExitCodeThread(th,c.byref(code))) and code.value==259
+nt=c.WinDLL('ntdll')
+nt.NtGetNextThread.argtypes=[w.HANDLE,w.HANDLE,w.DWORD,w.ULONG,w.ULONG,c.POINTER(w.HANDLE)]
+nt.NtGetNextThread.restype=c.c_long
+k.GetThreadId.argtypes=[w.HANDLE]; k.GetThreadId.restype=w.DWORD
+k.QueryThreadCycleTime.argtypes=[w.HANDLE,c.POINTER(c.c_ulonglong)]
+cycles={}
+def advanced(key,th):
+    value=c.c_ulonglong()
+    if not k.QueryThreadCycleTime(th,c.byref(value)): return True
+    previous=cycles.get(key); cycles[key]=value.value
+    # Suspension runs a kernel APC on the target thread, so a sampled waiting
+    # thread still advances a little. Under ~0.2 ms of cycles counts as idle.
+    return previous is None or value.value-previous>=1_000_000
+def retire(key):
+    # Record the final times and close the handle: an open handle keeps an
+    # exited thread in the process list that scan() walks every round.
+    th=handles[key]
+    if th is None: return
+    last[key]=cpu(th); k.CloseHandle(th); handles[key]=None
+    active.pop(key,None)
+    if live_ids.get(key[0])==key: live_ids.pop(key[0],None)
 def scan():
-    snap=k.CreateToolhelp32Snapshot(4,0); te=THREADENTRY32(); te.dwSize=c.sizeof(te)
-    if snap == c.c_void_p(-1).value: raise c.WinError(c.get_last_error())
+    # Walk only this process's threads. Handles come from the process itself,
+    # so thread IDs cannot be reused by another process between list and open.
+    # Cheap enough to run every round, which keeps short-lived SPU job threads
+    # in proportion to their lifetimes.
     scan_stats['snapshots']+=1
-    ok=k.Thread32First(snap,c.byref(te))
-    while ok:
-        if te.th32OwnerProcessID==pid and (not args.tid or te.th32ThreadID in args.tid):
-            tid=te.th32ThreadID
-            scan_stats['owned_entries']+=1; seen_ids.add(tid)
-            old=live_ids.get(tid)
-            if old is not None and running(handles[old]):
-                ok=k.Thread32Next(snap,c.byref(te)); continue
-            if old is not None:
-                last[old]=cpu(handles[old]); active.pop(old,None)
-            th=k.OpenThread(0x4a,False,tid)
-            # IDs can be reused between the snapshot and OpenThread. Never
-            # suspend a handle without verifying its process owner.
-            if th and k.GetProcessIdOfThread(th)==pid:
-                created,exited,kt,ut=[c.c_ulonglong() for _ in range(4)]
-                if k.GetThreadTimes(th,c.byref(created),c.byref(exited),c.byref(kt),c.byref(ut)):
-                    key=(tid,created.value)
-                    if key not in handles:
-                        scan_stats['opened_lifetimes']+=1
-                        handles[key]=th; active[key]=th; live_ids[tid]=key
-                        total=kt.value+ut.value
-                        # Include work before first observation when this
-                        # thread was created inside the sampling interval.
-                        first[key]=0 if created.value>=started_filetime.value else total
-                        last[key]=total
-                    else: k.CloseHandle(th)
-                else:
-                    scan_stats['times_failed']+=1; k.CloseHandle(th)
-            elif th:
-                scan_stats['owner_changed']+=1; k.CloseHandle(th)
-            else: scan_stats['open_failed_'+str(c.get_last_error())]+=1
-        ok=k.Thread32Next(snap,c.byref(te))
-    k.CloseHandle(snap)
+    current=w.HANDLE()
+    while True:
+        following=w.HANDLE()
+        status=nt.NtGetNextThread(h,current,0x4a,0,0,c.byref(following))
+        if current.value: k.CloseHandle(current)
+        if status<0:
+            if status&0xffffffff!=0x8000001a: scan_stats[f'enumerate_status_{status&0xffffffff:08X}']+=1
+            break
+        current=following; th=current.value
+        tid=k.GetThreadId(th)
+        if args.tid and tid not in args.tid: continue
+        scan_stats['owned_entries']+=1; seen_ids.add(tid)
+        old=live_ids.get(tid)
+        if old is not None and running(handles[old]): continue
+        if old is not None: retire(old)
+        created,exited,kt,ut=[c.c_ulonglong() for _ in range(4)]
+        if not k.GetThreadTimes(th,c.byref(created),c.byref(exited),c.byref(kt),c.byref(ut)):
+            scan_stats['times_failed']+=1; continue
+        key=(tid,created.value)
+        if key in handles or not running(th): continue
+        scan_stats['opened_lifetimes']+=1
+        # Duplicate: the enumeration handle is closed when the walk advances.
+        copy=w.HANDLE()
+        if not k.DuplicateHandle(k.GetCurrentProcess(),th,k.GetCurrentProcess(),c.byref(copy),0,False,2):
+            scan_stats['duplicate_failed']+=1; continue
+        handles[key]=copy.value; active[key]=copy.value; live_ids[tid]=key
+        total=kt.value+ut.value
+        # Include work before first observation when this
+        # thread was created inside the sampling interval.
+        first[key]=0 if created.value>=started_filetime.value else total
+        last[key]=total
 def cpu(th):
     a,b,kt,ut=[c.c_ulonglong() for _ in range(4)]
     if not k.GetThreadTimes(th,c.byref(a),c.byref(b),c.byref(kt),c.byref(ut)): return 0
@@ -251,9 +273,10 @@ while time.perf_counter()-start<duration:
         if not running(th):
             if stall_trigger is not None:
                 raise RuntimeError('Selected thread exited during a stall; capture incomplete')
-            active.pop(tid,None)
-            if live_ids.get(tid[0])==tid: live_ids.pop(tid[0],None)
+            retire(tid)
             continue
+        if args.skip_idle and not advanced(tid,th):
+            scan_stats['idle_skips']+=1; continue
         buf=c.create_string_buffer(1250); cp=(c.addressof(buf)+15)&~15
         c.c_uint32.from_address(cp+0x30).value=0x100003  # CONTROL | INTEGER
         sample_begin=qpc() if args.timeline_output else None
@@ -297,7 +320,8 @@ while time.perf_counter()-start<duration:
     iteration+=1; time.sleep(random.uniform(.5,1.5)*args.interval_ms/1000)
 elapsed=time.perf_counter()-start
 timeline_end=qpc() if args.timeline_output else None
-for tid,th in active.items(): last[tid]=cpu(th)
+for tid,th in handles.items():
+    if th is not None: last[tid]=cpu(th)
 process_ms=(process_cpu()-process_begin)/10000
 resolved={}
 def sym(addr):
@@ -337,7 +361,8 @@ print(json.dumps(dict(pid=pid,exe=pathbuf.value,elapsed_s=elapsed,iterations=ite
     thread_scan=dict(scan_stats,unique_ids=len(seen_ids)),
     timeline_output=str(args.timeline_output) if args.timeline_output else None,
     stall_trigger=stall_metadata(),
-    coverage_note='Thread snapshots can miss short-lived jobs and CPU used before first observation; RIP samples include waits.',
+    coverage_note='Threads that start and exit between enumerations are missed; RIP samples include waits.',
     threads=rows),indent=2))
-for th in handles.values(): k.CloseHandle(th)
+for th in handles.values():
+    if th is not None: k.CloseHandle(th)
 k.CloseHandle(h)

@@ -240,9 +240,12 @@ def run(args):
                 wait(.2)
             sampler = subprocess.Popen(
                 [sys.executable, str(ROOT/'scripts'/'diagnose.py'), 'native-cpu', str(child.pid), str(args.sample),
-                 *([] if args.sample_all else ['--tid', str(initial['tid'])]),
-                 '--scan-every', '50' if args.sample_all else '1000', '--stack-depth', '16' if args.sample_all else '24',
-                 '--stack-every', '1', '--interval-ms', '7', '--stack-limit', '2000', '--raw-limit', '400',
+                 *(['--skip-idle'] if args.sample_all else ['--tid', str(initial['tid'])]),
+                 '--scan-every', '1' if args.sample_all else '1000', '--stack-depth', '16' if args.sample_all else '24',
+                 # All-thread rounds suspend dozens of threads; unwinding each
+                 # one every round would cut the round rate several-fold.
+                 '--stack-every', '10' if args.sample_all else '1',
+                 '--interval-ms', '2' if args.sample_all else '7', '--stack-limit', '2000', '--raw-limit', '400',
                  '--symbol-path', str(exe.parent), '--stack-library', str(stack_library)],
                 stdout=Path(f'{prefix}-samples.json').open('wb'), stderr=Path(f'{prefix}-sampler.err').open('wb'),
                 creationflags=subprocess.CREATE_NO_WINDOW)
