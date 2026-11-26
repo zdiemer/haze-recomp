@@ -684,6 +684,14 @@ if(PORT_ENABLE_SPU AND PS3RECOMP_NATIVE_FLOAT_RUNTIME AND WIN32
         spu_run_with_halt=haze_sdk_spu_run_with_halt)
 endif()
 
+# More reusable SPU jobs are in flight than the SDK's 32 retained workers; the
+# overflow started ~850 one-shot threads/s on the carrier deck (#36).
+if(PORT_ENABLE_SPU AND WIN32)
+    set_property(SOURCE "${PS3RECOMP_DIR}/runtime/spu/spu_workload.c"
+        TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY COMPILE_DEFINITIONS
+        SPU_IDLE_WORKER_SLOTS=128)
+endif()
+
 # LLVM 24's Wasm SIMD selector crashes when vectorizing this image's packed
 # unsigned-to-float conversion (WebAssemblyISD::CONVERT_LOW_U). Preserve its
 # scalar arithmetic until the compiler issue is resolved; other images retain SIMD.
