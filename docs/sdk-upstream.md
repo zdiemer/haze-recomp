@@ -29,10 +29,29 @@ Deferred:
 | `6bea2d59`, `81344af1`, `4609b3f0` | SPU channel wake/event-status atomicity and Win64 halt longjmp. They touch `spu_channels.c`, which the port hash-guards; re-audit the port extensions first. |
 | `ff7c9eef`, `e2589800` | Atomic taskset bit updates; they intersect Haze's SPURS task ownership in `spu_workload.c` (also guarded). |
 | `fcfc3054`, `fb7da2bf` and related | SPURS per-worker wakes need upstream's persistent coordinator scheduler (the deferred `dbff6e0` lineage). |
-| `dc37f00b`, `9a3fbffd`, `61978373`, `f453a07f` | lwmutex atomics and handoff. Measure whether Haze is lwmutex-bound first; handoff can create convoys. |
+| `61978373`, `f453a07f` | lwmutex handoff. Handoff can create convoys; the atomic lock word below removed the measured cost without it. |
 | `9efa74be`, `9d6f012a` | Host-boot time base and real-clock flip timestamps; the latter must route through Haze's benchmark clock. |
 | `2e028084`, `3b27abdb`, `62dce119`, `07f1aed3` | Adapter selection (renderer is hash-guarded), walker getenv caching, directory-open retries and free-space overflow: low risk, left for a later pass. |
 | Fragment-program semantics, FIFO walker rework, cellAudio, SDL2 pad, Vulkan/Metal, lifter-only changes | Would invalidate validated shader bundles, overlap Haze's own implementations, or matter only for a re-lift. |
+
+### lwmutex follow-up
+
+On the carrier-deck benchmark the producer spent about 4% of its samples in
+`WaitForSingleObject`/`ReleaseSemaphore` under guest `0x911370`/`0x911330`:
+every uncontended `sys_lwmutex_trylock`/`_unlock` made a kernel call. Imported
+with `git cherry-pick -x` (zdiemer/ps3recomp#21):
+
+| Upstream | Reason |
+| --- | --- |
+| `dc37f00b` | Lock word per slot (0 free, 1 held, 2 waited on); the semaphore only wakes a waiter. The fork keeps the table Windows-only. |
+| `9a3fbffd` | `ps3_hle_register_fast`: lock and unlock skip the dispatcher's bookkeeping. The fork also registers trylock, its hot call, and builds the fast forms on Windows only. |
+| `aca2b25c` | A contended trylock returns `CELL_EBUSY`, as lv2 does, not `CELL_ETIMEDOUT`. Its test builds the Windows path on every host. |
+
+Deferred: `640738e4`'s restored recursive attribute (`#621`), an unrelated
+behavior change.
+
+Measured against main `e963658`, 4 ABBA pairs each: deck −0.13 ms (−0.95%,
+−1.10% draw-adjusted, 4/4 pairs), mine +0.11% (pacer-limited, neutral).
 
 ## October 2026 review
 
