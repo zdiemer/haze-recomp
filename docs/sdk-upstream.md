@@ -39,7 +39,8 @@ Deferred:
 On the carrier-deck benchmark the producer spent about 4% of its samples in
 `WaitForSingleObject`/`ReleaseSemaphore` under guest `0x911370`/`0x911330`:
 every uncontended `sys_lwmutex_trylock`/`_unlock` made a kernel call. Imported
-with `git cherry-pick -x` (zdiemer/ps3recomp#21):
+with `git cherry-pick -x` (zdiemer/ps3recomp#21; #22 moves the
+lwcond test to the lock word):
 
 | Upstream | Reason |
 | --- | --- |
