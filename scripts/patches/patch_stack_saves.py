@@ -27,6 +27,14 @@ of r14-r31 is dropped only when all of the following hold:
 
 Ordinary calls cannot read a caller's save area under the PPC64 ABI, and the
 game has no unwinder that walks saved registers.
+
+A save the function reloads itself is promoted to a host local instead: an
+entry-block save of r14-r31 or f14-f31 below the entry stack pointer, or of the
+link register (`mflr r0`) to its ABI slot at entry +0x10. With the stack depth
+of every line known from the gotos, the slot must be written only by the save
+and read only as whole 64-bit reloads, which then read the local. The frame
+rules above apply too. A guest back-chain walk no longer sees these slots, so
+return addresses it reports (PPU_NULL_READ_STACK) can be stale.
 """
 import re
 
@@ -47,6 +55,9 @@ TAIL = re.compile(r'g_trampoline_fn = \(void\(\*\)\(void\*\)\)(func_[0-9A-F]+);'
 SNAPSHOT = re.compile(r'^\s*uint64_t _cs_(\d+) = ctx->gpr\[\1\];$')
 MEMORY_SNAPSHOT = re.compile(r'^\s*uint64_t _cs_\d+ = vm_read64\(')
 RESTORE = re.compile(r'ctx->gpr\[(\d+)\] = _cs_\1;')
+FPR_SAVE = re.compile(r'^\s*\{ uint64_t tmp; memcpy\(&tmp, &ctx->fpr\[(\d+)\], 8\); vm_write64\(' + SP +
+                      r' \+ (' + NUM + r'), tmp\); \}$')
+FPR_DEFINE = re.compile(r'ctx->fpr\[(\d+)\]\s*=(?!=)|memcpy\(&ctx->fpr\[(\d+)\]')
 DEFINE = re.compile(r'ctx->gpr\[(\d+)\]\s*(?:[-+|&^]|<<|>>)?=(?!=)')
 # A label, branch, call or return ends the entry block.
 ENTRY_END = re.compile(r'^\s*\w+:$|\bgoto\b|\bif \(|\breturn\b|\bswitch\b|ctx->lr = |DRAIN_TRAMPOLINE|g_trampoline_fn')
@@ -54,6 +65,8 @@ ENTRY_END = re.compile(r'^\s*\w+:$|\bgoto\b|\bif \(|\breturn\b|\bswitch\b|ctx->l
 
 class Frame:
     def __init__(self, body):
+        self.body = body
+        self.entry_saves = []
         self.reads = []
         self.writes = {}
         self.saves = []
@@ -66,9 +79,22 @@ class Frame:
         assignments = []
         entry = True
         defined = set()
+        fpr_defined = set()
+        lr_in_r0 = False
         for index, line in enumerate(body):
             if entry and ENTRY_END.search(line):
                 entry = False
+            if entry:
+                fpr_save = FPR_SAVE.match(line)
+                if fpr_save and 14 <= int(fpr_save.group(1)) <= 31 and \
+                        int(fpr_save.group(1)) not in fpr_defined:
+                    self.entry_saves.append((index, int(fpr_save.group(2), 0), 'fpr'))
+                fpr_defined.update(int(a or b) for a, b in FPR_DEFINE.findall(line))
+            # mflr r0 in the entry block; the LR save stores r0 until it changes.
+            if line.strip() == 'ctx->gpr[0] = ctx->lr;':
+                lr_in_r0 = entry
+            elif '0' in DEFINE.findall(line):
+                lr_in_r0 = False
             snapshot = SNAPSHOT.match(line)
             if snapshot:
                 self.snapshots.add(int(snapshot.group(1)))
@@ -98,6 +124,10 @@ class Frame:
             # a stack argument, which the callee reads (varargs formatters do).
             if save and entry and int(save.group(2)) not in defined:
                 self.saves.append((index, int(save.group(1), 0), int(save.group(2))))
+                if 14 <= int(save.group(2)) <= 31:
+                    self.entry_saves.append((index, int(save.group(1), 0), 'gpr'))
+            elif save and entry and save.group(2) == '0' and lr_in_r0:
+                self.entry_saves.append((index, int(save.group(1), 0), 'lr'))
             for access in ACCESS.finditer(rest):
                 offset, width = int(access.group(3), 0), int(access.group(2)) // 8
                 if access.group(1) == 'read':
@@ -140,6 +170,57 @@ class Frame:
     def _write(self, offset, width):
         self.writes[offset] = self.writes.get(offset, 0) + 1
 
+    def promotable(self, unsafe_tails):
+        """Return (save, reload lines, depths) for saves read only as whole reloads.
+
+        The slot's address is fixed relative to the entry stack pointer, so with
+        the stack depth of every line known, each access to it is found exactly.
+        A slot written only by its save and read only as a whole is a host local.
+        """
+        if self.opaque or self.derived_load or self.tails & unsafe_tails or \
+                len(self.sizes) != 1:
+            return []
+        size = next(iter(self.sizes))
+        depth = line_depths(self.body, size)
+        if depth is None:
+            return []
+        writes, reads = [], []
+        for index, line in enumerate(self.body):
+            if 'ctx->gpr[1]' not in line:
+                continue
+            if depth[index] is None:
+                return []
+            base = depth[index]
+            for stdu in STDU.finditer(line):
+                writes.append((index, base + int(stdu.group(1), 0), 8))
+            rest = STDU.sub('', line)
+            for access in ACCESS.finditer(rest):
+                entry = (index, base + int(access.group(3), 0), int(access.group(2)) // 8)
+                (reads if access.group(1) == 'read' else writes).append(entry)
+        found = []
+        for save in self.entry_saves:
+            index, offset, kind = save
+            slot = depth[index] + offset
+            if kind == 'lr' and slot != 16 or kind != 'lr' and not -0x200 <= slot < 0:
+                continue
+            if any(start < slot + 8 and start + width > slot and at != index
+                   for at, start, width in writes):
+                continue
+            touching = [(at, start, width) for at, start, width in reads
+                        if start < slot + 8 and start + width > slot]
+            if not touching or any(start != slot or width != 8 for _, start, width in touching):
+                continue
+            lines = []
+            for at, _, _ in touching:
+                text = self.body[at]
+                load = f'vm_read64(ctx->gpr[1] + {fmt(slot - depth[at])})'
+                if text.count('ctx->gpr[1]') != 1 or load not in text:
+                    break
+                lines.append(at)
+            else:
+                found.append((save, lines, depth))
+        return found
+
     def elidable(self, unsafe_tails):
         if self.opaque or self.derived_load or self.tails & unsafe_tails:
             return []
@@ -155,6 +236,61 @@ class Frame:
                 continue
             lines.append(index)
         return lines
+
+
+LABEL = re.compile(r'^\s*(\w+):$')
+GOTO = re.compile(r'\bgoto (\w+);')
+
+
+def fmt(offset):
+    return f'-0x{-offset:X}' if offset < 0 else f'0x{offset:X}'
+
+
+def line_depths(body, size):
+    """Stack depth below the entry stack pointer at the start of each line.
+
+    Lifted bodies hold one statement per line, with gotos to labels and
+    single-line conditionals. Return None when a line is reached at two depths
+    or the control flow is anything else.
+    """
+    labels = {}
+    for index, line in enumerate(body):
+        label = LABEL.match(line)
+        if label:
+            labels[label.group(1)] = index
+        if line.rstrip().endswith('{') or line.strip() == '}':
+            return None
+    depth = [None] * len(body)
+    depth[0] = 0
+    work = [0]
+    while work:
+        index = work.pop()
+        line = body[index].strip()
+        after = depth[index]
+        conditional = line.startswith('if ')
+        push, pop = STDU.search(line), FRAME_POP.search(line)
+        if (push or pop) and conditional or \
+                '1' in DEFINE.findall(line) and not (push or pop):
+            return None
+        if push:
+            after -= size
+        if pop:
+            after += size
+        successors = []
+        for target in GOTO.findall(line):
+            if target not in labels:
+                return None
+            successors.append(labels[target])
+        terminal = not conditional and (line.startswith('goto ') or 'return;' in line)
+        if not terminal and index + 1 < len(body):
+            successors.append(index + 1)
+        for successor in successors:
+            if depth[successor] is None:
+                depth[successor] = after
+                work.append(successor)
+            elif depth[successor] != after:
+                return None
+    return depth
 
 
 def functions(lines):
@@ -210,5 +346,25 @@ def patch_modules(sources, poison=False):
                 lines[start + index] = f'{indent}vm_write64(ctx->gpr[1] + {offset}, 0x{POISON:X}ull);'
             else:
                 lines[start + index] = indent + '/* callee save elided */;'
+            dropped += 1
+        # A save reloaded only as a whole becomes a host local at both ends. The
+        # entry block precedes every label and goto, so no jump skips the
+        # declaration.
+        for number, ((index, offset, kind), reads, depth) in enumerate(frame.promotable(unsafe)):
+            line = lines[start + index]
+            indent = line[:len(line) - len(line.lstrip())]
+            local = f'_ss_{number}'
+            if kind == 'fpr':
+                register = FPR_SAVE.match(line).group(1)
+                saved = f'uint64_t {local}; memcpy(&{local}, &ctx->fpr[{register}], 8);'
+            else:
+                saved = f'uint64_t {local} = ctx->gpr[{SAVE.match(line).group(2)}];'
+            if poison:
+                saved += f' vm_write64(ctx->gpr[1] + {fmt(offset)}, 0x{POISON:X}ull);'
+            lines[start + index] = indent + saved
+            slot = depth[index] + offset
+            for at in reads:
+                load = f'vm_read64(ctx->gpr[1] + {fmt(slot - depth[at])})'
+                lines[start + at] = lines[start + at].replace(load, local)
             dropped += 1
     return {key: '\n'.join(lines) for key, lines in modules.items()}, dropped
