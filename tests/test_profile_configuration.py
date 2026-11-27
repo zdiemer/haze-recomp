@@ -56,7 +56,7 @@ class ProfileConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'job trace compile gate'):
             check_rules(ninja, False, True)
 
-    def test_hot_modules_inline_reads_in_ordinary_builds(self):
+    def test_hot_modules_inline_memory_in_ordinary_builds(self):
         def inline_ninja(inlined):
             blocks = synthetic_ninja(False, False).split('\n\n')
             blocks += [rule('HazeRecomp', source) for source in
@@ -64,7 +64,7 @@ class ProfileConfigurationTests(unittest.TestCase):
                         'ppu_recomp_004.cpp', 'ppu_recomp_005.cpp', 'ppu_recomp_006.cpp',
                         'ppu_hle_nids.cpp')]
             return '\n\n'.join(
-                block + '\n  FLAGS = /FIport/haze_ppu_inline_reads.h' + PGO
+                block + '\n  FLAGS = /FIport/haze_ppu_inline_memory.h' + PGO
                 if any(f'{source}.obj:' in block.splitlines()[0] for source in inlined)
                 else block + ('\n  FLAGS =' + PGO if LIFTED.search(block.splitlines()[0]) else
                               '\n  FLAGS =' + SPU_PGO if SPU_IMAGE.search(block.splitlines()[0]) else '')
@@ -86,7 +86,7 @@ class ProfileConfigurationTests(unittest.TestCase):
             out = []
             for block in blocks:
                 first = block.splitlines()[0]
-                flags = '/FIport/haze_ppu_inline_reads.h' if re.search(r'ppu_recomp_00[35]', first) else ''
+                flags = '/FIport/haze_ppu_inline_memory.h' if re.search(r'ppu_recomp_00[35]', first) else ''
                 if LIFTED.search(first) and not (skip and skip in first):
                     flags += PGO
                 if SPU_IMAGE.search(first) and not (skip and skip in first):

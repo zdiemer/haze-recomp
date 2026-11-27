@@ -22,7 +22,7 @@ FIXTURE = r'''
 static uint8_t storage[0x11000];
 uint8_t* vm_base = storage;
 unsigned char spu_coh_reservation_bitmap[SPU_COH_BITMAP_SIZE];
-uint32_t spu_coh_reservations_armed;
+unsigned char spu_coh_page_marked[1u << (32u - SPU_COH_PAGE_SHIFT)];
 static int abi_calls, locks, notifications, lock_held;
 static uint32_t notified_address;
 extern "C" int spu_coh_is_reserved(uint32_t a) {
@@ -45,9 +45,10 @@ int main(int argc, char** argv) {
     assert(ppu_native_reads_inline_enabled==0);
     vm_base=storage;
     const uint64_t raw=0xEFCDAB8967452301ULL;
-    // Exercise unarmed, armed/unreserved, then reserved paths, and each width.
+    // Exercise an unmarked page, a marked page's unreserved line, then the
+    // reserved line, and each width.
     for (unsigned state=0; state<3; ++state) {
-        spu_coh_atomic_store_u32(&spu_coh_reservations_armed, state!=0);
+        spu_coh_atomic_store_u8(&spu_coh_page_marked[0x10080u >> SPU_COH_PAGE_SHIFT], state!=0);
         spu_coh_atomic_store_u8(&spu_coh_reservation_bitmap[0x10080u >> 10],
             state==2 ? (1u << ((0x10080u >> 7) & 7u)) : 0u);
         for (unsigned width : {1u,2u,4u,8u}) {
