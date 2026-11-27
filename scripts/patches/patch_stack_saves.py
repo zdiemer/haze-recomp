@@ -28,13 +28,23 @@ of r14-r31 is dropped only when all of the following hold:
 Ordinary calls cannot read a caller's save area under the PPC64 ABI, and the
 game has no unwinder that walks saved registers.
 
+Where the gotos allow it, a forward pass places every access exactly instead:
+it tracks the stack depth of each line and which registers hold the stack
+pointer plus a known offset (`addi r11,r1,K`, the back chain this frame pushed,
+`mr`) or a constant (`li r0,K` indexing the vector save area). Loads through
+those registers are then ordinary frame accesses, and the derived-register
+rule above applies only to stack addresses the pass cannot place. Calls
+clobber the volatile registers; a stack address loaded from memory is assumed
+not to reach the save area, as epilogues restore through r1, the back chain or
+an `addi` from r1.
+
 A save the function reloads itself is promoted to a host local instead: an
 entry-block save of r14-r31 or f14-f31 below the entry stack pointer, or of the
-link register (`mflr r0`) to its ABI slot at entry +0x10. With the stack depth
-of every line known from the gotos, the slot must be written only by the save
-and read only as whole 64-bit reloads, which then read the local. The frame
-rules above apply too. A guest back-chain walk no longer sees these slots, so
-return addresses it reports (PPU_NULL_READ_STACK) can be stale.
+link register (`mflr r0`) to its ABI slot at entry +0x10. With every access
+placed, the slot must be written only by the save and read only as whole
+64-bit reloads, which then read the local. The frame and tail-branch rules
+above apply too. A guest back-chain walk no longer sees these slots, so return
+addresses it reports (PPU_NULL_READ_STACK) can be stale.
 """
 import re
 
@@ -75,6 +85,7 @@ class Frame:
         self.opaque = False
         self.snapshots = set()
         self.restores = set()
+        self.indexed_vector = False
         derived = set()
         assignments = []
         entry = True
@@ -135,6 +146,11 @@ class Frame:
                 else:
                     self._write(offset, width)
             rest = ACCESS.sub('', rest)
+            # A vector access at the stack pointer plus an index register (the
+            # vector-register save area) needs the index's value: layout().
+            if STACK_VECTOR.search(rest):
+                self.indexed_vector = True
+                rest = STACK_VECTOR.sub('', rest)
             # A register computed from the stack pointer, or loaded from the
             # back chain at offset 0, can address this frame or the caller's.
             if assignment and assignment.group(1) != '1' and \
@@ -154,8 +170,10 @@ class Frame:
                         any(int(r) in derived for r in GPR.findall(value)):
                     derived.add(target)
                     changed = True
-        self.derived_load = False
-        if derived:
+        # The frame may be read through a register whose stack offset only the
+        # flow-sensitive layout() knows.
+        self.derived_load = self.indexed_vector
+        if derived and not self.derived_load:
             for line in body:
                 bases = {int(r) for r in LOAD64.findall(line)}
                 if bases & derived or ('vm_base' in line and
@@ -177,26 +195,10 @@ class Frame:
         the stack depth of every line known, each access to it is found exactly.
         A slot written only by its save and read only as a whole is a host local.
         """
-        if self.opaque or self.derived_load or self.tails & unsafe_tails or \
-                len(self.sizes) != 1:
+        frame = self._layout(unsafe_tails)
+        if frame is None:
             return []
-        size = next(iter(self.sizes))
-        depth = line_depths(self.body, size)
-        if depth is None:
-            return []
-        writes, reads = [], []
-        for index, line in enumerate(self.body):
-            if 'ctx->gpr[1]' not in line:
-                continue
-            if depth[index] is None:
-                return []
-            base = depth[index]
-            for stdu in STDU.finditer(line):
-                writes.append((index, base + int(stdu.group(1), 0), 8))
-            rest = STDU.sub('', line)
-            for access in ACCESS.finditer(rest):
-                entry = (index, base + int(access.group(3), 0), int(access.group(2)) // 8)
-                (reads if access.group(1) == 'read' else writes).append(entry)
+        depth, reads, writes = frame
         found = []
         for save in self.entry_saves:
             index, offset, kind = save
@@ -204,24 +206,37 @@ class Frame:
             if kind == 'lr' and slot != 16 or kind != 'lr' and not -0x200 <= slot < 0:
                 continue
             if any(start < slot + 8 and start + width > slot and at != index
-                   for at, start, width in writes):
+                   for at, start, width, _ in writes):
                 continue
-            touching = [(at, start, width) for at, start, width in reads
-                        if start < slot + 8 and start + width > slot]
-            if not touching or any(start != slot or width != 8 for _, start, width in touching):
+            touching = [read for read in reads if read[1] < slot + 8 and read[1] + read[2] > slot]
+            if not touching or any(start != slot or width != 8 for _, start, width, _ in touching):
                 continue
+            # Each reload is the line's only memory access, so replacing its text
+            # replaces exactly that load.
             lines = []
-            for at, _, _ in touching:
+            for at, _, _, load in touching:
                 text = self.body[at]
-                load = f'vm_read64(ctx->gpr[1] + {fmt(slot - depth[at])})'
-                if text.count('ctx->gpr[1]') != 1 or load not in text:
+                if len(MEMORY.findall(text)) != 1 or text.count(load) != 1:
                     break
-                lines.append(at)
+                lines.append((at, load))
             else:
-                found.append((save, lines, depth))
+                found.append((save, lines))
         return found
 
+    def _layout(self, unsafe_tails):
+        if self.opaque or self.tails & unsafe_tails or len(self.sizes) != 1 or \
+                not (self.saves or self.entry_saves):
+            return None
+        if not hasattr(self, 'placed'):
+            self.placed = layout(self.body, next(iter(self.sizes)))
+        return self.placed
+
     def elidable(self, unsafe_tails):
+        frame = self._layout(unsafe_tails)
+        if frame is not None:
+            return self._elidable_exact(frame)
+        # Without a layout, offsets are only known relative to the stack
+        # pointer at one of its two depths.
         if self.opaque or self.derived_load or self.tails & unsafe_tails:
             return []
         size = next(iter(self.sizes), 0)
@@ -237,21 +252,193 @@ class Frame:
             lines.append(index)
         return lines
 
+    def _elidable_exact(self, frame):
+        """Saves no access reaches, with every frame address placed by layout()."""
+        depth, reads, writes = frame
+        lines = []
+        for index, offset, register in self.saves:
+            if not 14 <= register <= 31 or register not in self.snapshots \
+                    or register not in self.restores:
+                continue
+            slot = depth[index] + offset
+            if not -0x200 <= slot < 0 or \
+                    any(at != index and start < slot + 8 and start + width > slot
+                        for at, start, width, _ in writes) or \
+                    any(start < slot + 8 and start + width > slot for _, start, width, _ in reads):
+                continue
+            lines.append(index)
+        return lines
+
 
 LABEL = re.compile(r'^\s*(\w+):$')
 GOTO = re.compile(r'\bgoto (\w+);')
+BASE_ACCESS = re.compile(r'vm_(read|write)(8|16|32|64)\(ctx->gpr\[(\d+)\]\s*\+\s*(' + NUM + r')\s*([,)])')
+VECTOR = re.compile(r'^\s*\{ uint64_t ea = \((.+?)\) & ~0xFULL; memcpy\((&ctx->vr\[\d+\]|vm_base \+ \(uint32_t\)ea), '
+                    r'(?:&ctx->vr\[\d+\]|vm_base \+ \(uint32_t\)ea), 16\); \}$')
+INDEX = re.compile(r'\(?ctx->gpr\[(\d+)\](?: \+ ctx->gpr\[(\d+)\])?\)?')
+STACK_VECTOR = re.compile(r'\(\((?:' + SP + r' \+ ctx->gpr\[\d+\]|ctx->gpr\[\d+\] \+ ' + SP + r')\)\)(?= & ~0xFULL; memcpy)')
+LOAD = re.compile(r'vm_read(?:8|16|32|64)\([^()]*\)')
+MEMORY = re.compile(r'vm_(?:read|write)(?:8|16|32|64)\(|vm_base')
+REGISTER_COPY = re.compile(r'^ctx->gpr\[(\d+)\] \| ctx->gpr\[\1\]$')
+ADD_CONSTANT = re.compile(r'^ctx->gpr\[(\d+)\] \+ \(int64_t\)\((' + NUM + r')\)$')
+ADD_REGISTER = re.compile(r'^ctx->gpr\[(\d+)\] \+ ctx->gpr\[(\d+)\]$')
+CONSTANT = re.compile(r'^(?:\(int64_t\)\(int32_t\)\((' + NUM + r')\)|(' + NUM + r')ULL)$')
+BACK_CHAIN_LOAD = re.compile(r'^vm_read64\(ctx->gpr\[(\d+)\] \+ (' + NUM + r')\)$')
+CALL = re.compile(r'ctx->lr = 0x|lv2_syscall\(ctx\)|ps3_hle_call')
+VOLATILE = (0,) + tuple(range(3, 13))
+UNKNOWN = ('u',)
 
 
 def fmt(offset):
     return f'-0x{-offset:X}' if offset < 0 else f'0x{offset:X}'
 
 
-def line_depths(body, size):
-    """Stack depth below the entry stack pointer at the start of each line.
+# Register values for layout(): ('s', offset) is the entry stack pointer plus
+# offset, ('c', value) a constant, UNKNOWN may address the stack, and a
+# register without an entry holds no stack address.
+def _stacky(value):
+    return value is not None and value[0] != 'c'
+
+
+def _add(a, b):
+    if a is None or b is None:
+        return UNKNOWN if _stacky(a) or _stacky(b) else None
+    if a[0] == 'c' and b[0] == 'c':
+        return ('c', a[1] + b[1])
+    if a[0] == 'c' and b[0] == 's' or a[0] == 's' and b[0] == 'c':
+        return ('s', a[1] + b[1])
+    return UNKNOWN
+
+
+def _join(a, b):
+    if a[0] != b[0]:
+        return None
+    regs = {}
+    for register in a[1].keys() | b[1].keys():
+        x, y = a[1].get(register), b[1].get(register)
+        if x == y:
+            regs[register] = x
+        elif _stacky(x) or _stacky(y):
+            regs[register] = UNKNOWN
+    return a[0], regs
+
+
+def _step(line, state, size):
+    """Return the state after one line and the frame accesses it makes.
+
+    None means the line reads the stack through an address it cannot place.
+    """
+    depth, regs = state
+
+    def value(register):
+        return ('s', depth) if register == 1 else regs.get(register)
+
+    def mentions_stack(text):
+        return any(_stacky(value(int(r))) for r in GPR.findall(text))
+
+    accesses = []
+    rest = line
+    for access in BASE_ACCESS.finditer(line):
+        address = _add(value(int(access.group(3))), ('c', int(access.group(4), 0)))
+        width = int(access.group(2)) // 8
+        if address == UNKNOWN and access.group(1) == 'read' and width == 8:
+            return None
+        if address is not None and address[0] == 's':
+            accesses.append((access.group(1), address[1], width, access.group(0)))
+    rest = BASE_ACCESS.sub('', rest)
+    vector = VECTOR.match(line)
+    if vector:
+        index = INDEX.fullmatch(vector.group(1))
+        if not index:
+            return None
+        address = value(int(index.group(1)))
+        if index.group(2):
+            address = _add(address, value(int(index.group(2))))
+        kind = 'read' if vector.group(2).startswith('&') else 'write'
+        if address == UNKNOWN and kind == 'read':
+            return None
+        if address is not None and address[0] == 's':
+            if size % 16:
+                return None
+            accesses.append((kind, address[1] & ~15, 16, None))
+        rest = ''
+    # Any other 64-bit or vector load through a stack address.
+    if ('vm_read64(' in rest or 'vm_base' in rest) and mentions_stack(rest):
+        return None
+
+    regs = dict(regs)
+    stripped = line.strip()
+    assignment = DERIVE.match(line)
+    defined = [int(r) for r in DEFINE.findall(line)]
+    if STDU.search(line):
+        depth -= size
+    elif FRAME_POP.search(line):
+        depth += size
+    elif REGISTER_POP.search(line):
+        source = value(int(REGISTER_POP.search(line).group(1)))
+        if source is None or source[0] != 's':
+            return None
+        depth = source[1]
+    elif 1 in defined:
+        return None
+    if assignment and assignment.group(1) != '1':
+        target, expr = int(assignment.group(1)), assignment.group(2)
+        new = None
+        if ADD_CONSTANT.match(expr):
+            m = ADD_CONSTANT.match(expr)
+            new = _add(value(int(m.group(1))), ('c', int(m.group(2), 0)))
+        elif ADD_REGISTER.match(expr):
+            m = ADD_REGISTER.match(expr)
+            new = _add(value(int(m.group(1))), value(int(m.group(2))))
+        elif REGISTER_COPY.match(expr):
+            new = value(int(REGISTER_COPY.match(expr).group(1)))
+        elif CONSTANT.match(expr):
+            m = CONSTANT.match(expr)
+            new = ('c', int(m.group(1) or m.group(2), 0))
+        elif BACK_CHAIN_LOAD.match(expr):
+            m = BACK_CHAIN_LOAD.match(expr)
+            # The back chain this frame pushed holds the entry stack pointer; the
+            # one at the stack pointer before the push holds a caller's.
+            address = _add(value(int(m.group(1))), ('c', int(m.group(2), 0)))
+            if address == ('s', -size):
+                new = ('s', 0)
+            elif address == UNKNOWN or address == ('s', depth):
+                new = UNKNOWN
+        elif mentions_stack(LOAD.sub('', expr)):
+            new = UNKNOWN
+        defined = [r for r in defined if r != target]
+        if new is None:
+            regs.pop(target, None)
+        else:
+            regs[target] = new
+    other = UNKNOWN if mentions_stack(LOAD.sub('', line)) else None
+    for register in defined:
+        if register != 1:
+            if other is None:
+                regs.pop(register, None)
+            else:
+                regs[register] = other
+    if CALL.search(line):
+        for register in VOLATILE:
+            regs.pop(register, None)
+    after = (depth, regs)
+    if stripped.startswith('if '):
+        if after[0] != state[0]:
+            return None
+        after = _join(state, after)
+    return after, accesses
+
+
+def layout(body, size):
+    """Place every access to this frame relative to the entry stack pointer.
 
     Lifted bodies hold one statement per line, with gotos to labels and
-    single-line conditionals. Return None when a line is reached at two depths
-    or the control flow is anything else.
+    single-line conditionals. A forward pass over that control flow tracks the
+    stack depth and which registers hold a known stack address or constant;
+    calls clobber the volatile ones. Return (depth per line, reads, writes),
+    each access (line, entry offset, width, load text), or None when a line is
+    reached at two depths, a 64-bit or vector load uses a stack address that
+    cannot be placed, or the control flow is anything else.
     """
     labels = {}
     for index, line in enumerate(body):
@@ -260,22 +447,17 @@ def line_depths(body, size):
             labels[label.group(1)] = index
         if line.rstrip().endswith('{') or line.strip() == '}':
             return None
-    depth = [None] * len(body)
-    depth[0] = 0
+    states = [None] * len(body)
+    states[0] = (0, {})
     work = [0]
     while work:
         index = work.pop()
         line = body[index].strip()
-        after = depth[index]
-        conditional = line.startswith('if ')
-        push, pop = STDU.search(line), FRAME_POP.search(line)
-        if (push or pop) and conditional or \
-                '1' in DEFINE.findall(line) and not (push or pop):
+        stepped = _step(line, states[index], size)
+        if stepped is None:
             return None
-        if push:
-            after -= size
-        if pop:
-            after += size
+        after = stepped[0]
+        conditional = line.startswith('if ')
         successors = []
         for target in GOTO.findall(line):
             if target not in labels:
@@ -285,12 +467,29 @@ def line_depths(body, size):
         if not terminal and index + 1 < len(body):
             successors.append(index + 1)
         for successor in successors:
-            if depth[successor] is None:
-                depth[successor] = after
+            if states[successor] is None:
+                states[successor] = after
                 work.append(successor)
-            elif depth[successor] != after:
+            else:
+                joined = _join(states[successor], after)
+                if joined is None:
+                    return None
+                if joined != states[successor]:
+                    states[successor] = joined
+                    work.append(successor)
+    depth = [None if state is None else state[0] for state in states]
+    reads, writes = [], []
+    for index, line in enumerate(body):
+        if states[index] is None:
+            if 'ctx->gpr[1]' in line:
                 return None
-    return depth
+            continue
+        stepped = _step(line.strip(), states[index], size)
+        if stepped is None:
+            return None
+        for kind, start, width, text in stepped[1]:
+            (reads if kind == 'read' else writes).append((index, start, width, text))
+    return depth, reads, writes
 
 
 def functions(lines):
@@ -350,7 +549,7 @@ def patch_modules(sources, poison=False):
         # A save reloaded only as a whole becomes a host local at both ends. The
         # entry block precedes every label and goto, so no jump skips the
         # declaration.
-        for number, ((index, offset, kind), reads, depth) in enumerate(frame.promotable(unsafe)):
+        for number, ((index, offset, kind), reads) in enumerate(frame.promotable(unsafe)):
             line = lines[start + index]
             indent = line[:len(line) - len(line.lstrip())]
             local = f'_ss_{number}'
@@ -362,9 +561,7 @@ def patch_modules(sources, poison=False):
             if poison:
                 saved += f' vm_write64(ctx->gpr[1] + {fmt(offset)}, 0x{POISON:X}ull);'
             lines[start + index] = indent + saved
-            slot = depth[index] + offset
-            for at in reads:
-                load = f'vm_read64(ctx->gpr[1] + {fmt(slot - depth[at])})'
+            for at, load in reads:
                 lines[start + at] = lines[start + at].replace(load, local)
             dropped += 1
     return {key: '\n'.join(lines) for key, lines in modules.items()}, dropped

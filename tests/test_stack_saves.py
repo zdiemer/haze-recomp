@@ -70,11 +70,16 @@ class StackSaves(unittest.TestCase):
         self.assertEqual(dropped, 0)
 
     def test_keeps_slot_read_at_any_frame_depth(self):
+        # A branch out of the function leaves depths unknown, so a read at
+        # either stack depth may be the slot.
+        exit = 'if (((ctx->cr >> 0) & 2)) goto loc_00019999;'
         for read in ('ctx->gpr[4] = vm_read32(ctx->gpr[1] + 0x7C);',
                      'ctx->gpr[4] = vm_read64(ctx->gpr[1] + -0x8);',
                      'ctx->gpr[4] = vm_read64(ctx->gpr[1] + 0xF8);'):
             with self.subTest(read=read):
-                self.assertKept(function('func_00010000', *prologue(read)))
+                self.assertKept(function('func_00010000', *prologue(exit, read)))
+        text, dropped = run(function('func_00010000', *prologue(exit)))
+        self.assertEqual(dropped, 1, text)
 
     def test_keeps_stack_argument_store(self):
         # Passing r31 as the ninth argument of a varargs call looks like a save
@@ -93,16 +98,53 @@ class StackSaves(unittest.TestCase):
         self.assertKept(function('func_00010000', *prologue(
             'vm_write64(ctx->gpr[1] + 0x78, ctx->gpr[5]);')))
 
-    def test_keeps_frame_reached_through_derived_register(self):
+    def test_keeps_slot_read_through_derived_register(self):
+        call = 'ctx->lr = 0x00010010; func_00020000(ctx); DRAIN_TRAMPOLINE(ctx);'
         for middle in (('ctx->gpr[11] = vm_read64(ctx->gpr[1] + 0x0);',
-                        'ctx->gpr[30] = vm_read64(ctx->gpr[11] + -0x10);'),
+                        'ctx->gpr[4] = vm_read32(ctx->gpr[11] + -0x4);'),
                        ('ctx->gpr[12] = ctx->gpr[1] | ctx->gpr[1];',
                         'ctx->gpr[9] = ctx->gpr[12] + (int64_t)(0x8);',
-                        'ctx->gpr[30] = vm_read64(ctx->gpr[9] + 0x70);'),
-                       ('ctx->gpr[9] = ctx->gpr[1] + (int64_t)(0x60);',
-                        '{ uint64_t ea = (ctx->gpr[9]) & ~0xFULL; memcpy(&ctx->vr[31], vm_base + (uint32_t)ea, 16); }')):
+                        'ctx->gpr[4] = vm_read8(ctx->gpr[9] + 0x77);'),
+                       ('ctx->gpr[9] = ctx->gpr[1] + (int64_t)(0x70);',
+                        '{ uint64_t ea = (ctx->gpr[9]) & ~0xFULL; memcpy(&ctx->vr[31], vm_base + (uint32_t)ea, 16); }'),
+                       # A callee-saved register keeps its stack address across a call.
+                       ('ctx->gpr[29] = ctx->gpr[1] + (int64_t)(0x70);', call,
+                        'ctx->gpr[4] = vm_read32(ctx->gpr[29] + 0xC);'),
+                       # Stack addresses whose offset is unknown.
+                       ('ctx->gpr[9] = ctx->gpr[1] + ctx->gpr[5];',
+                        'ctx->gpr[4] = vm_read64(ctx->gpr[9] + 0x0);'),
+                       ('ctx->gpr[12] = ctx->gpr[1] | ctx->gpr[1];',
+                        'if (((ctx->cr >> 0) & 2)) goto loc_00010040;',
+                        'ctx->gpr[12] = ctx->gpr[1] + (int64_t)(0x40);',
+                        'loc_00010040:',
+                        'ctx->gpr[4] = vm_read64(ctx->gpr[12] + 0x0);'),
+                       ('{ uint64_t ea = ((ctx->gpr[1] + ctx->gpr[0])) & ~0xFULL; memcpy(&ctx->vr[31], vm_base + (uint32_t)ea, 16); }',),
+                       ('ctx->gpr[9] = ctx->gpr[1] + (int64_t)(0x70);',
+                        'ctx->gpr[4] = vm_read64(ctx->gpr[9] + ctx->gpr[0]);')):
             with self.subTest(middle=middle):
-                self.assertKept(function('func_00010000', *prologue(*middle)))
+                self.assertKept(function('func_00010000', *prologue(*middle)),
+                                function('func_00020000', 'return;', snapshot=False))
+
+    def test_places_frame_addresses_exactly(self):
+        # Reads through derived registers, the back chain and constant vector
+        # indices that miss the save leave it dead.
+        call = 'ctx->lr = 0x00010010; func_00020000(ctx); DRAIN_TRAMPOLINE(ctx);'
+        for middle in (('ctx->gpr[11] = vm_read64(ctx->gpr[1] + 0x0);',
+                        'ctx->gpr[30] = vm_read64(ctx->gpr[11] + -0x10);'),
+                       ('ctx->gpr[9] = ctx->gpr[1] + (int64_t)(0x60);',
+                        '{ uint64_t ea = (ctx->gpr[9]) & ~0xFULL; memcpy(&ctx->vr[31], vm_base + (uint32_t)ea, 16); }',
+                        'ctx->gpr[4] = vm_read64(ctx->gpr[9] + 0x10);'),
+                       ('ctx->gpr[0] = (int64_t)(int32_t)(0x60);',
+                        '{ uint64_t ea = ((ctx->gpr[1] + ctx->gpr[0])) & ~0xFULL; memcpy(vm_base + (uint32_t)ea, &ctx->vr[31], 16); }',
+                        '{ uint64_t ea = ((ctx->gpr[1] + ctx->gpr[0])) & ~0xFULL; memcpy(&ctx->vr[31], vm_base + (uint32_t)ea, 16); }'),
+                       # A volatile register no longer holds the address after a call.
+                       ('ctx->gpr[9] = ctx->gpr[1] + (int64_t)(0x70);', call,
+                        'ctx->gpr[4] = vm_read64(ctx->gpr[9] + 0x8);')):
+            with self.subTest(middle=middle):
+                text, dropped = run(function('func_00010000', *prologue(*middle)),
+                                    function('func_00020000', 'return;', snapshot=False))
+                self.assertEqual(dropped, 1, text)
+                self.assertIn(ELIDED, text)
 
     def test_derived_address_alone_does_not_block(self):
         text, dropped = run(function('func_00010000', *prologue(
@@ -194,6 +236,26 @@ class StackSaves(unittest.TestCase):
         self.assertNotIn('vm_read64', text)
         self.assertNotIn('vm_write64(ctx->gpr[1] + 0x90', text)
 
+    def test_promotes_save_reloaded_through_frame_registers(self):
+        # Back-chain and frame-pointer epilogues, including a pop through r11.
+        stdu = 'vm_write64(ctx->gpr[1] + -0x80, ctx->gpr[1]); ctx->gpr[1] += -0x80;'
+        for epilogue in (('ctx->gpr[11] = vm_read64(ctx->gpr[1] + 0x0);',
+                          'ctx->gpr[31] = vm_read64(ctx->gpr[11] + -0x8);',
+                          'ctx->gpr[1] = ctx->gpr[11] | ctx->gpr[11];'),
+                         ('ctx->gpr[11] = ctx->gpr[1] + (int64_t)(0x80);',
+                          'ctx->gpr[31] = vm_read64(ctx->gpr[11] + -0x8);',
+                          'ctx->gpr[1] = ctx->gpr[11] | ctx->gpr[11];'),
+                         ('ctx->gpr[31] = vm_read64(ctx->gpr[1] + 0x78);',
+                          'ctx->gpr[11] = ctx->gpr[1] + (int64_t)(0x80);',
+                          'ctx->gpr[1] = ctx->gpr[11] | ctx->gpr[11];')):
+            with self.subTest(epilogue=epilogue):
+                text = self.assertPromoted([function('func_00010000', stdu, SAVE.strip(),
+                                                     'ctx->gpr[31] = ctx->gpr[3];', *epilogue,
+                                                     'return;', snapshot=False)], 1,
+                                           '        uint64_t _ss_0 = ctx->gpr[31];',
+                                           '        ctx->gpr[31] = _ss_0;')
+                self.assertNotIn('vm_read64(ctx->gpr[11]', text)
+
     def test_keeps_saves_not_reloaded_exactly(self):
         no_restore = [line for line in prologue() if line != 'ctx->gpr[31] = _cs_31;']
         stdu, save, *rest = no_restore
@@ -203,9 +265,15 @@ class StackSaves(unittest.TestCase):
                      # A label reached at two stack depths.
                      (stdu, save, 'loc_00010008:', reload, *rest[:-1],
                       'if (((ctx->cr >> 0) & 2)) goto loc_00010008;', 'return;'),
-                     # A frame popped through another register leaves depths unknown.
-                     (stdu, save, reload, 'ctx->gpr[11] = ctx->gpr[1] + (int64_t)(0x80);',
+                     # A frame popped through an unknown register leaves depths unknown.
+                     (stdu, save, reload, 'ctx->gpr[11] = vm_read32(ctx->gpr[3] + 0x0);',
                       'ctx->gpr[1] = ctx->gpr[11] | ctx->gpr[11];', 'return;'),
+                     # A reload through a register that is not the frame's.
+                     (stdu, save, 'ctx->gpr[11] = ctx->gpr[1] + (int64_t)(0x70);',
+                      'if (((ctx->cr >> 0) & 2)) goto loc_00010040;',
+                      'ctx->gpr[11] = ctx->gpr[1] + (int64_t)(0x60);',
+                      'loc_00010040:',
+                      'ctx->gpr[31] = vm_read32(ctx->gpr[11] + 0x8);', *rest),
                      # r0 stored outside the link register's slot is an argument.
                      (stdu, 'ctx->gpr[0] = ctx->lr;', 'vm_write64(ctx->gpr[1] + 0x78, ctx->gpr[0]);',
                       'ctx->gpr[0] = vm_read64(ctx->gpr[1] + 0x78);', *rest)):
