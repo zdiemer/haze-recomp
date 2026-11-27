@@ -1,17 +1,14 @@
-"""Compile the real generated-read shim and runtime startup decision.
+"""Compile the real generated-memory shim's reads against the runtime page table.
 
 Original-accessor stubs make fallback observable without touching device or
-unmapped addresses. Runtime diagnostic eligibility is extracted, not copied.
+unmapped addresses. test_vm_plain_pages.py checks how startup fills the table.
 """
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import re
 import subprocess
-
-from test_memory_read_fastpaths import PROBE_ENV_NAMES, extract_section
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,13 +22,17 @@ FIXTURE = r'''
 #include <chrono>
 #define YieldProcessor() std::this_thread::yield()
 #include "ppu_recomp.h"
+#include "spu_coherency.h"
 alignas(64) static uint8_t storage[0x11000];
 extern "C" {
 uint8_t* vm_base = storage;
 uint32_t ppu_vm_size = sizeof(storage);
 uint32_t ppu_hle_inject_base = 0x03000000;
+uint8_t ppu_vm_plain_pages[0x10000];
+unsigned char spu_coh_reservation_bitmap[SPU_COH_BITMAP_SIZE];
+unsigned char spu_coh_page_marked[1u << (32u - SPU_COH_PAGE_SHIFT)];
+uint32_t g_barrier_sync_watch, g_null_sweep_hi;
 }
-@INITIALIZATION@
 static int calls;
 static uint64_t last_address;
 static unsigned last_width;
@@ -50,10 +51,12 @@ FALLBACK(8, uint8_t)
 FALLBACK(16, uint16_t)
 FALLBACK(32, uint32_t)
 FALLBACK(64, uint64_t)
-extern "C" void vm_write32(uint64_t address, uint32_t value) {
-    ++calls; last_address=address; last_width=value;
-}
-#include "haze_ppu_inline_reads.h"
+#define WRITE_FALLBACK(bits, type) extern "C" NOINLINE void vm_write##bits(uint64_t address, type value) {     ++calls; last_address=address; last_width=(unsigned)value; }
+WRITE_FALLBACK(8, uint8_t)
+WRITE_FALLBACK(16, uint16_t)
+WRITE_FALLBACK(32, uint32_t)
+WRITE_FALLBACK(64, uint64_t)
+#include "haze_ppu_inline_memory.h"
 static_assert(sizeof(ppu_inline_read_u16)==2 && alignof(ppu_inline_read_u16)==1);
 static_assert(sizeof(ppu_inline_read_u32)==4 && alignof(ppu_inline_read_u32)==1);
 static_assert(sizeof(ppu_inline_read_u64)==8 && alignof(ppu_inline_read_u64)==1);
@@ -104,79 +107,50 @@ static void direct(unsigned width, uint32_t ea, uint64_t high=0) {
     assert(read_width(width,high|ea)==expected);
     assert(calls==before);
 }
-int main(int argc, char** argv) {
-    assert(argc==2);
-    // No generated caller may inline reads before the runtime's eager init.
-    assert(ppu_native_reads_inline_enabled==0);
-    fallback(4,0x10001);
-    if (!strcmp(argv[1],"null-init")) vm_base=NULL;
-    ppu_native_reads_inline_init();
-    int enabled=!strcmp(argv[1],"enabled");
-    assert(ppu_native_reads_inline_enabled==enabled);
-    vm_base=storage;
+int main() {
+    // No generated caller may inline reads before the runtime fills the table.
+    for (unsigned width: {1u,2u,4u,8u}) fallback(width,0x10001);
+    ppu_vm_plain_pages[1]=1; // the fixture's storage page
     for (unsigned width: {1u,2u,4u,8u}) {
-        if (!enabled) { fallback(width,0x10001); continue; }
         direct(width,0x10000);
         direct(width,0x10001); // unaligned, explicit big-endian oracle
         direct(width,0x10003,0xFEDCBA9800000000ull); // legacy EA truncation
         direct(width,sizeof(storage)-width); // last complete valid value
-        fallback(width,sizeof(storage)-width+1);
-        fallback(width,0xFFFF); // low-address diagnostics even across boundary
-        fallback(width,0xE0000000ull); // Raw SPU/device range
-        fallback(width,0xFFFFFFFFull); // overflow-safe end check
+        fallback(width,0xFFFF); // the null page is never ordinary RAM
+        fallback(width,0x20000); // nor a page the runtime left out
+        fallback(width,0xFFFFFFFFull);
         fallback(width,0xABCDEF00FFFFFFFFull); // full input forwarded
-        ppu_vm_size=0;
-        direct(width,0x10001);
-        // Range predicate tests avoid reserving gigabytes in this fixture.
-        assert(ppu_native_read_inline_range(0xE0000000u-width,width));
-        assert(!ppu_native_read_inline_range(0xE0000000u-width+1,width));
-        fallback(width,0xE0000000u);
-        ppu_vm_size=sizeof(storage);
-        vm_base=NULL;
-        fallback(width,0x10001);
-        vm_base=storage;
     }
-    if (enabled) {
-        ppu_context context={};
-        direct(4,0x10001);
-        assert(inline_context_probe(&context,0x10001)==0x12345678ull+0x818E9BA8ull);
-        assert(context.gpr[7]==0x12345678);
-        fallback_context=&context;
-        assert(inline_context_probe(&context,0xFFFF)==0x87654321ull+0xA5);
-        fallback_context=nullptr;
-        // A publisher changes guest RAM after polling begins. The compiler
-        // must retain the polling load even though no guest fence is present.
-        uint64_t* shared=reinterpret_cast<uint64_t*>(storage+0x10040);
-        for (unsigned width: {1u,2u,4u,8u}) {
-            __atomic_store_n(shared,0ull,__ATOMIC_SEQ_CST);
-            std::thread publisher([shared] {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                __atomic_store_n(shared,0x80ull,__ATOMIC_SEQ_CST);
-            });
-            uint64_t observed=0;
-            switch (width) {
-            case 1: observed=inline_poll8_probe(0x10040); break;
-            case 2: observed=inline_poll16_probe(0x10040); break;
-            case 4: observed=inline_poll_probe(0x10040); break;
-            case 8: observed=inline_poll64_probe(0x10040); break;
-            }
-            publisher.join();
-            assert(observed==(0x80ull<<(8*(width-1))));
+    ppu_context context={};
+    direct(4,0x10001);
+    assert(inline_context_probe(&context,0x10001)==0x12345678ull+0x818E9BA8ull);
+    assert(context.gpr[7]==0x12345678);
+    fallback_context=&context;
+    assert(inline_context_probe(&context,0xFFFF)==0x87654321ull+0xA5);
+    fallback_context=nullptr;
+    // A publisher changes guest RAM after polling begins. The compiler
+    // must retain the polling load even though no guest fence is present.
+    uint64_t* shared=reinterpret_cast<uint64_t*>(storage+0x10040);
+    for (unsigned width: {1u,2u,4u,8u}) {
+        __atomic_store_n(shared,0ull,__ATOMIC_SEQ_CST);
+        std::thread publisher([shared] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            __atomic_store_n(shared,0x80ull,__ATOMIC_SEQ_CST);
+        });
+        uint64_t observed=0;
+        switch (width) {
+        case 1: observed=inline_poll8_probe(0x10040); break;
+        case 2: observed=inline_poll16_probe(0x10040); break;
+        case 4: observed=inline_poll_probe(0x10040); break;
+        case 8: observed=inline_poll64_probe(0x10040); break;
         }
-        // Relocatable HLE base: ref polling must reach the original handler.
-        ppu_hle_inject_base=0xE000;
-        fallback(4,0x10008);
-        direct(1,0x10008); direct(2,0x10008); direct(8,0x10008);
-        ppu_hle_inject_base=0x03000000;
-        ppu_vm_size=0;
-        fallback(4,0x03002008);
+        publisher.join();
+        assert(observed==(0x80ull<<(8*(width-1))));
     }
-    // Writes must remain on the existing reservation/coherency-aware ABI.
+    // Stores outside ordinary RAM stay on the reservation-aware ABI.
     int before=calls;
-    vm_write32(0x123456789ull,71);
-    assert(calls==before+1 && last_address==0x123456789ull && last_width==71);
-    ppu_native_reads_inline_init();
-    assert(ppu_native_reads_inline_enabled==enabled);
+    vm_write32(0x123400000100ull,71);
+    assert(calls==before+1 && last_address==0x123400000100ull && last_width==71);
     puts("PASS");
 }
 '''
@@ -190,64 +164,41 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    source = (args.sdk / "runtime/ppu/ppu_loader.cpp").read_text(encoding="utf-8")
-    init = extract_section(source, "static inline bool vm_memory_probes(void)",
-                           "static void vm_hotmap(")
-    assert "ppu_native_reads_inline_init" in init
     fixture = args.output_dir / "inline_reads.cpp"
-    fixture.write_text("#include <initializer_list>\n" + FIXTURE.replace("@INITIALIZATION@", init), encoding="utf-8")
+    fixture.write_text("#include <initializer_list>\n" + FIXTURE, encoding="utf-8")
     msvc = Path(args.compiler).name.lower() in ("clang-cl", "clang-cl.exe")
-    checks = 0
-    for sample in (False, True):
-        exe = args.output_dir / ("inline_sample.exe" if sample else "inline_reads.exe")
-        assembly = exe.with_suffix(".asm")
-        includes = [ROOT / "port", args.sdk / "runtime/ppu", args.recomp]
-        if msvc:
-            command = [args.compiler, "/nologo", "/O2", "/std:c++17", "/EHsc",
-                       "/W4", "/D_CRT_SECURE_NO_WARNINGS", "/clang:-fno-strict-aliasing", "/FA", f"/Fa{assembly}",
-                       f"/Fo{exe.with_suffix('.obj')}", f"/Fe{exe}"]
-            command += [f"/I{p}" for p in includes]
-            if sample: command.append("/DVM_SAMPLE_READS=1")
-            command.append(str(fixture))
-        else:
-            command = [args.compiler, "-O2", "-std=c++17", "-fno-strict-aliasing", "-o", str(exe)]
-            command += [f"-I{p}" for p in includes]
-            if sample: command.append("-DVM_SAMPLE_READS=1")
-            command.append(str(fixture))
-        subprocess.run(command, check=True)
-        if msvc:
-            asm = assembly.read_text()
-            probe = re.search(r"inline_codegen_probe:.*?(?:# -- End function|ENDP)", asm, re.S)
-            assert probe, "missing representative generated caller in assembly"
-            assert "bswap" in probe[0] and "vm_read32" in probe[0], probe[0]
-            assert not re.search(r"(?:call|jmp)\s+ppu_inline", probe[0]), probe[0]
-            for bits in ('', '8', '16', '64'):
-                poll = re.search(r"inline_poll" + bits + r"_probe:.*?(?:# -- End function|ENDP)", asm, re.S)
-                assert poll and "Inner Loop Header" in poll[0], "polling load optimized away"
-                assert not re.search(r"\b[mls]fence\b", poll[0]), "unexpected hardware fence"
-            context = re.search(r"inline_context_probe:.*?(?:# -- End function|ENDP)", asm, re.S)
-            assert context and 'bswap' in context[0], "missing native context/read path"
-            fast_tail = re.split(r'\bret\b', context[0].split('bswap', 1)[1], maxsplit=1)[0]
-            assert '305419896' in fast_tail, "ordinary read lost known host-register value"
-            assert not re.search(r'\[[^\]]*\+ 56\]', fast_tail), "ordinary read forced a context reload"
-        cases = [("disabled" if sample else "enabled", {}),
-                 ("disabled" if sample else "enabled", {"PPU_INLINE_READS": ""}),
-                 ("disabled", {"PPU_INLINE_READS": "OFF"}),
-                 ("disabled", {"PPU_INLINE_READS": "typo"}),
-                 ("null-init", {"PPU_INLINE_READS": "ON"}),
-                 ("disabled" if sample else "enabled", {"PPU_INLINE_READS": "ON"})]
-        # Each invocation is a fresh process because probe eligibility is cached.
-        cases += [("disabled", {"PPU_INLINE_READS": "ON", name: value})
-                  for name in PROBE_ENV_NAMES for value in ("1", "")]
-        for case, extra in cases:
-            env = os.environ.copy()
-            for name in (*PROBE_ENV_NAMES, "PPU_INLINE_READS"):
-                env.pop(name, None)
-            env.update(extra)
-            run = subprocess.run([str(exe), case], env=env, capture_output=True, text=True, timeout=15)
-            assert run.returncode == 0 and "PASS" in run.stdout, (sample, case, extra, run.stdout, run.stderr)
-            checks += 1
-    print(f"PASS {checks} inline-read startup/range/fallback checks and compiled native-load path")
+    exe = args.output_dir / "inline_reads.exe"
+    assembly = exe.with_suffix(".asm")
+    includes = [ROOT / "port", args.sdk / "runtime/ppu", args.sdk / "runtime/spu", args.sdk / "include", args.recomp]
+    if msvc:
+        command = [args.compiler, "/nologo", "/O2", "/std:c++17", "/EHsc",
+                   "/W4", "/D_CRT_SECURE_NO_WARNINGS", "/clang:-fno-strict-aliasing", "/FA", f"/Fa{assembly}",
+                   f"/Fo{exe.with_suffix('.obj')}", f"/Fe{exe}"]
+        command += [f"/I{p}" for p in includes]
+    else:
+        command = [args.compiler, "-O2", "-std=c++17", "-fno-strict-aliasing", "-o", str(exe)]
+        command += [f"-I{p}" for p in includes]
+    command.append(str(fixture))
+    subprocess.run(command, check=True)
+    if msvc:
+        asm = assembly.read_text()
+        probe = re.search(r"inline_codegen_probe:.*?(?:# -- End function|ENDP)", asm, re.S)
+        assert probe, "missing representative generated caller in assembly"
+        assert "bswap" in probe[0] and "vm_read32" in probe[0], probe[0]
+        assert "ppu_vm_plain_pages" in probe[0], "inline read does not test the page table"
+        assert not re.search(r"(?:call|jmp)\s+ppu_inline", probe[0]), probe[0]
+        for bits in ('', '8', '16', '64'):
+            poll = re.search(r"inline_poll" + bits + r"_probe:.*?(?:# -- End function|ENDP)", asm, re.S)
+            assert poll and "Inner Loop Header" in poll[0], "polling load optimized away"
+            assert not re.search(r"\b[mls]fence\b", poll[0]), "unexpected hardware fence"
+        context = re.search(r"inline_context_probe:.*?(?:# -- End function|ENDP)", asm, re.S)
+        assert context and 'bswap' in context[0], "missing native context/read path"
+        fast_tail = re.split(r'\bret\b', context[0].split('bswap', 1)[1], maxsplit=1)[0]
+        assert '305419896' in fast_tail, "ordinary read lost known host-register value"
+        assert not re.search(r'\[[^\]]*\+ 56\]', fast_tail), "ordinary read forced a context reload"
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=15)
+    assert run.returncode == 0 and "PASS" in run.stdout, (run.stdout, run.stderr)
+    print("PASS inline-read page-table/fallback checks and compiled native-load path")
 
 
 if __name__ == "__main__":

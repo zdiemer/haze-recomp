@@ -9,8 +9,8 @@ from pathlib import Path
 import re
 
 
-def check_rules(ninja, renderer_enabled, jobs_enabled=False, inline_reads=None, pgo_generate=False):
-    if inline_reads is not None:
+def check_rules(ninja, renderer_enabled, jobs_enabled=False, inline_memory=None, pgo_generate=False):
+    if inline_memory is not None:
         generated = 0
         for block in ninja.split('\n\n'):
             if not block.startswith('build ') or '__HazeRecomp_' not in block.splitlines()[0]:
@@ -19,11 +19,11 @@ def check_rules(ninja, renderer_enabled, jobs_enabled=False, inline_reads=None, 
             is_generated = bool(re.search(r'[\\/]ppu_(?:recomp_\d+|hle_nids)\.cpp\.obj:', first))
             if is_generated:
                 generated += 1
-            # HAZE_INLINE_HOT_READS inlines the two measured hot modules in
+            # HAZE_INLINE_HOT_MEMORY inlines the two measured hot modules in
             # ordinary builds; the experiment extends it to every module.
             is_hot = bool(re.search(r'[\\/]ppu_recomp_00[35]\.cpp\.obj:', first))
-            if ('haze_ppu_inline_reads.h' in block) != (is_generated and (inline_reads or is_hot)):
-                raise ValueError(f'Generated-only inline-read compile gate mismatch: {first}')
+            if ('haze_ppu_inline_memory.h' in block) != (is_generated and (inline_memory or is_hot)):
+                raise ValueError(f'Generated-only inline-memory compile gate mismatch: {first}')
             # The committed gameplay profiles apply to every lifted module and
             # never to runtime code; only a -PgoGenerate build is instrumented.
             # PPU modules use lifted.profdata and SPU images spu.profdata.
@@ -41,7 +41,7 @@ def check_rules(ninja, renderer_enabled, jobs_enabled=False, inline_reads=None, 
                 raise ValueError(f'PGO profile applied to runtime code: {first}')
         if generated != 8:
             raise ValueError(f'Expected 8 lifted Haze compile rules, got {generated}')
-        print(f'Actual compile rules: inline reads={int(inline_reads)} on generated sources only (hot modules always)')
+        print(f'Actual compile rules: inline memory={int(inline_memory)} on generated sources only (hot modules always)')
         print(f"Actual compile rules: PGO {'instrumentation' if pgo_generate else 'profiles'} on every lifted PPU module and SPU image")
 
     sdk_sources = {
@@ -88,8 +88,8 @@ def check_rules(ninja, renderer_enabled, jobs_enabled=False, inline_reads=None, 
             raise ValueError(f'{source}: job trace compile gate mismatch')
 
 
-def check(build, enabled, inline_reads=None, jobs_enabled=False, pgo_generate=False):
-    check_rules((Path(build) / 'build.ninja').read_text(), enabled, jobs_enabled, inline_reads, pgo_generate)
+def check(build, enabled, inline_memory=None, jobs_enabled=False, pgo_generate=False):
+    check_rules((Path(build) / 'build.ninja').read_text(), enabled, jobs_enabled, inline_memory, pgo_generate)
 
 
 if __name__ == '__main__':
@@ -99,9 +99,9 @@ if __name__ == '__main__':
                         help='ProfileRenderer compile gate')
     parser.add_argument('--jobs-enabled', type=int, choices=(0, 1), default=0,
                         help='ProfileJobs compile gate')
-    parser.add_argument('--inline-reads', type=int, choices=(0, 1))
+    parser.add_argument('--inline-memory', type=int, choices=(0, 1))
     parser.add_argument('--pgo-generate', type=int, choices=(0, 1), default=0,
                         help='HAZE_PGO_GENERATE instrumented build')
     args = parser.parse_args()
-    check(args.build, bool(args.enabled), None if args.inline_reads is None else bool(args.inline_reads),
+    check(args.build, bool(args.enabled), None if args.inline_memory is None else bool(args.inline_memory),
           bool(args.jobs_enabled), bool(args.pgo_generate))

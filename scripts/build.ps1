@@ -8,7 +8,7 @@ param(
     [switch]$Test,
     [switch]$ProfileRenderer,
     [switch]$ProfileJobs,
-    [switch]$ExperimentalInlineReads,
+    [switch]$ExperimentalInlineMemory,
     [switch]$PgoGenerate,
     [switch]$CompareSpuByteOps,
     [switch]$SpuFma,
@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Continue' # Windows PowerShell treats native stderr wa
 $exeOutput = if ($OutputDirectory) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory) } else { $build }
 $controllerArgs = @()
 if (-not $RuntimeOnly) {
-    $controllerArgs += "-DHAZE_EXPERIMENT_INLINE_READS=$([int][bool]$ExperimentalInlineReads)"
+    $controllerArgs += "-DHAZE_EXPERIMENT_INLINE_MEMORY=$([int][bool]$ExperimentalInlineMemory)"
     $controllerArgs += "-DHAZE_PGO_GENERATE=$([int][bool]$PgoGenerate)"
 }
 if ($SDL3Root) { $controllerArgs += "-DFETCHCONTENT_SOURCE_DIR_SDL3=$((Resolve-Path -LiteralPath $SDL3Root).Path)" }
@@ -65,7 +65,7 @@ if ($FFmpegRoot) { $controllerArgs += "-DHAZE_FFMPEG_ROOT=$((Resolve-Path -Liter
 & $cmake -S $source -B $build -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_C_COMPILER=$clang" "-DCMAKE_CXX_COMPILER=$clang" "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$exeOutput" "-DPython3_EXECUTABLE=$python" "-DPS3RECOMP_DIR=$sdk" "-DHAZE_SHARED_ROOT=$assets" "-DRECOMP_DIR=$assets/generated/ppu" "-DSPU_DIR=$assets/generated/spu" "-DHAZE_RSX_PROFILE=$([int][bool]$ProfileRenderer)" "-DHAZE_JOB_DIAGNOSTICS=$([int][bool]$ProfileJobs)" "-DHAZE_SPU_FMA=$([int][bool]$SpuFma)" "-DHAZE_SPU_BYTE_COMPARE=$([int][bool]$CompareSpuByteOps)" "-DPS3RECOMP_NATIVE_FLOAT_RUNTIME=$([int][bool]$NativeSpuFloat)" @controllerArgs
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 if (-not $RuntimeOnly) {
-    & $python "$root/tests/check_profile_configuration.py" $build --enabled $([int][bool]$ProfileRenderer) --jobs-enabled $([int][bool]$ProfileJobs) --inline-reads $([int][bool]$ExperimentalInlineReads) --pgo-generate $([int][bool]$PgoGenerate)
+    & $python "$root/tests/check_profile_configuration.py" $build --enabled $([int][bool]$ProfileRenderer) --jobs-enabled $([int][bool]$ProfileJobs) --inline-memory $([int][bool]$ExperimentalInlineMemory) --pgo-generate $([int][bool]$PgoGenerate)
     if ($LASTEXITCODE -ne 0) { throw 'Profiling definitions do not match the requested build.' }
 }
 & $cmake --build $build --parallel $Jobs
@@ -392,7 +392,7 @@ if ($Test) {
     & "$root/local/test_job_wait.exe"
     if ($LASTEXITCODE -ne 0) { throw 'Native job wait scope validation failed.' }
     & $python "$root/tests/test_ppu_inline_writes.py" --compiler $clang --sdk $sdk --recomp $jobWaitInclude --output-dir "$root/local/inline-write-tests"
-    if ($LASTEXITCODE -ne 0) { throw 'Experimental PPU write boundary validation failed.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Generated inline memory-write regression failed.' }
     if (-not $RuntimeOnly) {
         & $python "$root/tests/test_spu_job_modes.py"
         if ($LASTEXITCODE -ne 0) { throw 'SPU job mode-summary validation failed.' }

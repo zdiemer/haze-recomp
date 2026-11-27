@@ -31,7 +31,7 @@ uint32_t ppu_hle_inject_base = 0x30000u;
 #define VM_HLE_INJECT_BASE ppu_hle_inject_base
 uint32_t g_barrier_sync_watch, g_null_sweep_hi;
 unsigned char spu_coh_reservation_bitmap[SPU_COH_BITMAP_SIZE];
-uint32_t spu_coh_reservations_armed;
+unsigned char spu_coh_page_marked[1u << (32u - SPU_COH_PAGE_SHIFT)];
 static int ps3_log_verbose() { return 0; }
 static int full_calls;
 static uint64_t full_address;
@@ -84,11 +84,11 @@ int main(int argc, char** argv) {
         ppu_vm_size = 0; ppu_hle_inject_base = 0x2000FFF0u;
         ppu_native_reads_inline_init(); vm_plain_pages_init();
         for (uint32_t page : {0x0u, 0x2000u, 0x2001u, 0xE000u, 0xE05Fu, 0xFFFFu})
-            assert(!s_vm_plain_page[page]);
+            assert(!ppu_vm_plain_pages[page]);
         for (uint32_t page : {0x1u, 0x1FFFu, 0x2002u, 0xDFFFu, 0xFFFEu})
-            assert(s_vm_plain_page[page] == enabled);
-        assert(!s_vm_plain_page[(SPU_RAW_BASE + SPU_RAW_SPAN - 1) >> 16]);
-        assert(s_vm_plain_page[(SPU_RAW_BASE + SPU_RAW_SPAN) >> 16] == enabled);
+            assert(ppu_vm_plain_pages[page] == enabled);
+        assert(!ppu_vm_plain_pages[(SPU_RAW_BASE + SPU_RAW_SPAN - 1) >> 16]);
+        assert(ppu_vm_plain_pages[(SPU_RAW_BASE + SPU_RAW_SPAN) >> 16] == enabled);
         puts("PASS"); return 0;
     }
     if (!strcmp(mode, "null-init")) vm_base = nullptr;
@@ -106,13 +106,14 @@ int main(int argc, char** argv) {
     g_barrier_sync_watch = 0; g_null_sweep_hi = 1;
     assert(!writes_fast(0x10010) && reads_fast(0x10010));
     g_null_sweep_hi = 0;
-    // A reserved line takes the locked store; only an armed bitmap counts.
+    // A reserved line takes the locked store; the bitmap is consulted only in
+    // a page with a reservation, and only that line leaves the fast path.
     spu_coh_atomic_store_u8(&spu_coh_reservation_bitmap[0x10080u >> 10],
         1u << ((0x10080u >> 7) & 7u));
     assert(writes_fast(0x10080));
-    spu_coh_atomic_store_u32(&spu_coh_reservations_armed, 1);
+    spu_coh_atomic_store_u8(&spu_coh_page_marked[0x10080u >> SPU_COH_PAGE_SHIFT], 1);
     assert(!writes_fast(0x10080) && !writes_fast(0x100FF) && reads_fast(0x10080));
-    assert(writes_fast(0x10100) && writes_fast(0x10070));
+    assert(writes_fast(0x10100) && writes_fast(0x10070) && writes_fast(0x20010));
     puts("PASS");
 }
 '''
@@ -140,7 +141,9 @@ def main() -> None:
     cases = [('ordinary', 1, {}), ('whole-space', 1, {}), ('null-init', 0, {}),
              ('ordinary', 0, {'PPU_INLINE_COH_CHECK': 'OFF'}),
              ('whole-space', 0, {'PPU_INLINE_COH_CHECK': 'OFF'}),
-             ('ordinary', 1, {'PPU_INLINE_READS': 'OFF'})]
+             # Generated code inlines this table, so turning inlining off
+             # empties it.
+             ('ordinary', 0, {'PPU_INLINE_READS': 'OFF'})]
     cases += [('ordinary', 0, {name: '1'}) for name in PROBE_ENV_NAMES]
     checks = 0
     for mode, enabled, extra in cases:

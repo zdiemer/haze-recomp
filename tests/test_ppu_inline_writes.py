@@ -1,13 +1,14 @@
-"""Exercise the real opt-in write shim with runtime eligibility/coherency code."""
+"""Exercise the real generated-memory shim's writes with the runtime store macro.
+
+The ABI fallback stores through the loader's own coherency macro, so a
+reserved line shows the lock and notification the inline path must not skip.
+"""
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import re
 import subprocess
-
-from test_memory_read_fastpaths import PROBE_ENV_NAMES, extract_section
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = r'''
@@ -17,8 +18,6 @@ FIXTURE = r'''
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
-#include <thread>
-#define YieldProcessor() std::this_thread::yield()
 #include "ppu_recomp.h"
 #include "spu_coherency.h"
 alignas(128) static uint8_t storage[0x12000];
@@ -26,8 +25,9 @@ extern "C" {
 uint8_t* vm_base = storage;
 uint32_t ppu_vm_size = sizeof(storage), ppu_hle_inject_base = 0x03000000;
 uint32_t g_barrier_sync_watch = 0, g_null_sweep_hi = 0;
+uint8_t ppu_vm_plain_pages[0x10000];
 unsigned char spu_coh_reservation_bitmap[SPU_COH_BITMAP_SIZE] = {};
-uint32_t spu_coh_reservations_armed = 0;
+unsigned char spu_coh_page_marked[1u << (32u - SPU_COH_PAGE_SHIFT)] = {};
 }
 static unsigned calls, locks, notifications, last_width;
 static bool held;
@@ -36,7 +36,7 @@ extern "C" int spu_coh_is_reserved(uint32_t a) { return spu_coh_is_reserved_inli
 extern "C" void spu_lockline_lock() { assert(!held); held=true; ++locks; }
 extern "C" void spu_lockline_unlock() { assert(held); held=false; }
 extern "C" void spu_coh_notify_write(uint32_t a) { assert(held); ++notifications; }
-@INITIALIZATION@
+static int ppu_inline_coh_predicate_enabled = 1; // the runtime's startup choice
 @STORE_MACRO@
 
 // The original accessor ABI is observable. Its store uses the real runtime
@@ -54,7 +54,11 @@ extern "C" __declspec(noinline) void vm_write8(uint64_t a,uint8_t v) { fallback(
 extern "C" __declspec(noinline) void vm_write16(uint64_t a,uint16_t v) { fallback(a,v,2); }
 extern "C" __declspec(noinline) void vm_write32(uint64_t a,uint32_t v) { fallback(a,v,4); }
 extern "C" __declspec(noinline) void vm_write64(uint64_t a,uint64_t v) { fallback(a,v,8); }
-#include "haze_ppu_inline_writes.h"
+extern "C" uint8_t vm_read8(uint64_t) { abort(); }
+extern "C" uint16_t vm_read16(uint64_t) { abort(); }
+extern "C" uint32_t vm_read32(uint64_t) { abort(); }
+extern "C" uint64_t vm_read64(uint64_t) { abort(); }
+#include "haze_ppu_inline_memory.h"
 
 static void store(unsigned width,uint64_t a,uint64_t v) {
     switch(width) {
@@ -87,38 +91,29 @@ static void check(unsigned width,uint64_t address,bool direct,bool reserved=fals
 extern "C" __declspec(noinline) void inline_write_codegen_probe(uint64_t a,uint32_t v) {
     vm_write32(a,v);
 }
-int main(int argc,char** argv) {
-    assert(argc==2); const bool enabled=atoi(argv[1])!=0;
-    // Before the runtime publishes eligibility, every write stays on the ABI.
+int main() {
+    // Before the runtime fills its page table, every write stays on the ABI.
     for(unsigned width:{1u,2u,4u,8u}) check(width,0x10010,false);
-    ppu_native_reads_inline_init();
+    ppu_vm_plain_pages[1]=1; // the fixture's storage page
     for(unsigned width:{1u,2u,4u,8u}) {
         for(unsigned alignment=0;alignment<8;++alignment)
-            check(width,0x123400010010ull+alignment,enabled);
+            check(width,0x123400010010ull+alignment,true);
         check(width,0xFFFF,false); check(width,0,false);
-        check(width,0xC0000000,false); check(width,0xE0000000,false);
-        check(width,0xFFFFfffE,false); check(width,sizeof(storage),false);
-        check(width,sizeof(storage)-width,enabled);
-        if(width>1) { check(width,sizeof(storage)-width+1,false); check(width,0x1007F,false); }
-        ppu_hle_inject_base=0x10000;
-        check(width,0x10010,false);
-        ppu_hle_inject_base=0x10020;
-        check(width,0x10020-width,enabled);
-        if(width>1) check(width,0x10021-width,false);
-        ppu_hle_inject_base=0x03000000;
+        check(width,0x20000,false); check(width,0xFFFFfffE,false);
+        check(width,sizeof(storage)-width,true);
         g_barrier_sync_watch=0x10000; check(width,0x10010,false); g_barrier_sync_watch=0;
         g_null_sweep_hi=1; check(width,0x10010,false); g_null_sweep_hi=0;
-        vm_base=nullptr; assert(!haze_inline_write_eligible(0x10010,width)); vm_base=storage;
-        // An armed bitmap with no mark is still eligible. A reserved line
-        // must call the accessor, acquire the lock and notify exactly once.
-        spu_coh_atomic_store_u32(&spu_coh_reservations_armed,1);
-        check(width,0x10010,enabled);
+        // A page holding a reservation sends every store to the accessor; only
+        // the reserved line acquires the lock and notifies, exactly once.
+        spu_coh_atomic_store_u8(&spu_coh_page_marked[1],1);
+        check(width,0x10010,false);
         spu_coh_atomic_store_u8(&spu_coh_reservation_bitmap[0x10000>>10],1u<<((0x10000>>7)&7));
         check(width,0x10010,false,true);
         if(width>1) check(width,0x1007F,false,true);
+        check(width,0x10080,false);
         spu_coh_atomic_store_u8(&spu_coh_reservation_bitmap[0x10000>>10],0);
-        spu_coh_atomic_store_u32(&spu_coh_reservations_armed,0);
-        ppu_vm_size=0; check(width,0x10010,enabled); ppu_vm_size=sizeof(storage);
+        spu_coh_atomic_store_u8(&spu_coh_page_marked[1],0);
+        check(width,0x10010,true);
     }
     puts("PASS");
 }
@@ -134,41 +129,25 @@ def main() -> None:
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     source = (args.sdk/'runtime/ppu/ppu_loader.cpp').read_text(encoding='utf-8')
-    init = extract_section(source, 'static inline bool vm_memory_probes(void)', 'static void vm_hotmap(')
     start = source.index('#define VM_WRITE_COH(a, src, n)')
     macro = source[start:source.index('\nextern "C" {', start)]
     fixture = args.output_dir/'inline_writes.cpp'
-    fixture.write_text(FIXTURE.replace('@INITIALIZATION@', init).replace('@STORE_MACRO@', macro), encoding='utf-8')
-    count = 0
-    for sample in (False, True):
-        exe = args.output_dir/('sample.exe' if sample else 'ordinary.exe')
-        command = [args.compiler, '/nologo', '/O2', '/std:c++17', '/EHsc', '/W0',
-                   '/clang:-msse4.1', '/clang:-fno-strict-aliasing', '/D_CRT_SECURE_NO_WARNINGS',
-                   f'/Fo{exe.with_suffix(".obj")}', f'/Fe{exe}', '/FA', f'/Fa{exe.with_suffix(".asm")}',
-                   *(f'/I{p}' for p in (ROOT/'port', args.recomp, args.sdk/'runtime/ppu', args.sdk/'runtime/spu', args.sdk/'include')),
-                   str(fixture)]
-        if sample: command.append('/DVM_SAMPLE_READS=1')
-        subprocess.run(command, check=True)
-        assembly = exe.with_suffix('.asm').read_text()
-        probe = re.search(r'inline_write_codegen_probe:.*?# -- End function', assembly, re.S)
-        assert probe and 'bswap' in probe[0] and 'vm_write32' in probe[0], 'missing direct store or ABI fallback'
-        assert not re.search(r'(?:call|jmp)\s+(?:haze_inline|spu_coh_is_reserved)', probe[0]), 'hot checks did not inline'
-        cases = [(False, {}), (False, {'HAZE_INLINE_WRITES':''}),
-                 (False, {'HAZE_INLINE_WRITES':'0'}), (False, {'HAZE_INLINE_WRITES':'typo'}),
-                 (not sample, {'HAZE_INLINE_WRITES':'1'}),
-                 (False, {'HAZE_INLINE_WRITES':'1','PPU_INLINE_READS':'OFF'}),
-                 (False, {'HAZE_INLINE_WRITES':'1','PPU_INLINE_COH_CHECK':'OFF'})]
-        cases += [(False, {'HAZE_INLINE_WRITES':'1', name:value})
-                  for name in PROBE_ENV_NAMES for value in ('1','')]
-        for expected, extra in cases:
-            env = os.environ.copy()
-            for name in (*PROBE_ENV_NAMES,'HAZE_INLINE_WRITES','PPU_INLINE_READS','PPU_INLINE_COH_CHECK'):
-                env.pop(name,None)
-            env.update(extra)
-            result = subprocess.run([str(exe),str(int(expected))],env=env,capture_output=True,text=True,timeout=15)
-            assert result.returncode==0 and 'PASS' in result.stdout,(sample,extra,result.stdout,result.stderr)
-            count += 1
-    print(f'PASS {count} write eligibility, byte order, bounds, diagnostic, and reservation cases')
+    fixture.write_text(FIXTURE.replace('@STORE_MACRO@', macro), encoding='utf-8')
+    exe = args.output_dir/'inline_writes.exe'
+    command = [args.compiler, '/nologo', '/O2', '/std:c++17', '/EHsc', '/W0',
+               '/clang:-msse4.1', '/clang:-fno-strict-aliasing', '/D_CRT_SECURE_NO_WARNINGS',
+               f'/Fo{exe.with_suffix(".obj")}', f'/Fe{exe}', '/FA', f'/Fa{exe.with_suffix(".asm")}',
+               *(f'/I{p}' for p in (ROOT/'port', args.recomp, args.sdk/'runtime/ppu', args.sdk/'runtime/spu', args.sdk/'include')),
+               str(fixture)]
+    subprocess.run(command, check=True)
+    assembly = exe.with_suffix('.asm').read_text()
+    probe = re.search(r'inline_write_codegen_probe:.*?# -- End function', assembly, re.S)
+    assert probe and 'bswap' in probe[0] and 'vm_write32' in probe[0], 'missing direct store or ABI fallback'
+    assert 'ppu_vm_plain_pages' in probe[0] and 'spu_coh_page_marked' in probe[0], 'store skips a page test'
+    assert not re.search(r'(?:call|jmp)\s+(?:haze_inline|spu_coh_is_reserved)', probe[0]), 'hot checks did not inline'
+    result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0 and 'PASS' in result.stdout, (result.stdout, result.stderr)
+    print('PASS inline-write byte order, bounds, write-watch and reservation cases')
 
 
 if __name__ == '__main__':

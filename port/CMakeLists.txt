@@ -866,44 +866,27 @@ else()
         COMPILE_OPTIONS "-w;-ffp-contract=off")
 endif()
 
-# Limit ordinary read inlining to the two modules containing the measured
-# producer memory hot spots. The all-module option remains a developer probe.
-option(HAZE_INLINE_HOT_READS "Inline ordinary RAM reads in hot PPU modules" ON)
-option(HAZE_EXPERIMENT_INLINE_READS "Compile the developer inline-read comparison" OFF)
-# Ordinary guest reads may be inlined into lifted host code. The runtime owns
-# the startup eligibility decision; special addresses and diagnostics retain
-# their original accessor. Never apply this remapping to runtime/HLE sources.
-foreach(HAZE_READ_SOURCE IN LISTS RECOMP_SOURCES)
-    get_filename_component(HAZE_READ_NAME "${HAZE_READ_SOURCE}" NAME)
-    if(HAZE_EXPERIMENT_INLINE_READS OR
-       (HAZE_INLINE_HOT_READS AND HAZE_READ_NAME MATCHES "^ppu_recomp_00[35]\\.cpp$"))
+# Inline ordinary guest reads and writes into the two modules holding the
+# producer's memory hot spots (carrier deck: 6% faster frames). Every module
+# inlined October's heavier checks and ran 18.7% slower, so the all-module
+# option remains a developer probe. The runtime owns eligibility through its
+# page table; special addresses and diagnostics retain their original
+# accessor. Never apply this remapping to runtime/HLE sources.
+option(HAZE_INLINE_HOT_MEMORY "Inline ordinary RAM reads and writes in hot PPU modules" ON)
+option(HAZE_EXPERIMENT_INLINE_MEMORY "Inline ordinary RAM accesses in every PPU module" OFF)
+foreach(HAZE_MEMORY_SOURCE IN LISTS RECOMP_SOURCES)
+    get_filename_component(HAZE_MEMORY_NAME "${HAZE_MEMORY_SOURCE}" NAME)
+    if(HAZE_EXPERIMENT_INLINE_MEMORY OR
+       (HAZE_INLINE_HOT_MEMORY AND HAZE_MEMORY_NAME MATCHES "^ppu_recomp_00[35]\\.cpp$"))
         if(MSVC)
-            set_property(SOURCE "${HAZE_READ_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
-                "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
+            set_property(SOURCE "${HAZE_MEMORY_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
+                "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_memory.h")
         else()
-            set_property(SOURCE "${HAZE_READ_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
-                "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_reads.h")
+            set_property(SOURCE "${HAZE_MEMORY_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
+                "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_memory.h")
         endif()
     endif()
 endforeach()
-
-# Keep write inlining build-time opt-in until repeated gameplay measurements
-# establish a benefit. Runtime HAZE_INLINE_WRITES=1 also explicitly opts in.
-option(HAZE_EXPERIMENT_INLINE_WRITES "Compile guarded ordinary PPU write experiment" OFF)
-if(HAZE_EXPERIMENT_INLINE_WRITES)
-    foreach(HAZE_WRITE_SOURCE IN LISTS RECOMP_SOURCES)
-        get_filename_component(HAZE_WRITE_NAME "${HAZE_WRITE_SOURCE}" NAME)
-        if(HAZE_WRITE_NAME MATCHES "^ppu_recomp_00[35]\\.cpp$")
-            if(MSVC)
-                set_property(SOURCE "${HAZE_WRITE_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
-                    "/FI${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_writes.h")
-            else()
-                set_property(SOURCE "${HAZE_WRITE_SOURCE}" APPEND PROPERTY COMPILE_OPTIONS
-                    "-include" "${CMAKE_CURRENT_SOURCE_DIR}/haze_ppu_inline_writes.h")
-            endif()
-        endif()
-    endforeach()
-endif()
 
 # Profile-guided optimization of the lifted modules. The producer walks
 # megabytes of lifted code per frame with no dominant function, so it is bound
