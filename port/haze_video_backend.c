@@ -208,6 +208,7 @@ void haze_video_finish(int commit) {
             g.n_samplers=0;
             g.smp_ring_used=0;
             memset(g.smp_keys,0,sizeof g.smp_keys);
+            memset(g.smp_used,0,sizeof g.smp_used);
             memset(g.smp_ring_slots,0,sizeof g.smp_ring_slots);
         }
         g_ld_aa=s->aa; g_ld_anisotropy=s->anisotropy;

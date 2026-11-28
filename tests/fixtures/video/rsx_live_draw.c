@@ -83,7 +83,7 @@ static void fake_barrier(fake_list*,unsigned,const void*) {}
 struct fake_list_methods { void (*ResourceBarrier)(fake_list*,unsigned,const void*); };
 struct fake_list { fake_list_methods* lpVtbl; };
 static struct { int ready; fake_device* dev; unsigned n_samplers,smp_ring_used;
-    unsigned long long smp_keys[4]; unsigned smp_ring_slots[4][4];
+    unsigned long long smp_keys[4],smp_used[4]; unsigned smp_ring_slots[4][4];
     fake_queue* queue; fake_fence* fence; fake_swap* swap; u64 fence_value; HANDLE fence_event; fake_resource* backbuf[2]; fake_list* list; } g;
 static HWND g_ld_display_hwnd;
 static int g_ld_fullscreen_requested,g_ld_fullscreen_state,g_ld_display_focused;
