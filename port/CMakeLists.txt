@@ -354,7 +354,9 @@ if(WIN32)
     # Sampler slots recycle LRU once full instead of falling back to the CLAMP
     # default; only CPU descriptors and this page's table-reuse cache change.
     # The live-settings commit still resets slots, keys and use stamps together.
-    if(NOT HAZE_RSX_HASH STREQUAL "a506b36ddcb7b6c385984fa2da081fb0d54a314a312daedf31753221ceb65576")
+    # The per-method guest handshake relies on InterlockedIncrement's own full
+    # barrier; host waiting and movie/present ownership are unchanged.
+    if(NOT HAZE_RSX_HASH STREQUAL "68b296579aceed819c569bb518ed72e88df7a2fd8d203e53715ca1d6218cd7b8")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.
