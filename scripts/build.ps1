@@ -671,6 +671,11 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'Large-file test compilation failed.' }
     & $fileTest
     if ($LASTEXITCODE -ne 0) { throw 'Large-file stat and seek test failed.' }
+    $envOnceTest = Join-Path $root 'local/test_env_once.exe'
+    & $clang /nologo /W0 /O1 "/Fe$envOnceTest" "/Fo$root/local/test_env_once.obj" "$sdk/runtime/platform/tests/test_env_once.c"
+    if ($LASTEXITCODE -ne 0) { throw 'Env-once test compilation failed.' }
+    & $envOnceTest
+    if ($LASTEXITCODE -ne 0) { throw 'Env-once cached-read test failed.' }
     $memoryTest = Join-Path $root 'local/test_memory_container.exe'
     & $clang /nologo /W0 /O1 "/I$sdk/include" "/Fe$memoryTest" "/Fo$root/local/test_memory_container.obj" "$sdk/runtime/syscalls/tests/test_memory_container.c"
     if ($LASTEXITCODE -ne 0) { throw 'Memory-container test compilation failed.' }

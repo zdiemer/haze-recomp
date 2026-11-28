@@ -9,12 +9,17 @@ _Thread_local unsigned haze_audio_host_mxcsr;
 haze_audio_float_state haze_audio_enter(int audio_image) {
     haze_audio_float_state saved = {_mm_getcsr(), haze_audio_host_mxcsr, haze_audio_scope};
     const unsigned host = saved.active ? saved.host_mxcsr : saved.mxcsr;
-    int info[4];
-    __cpuidex(info, 1, 0);
-    const char* validate = getenv("SPU_FLOAT_NATIVE_VALIDATE");
+    /* CPUID serialises and getenv takes the CRT environment lock; both answers
+     * are fixed for the process, and this runs on every audio job entry. */
+    static int fast_audio = -1;
+    if (fast_audio < 0) {
+        int info[4];
+        __cpuidex(info, 1, 0);
+        const char* validate = getenv("SPU_FLOAT_NATIVE_VALIDATE");
+        fast_audio = (info[2] & (1 << 12)) && !(validate && *validate == '1');
+    }
     haze_audio_host_mxcsr = host;
-    haze_audio_scope = audio_image && spu_float_native_active() && (info[2] & (1 << 12)) &&
-                       !(validate && *validate == '1');
+    haze_audio_scope = audio_image && spu_float_native_active() && fast_audio;
     /* RTZ, DAZ, FTZ and masked exceptions; preserve the caller's status flags
      * on entry and restore its complete control/status register on exit. */
     _mm_setcsr(haze_audio_scope ? host | 0xffc0u : host);
