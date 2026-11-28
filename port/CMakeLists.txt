@@ -351,7 +351,10 @@ if(WIN32)
     # live sampler changes discard page metadata only after prepare fences.
     # Exact pipeline recipes retain independent PSO/root/device references.
     # Live settings and display rollback retain their existing fence/ownership.
-    if(NOT HAZE_RSX_HASH STREQUAL "1db09021ec9818a481aad30da0f34f322a30c07ccbca3d4c91ff1153d060ad07")
+    # Sampler slots recycle LRU once full instead of falling back to the CLAMP
+    # default; only CPU descriptors and this page's table-reuse cache change.
+    # The live-settings commit still resets slots, keys and use stamps together.
+    if(NOT HAZE_RSX_HASH STREQUAL "a506b36ddcb7b6c385984fa2da081fb0d54a314a312daedf31753221ceb65576")
         message(FATAL_ERROR "Renderer changed: audit the Haze live-settings transaction before building")
     endif()
     # Capture while DXGI still owns this backbuffer, before Present rotates it.

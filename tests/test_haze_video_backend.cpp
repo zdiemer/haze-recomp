@@ -7,7 +7,7 @@ static void haze_overlay_set(unsigned mode,unsigned corner) { overlay_mode=mode;
 #include "../port/haze_video_backend.c"
 int main() {
     g.dev=&device; g.ready=1; owner_thread=GetCurrentThreadId();
-    g.n_samplers=3; g.smp_ring_used=2; g.smp_keys[0]=42;
+    g.n_samplers=3; g.smp_ring_used=2; g.smp_keys[0]=42; g.smp_used[0]=7;
     g_ld_anisotropy=1;
     haze_video_live high={1,16,60,0,.15f,0,-1}; char error[200];
     high.overlay=2; high.overlay_position=3;
@@ -30,7 +30,7 @@ int main() {
     assert(released==1 && g.n_samplers==3 && g_ld_anisotropy==1);
     assert(haze_video_prepare(&high,error,sizeof error)); haze_video_finish(1);
     assert(overlay_mode==2 && overlay_corner==3);
-    assert(g_ld_postprocess.output && g_ld_anisotropy==16 && !g.n_samplers && !g.smp_ring_used && !g.smp_keys[0]);
+    assert(g_ld_postprocess.output && g_ld_anisotropy==16 && !g.n_samplers && !g.smp_ring_used && !g.smp_keys[0] && !g.smp_used[0]);
     assert(sampler_pages_reset_calls==1);
     assert(g_ld_frame_limiter.period==16667 && g_ld_frame_limiter.last_present==0);
     // Same allocation supports changes to effect parameters without recreation.
